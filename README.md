@@ -1,107 +1,64 @@
-# 🍀 AdminAgent Lottery – ระบบหวยออนไลน์
+# Agent Lottery System 🎰
 
-ระบบบริหารจัดการหวยออนไลน์แบบ Web App รองรับมือถือ มี 3 ระดับผู้ใช้งาน
-
-## Features
-
-- ✅ Login 3 Role (Admin / เจ้ามือ / ลูกค้า)
-- ✅ RBAC – Route protection ตามสิทธิ์
-- ✅ Dashboard แยกตามสิทธิ์
-- ✅ CRUD เจ้ามือ (Admin)
-- ✅ CRUD ลูกค้า (Admin + เจ้ามือ)
-- ✅ ระบบแทงเลข (ลูกค้า)
-- ✅ คำนวณผลอัตโนมัติ + ล็อกข้อมูลย้อนหลัง
-- ✅ ดึง API หวยไทย (rayriffy.com)
-- ✅ สรุปยอดรายงวด
-- ✅ Mobile-friendly + Bottom Navigation
-
----
+ระบบจัดการหวยออนไลน์ 3 Role (Admin / เจ้ามือ / ลูกค้า)
 
 ## Tech Stack
+- **Backend:** Node.js + Express + MongoDB (Render)
+- **Frontend:** React + Vite (Netlify)
+- **Database:** MongoDB Atlas
 
-- **Next.js 14** (App Router)
-- **MongoDB** + Mongoose
-- **NextAuth.js** (JWT)
-- **Tailwind CSS** (Green Dark Theme)
+## Features
+- ✅ Login 3 Role (Admin / เจ้ามือ / ลูกค้า)
+- ✅ RBAC (Role Based Access Control)
+- ✅ Dashboard แยกตามสิทธิ์
+- ✅ CRUD เจ้ามือ / ลูกค้า
+- ✅ ระบบบันทึกการแทง (6 ประเภท)
+- ✅ ระบบคำนวณผลอัตโนมัติ
+- ✅ ดึง API ผลหวยไทย
+- ✅ สรุปยอดรายวัน / รายงวด
+- ✅ ป้องกันแก้ไขข้อมูลย้อนหลัง
+- ✅ Logging ขั้นพื้นฐาน
+- ✅ Responsive (มือถือ)
 
----
+## Setup
 
-## การติดตั้ง
-
-### 1. ติดตั้ง Dependencies
-
+### Backend
 ```bash
+cd backend
 npm install
+# แก้ไข .env ถ้าจำเป็น
+npm run seed   # สร้าง admin account
+npm run dev    # Start server (port 5000)
 ```
 
-### 2. ตั้งค่า `.env.local`
-
-```
-MONGODB_URI=mongodb://localhost:27017/admin-lottery
-NEXTAUTH_SECRET=your-super-secret-key-change-in-production
-NEXTAUTH_URL=http://localhost:3000
-```
-
-> **MongoDB**: ใช้ [MongoDB Community](https://www.mongodb.com/try/download/community) หรือ [MongoDB Atlas](https://www.mongodb.com/atlas) (ฟรี)
-
-### 3. สร้างข้อมูลเริ่มต้น (Seed)
-
+### Frontend
 ```bash
-npx tsx scripts/seed.ts
+cd frontend
+npm install
+npm run dev    # Start dev server (port 3000)
 ```
 
-ข้อมูล Default:
+### Default Admin Account
+- Username: `admin`
+- Password: `admin123`
 
-| Role | Username | Password |
-|------|----------|----------|
-| Admin | `admin` | `admin1234` |
-| เจ้ามือ | `dealer1` | `dealer1234` |
-| ลูกค้า | `customer1` | `customer1234` |
+## Deploy
+- **Backend (Render):** Deploy จาก `/backend` folder
+- **Frontend (Netlify):** Deploy จาก `/frontend` folder, build command: `npm run build`, publish: `dist`
 
-### 4. รัน Development Server
-
-```bash
-npm run dev
+## Environment Variables (Backend)
+```
+MONGODB_URI=your_mongodb_uri
+JWT_SECRET=your_jwt_secret
+PORT=5000
 ```
 
-เปิด [http://localhost:3000](http://localhost:3000)
-
----
-
-## โครงสร้างหน้า
-
-| Role | หน้า |
-|------|------|
-| Admin | `/admin/dashboard`, `/admin/dealers`, `/admin/customers`, `/admin/lottery` |
-| เจ้ามือ | `/dealer/dashboard`, `/dealer/customers`, `/dealer/summary` |
-| ลูกค้า | `/customer/dashboard`, `/customer/bet`, `/customer/history`, `/customer/summary` |
-
----
-
-## อัตราจ่ายเริ่มต้น
-
-| ประเภท | อัตราจ่าย |
-|--------|-----------|
-| 2 ตัวบน | x70 |
-| 2 ตัวล่าง | x70 |
+## อัตราจ่าย
+| ประเภท | อัตรา |
+|--------|-------|
 | 3 ตัวบน | x500 |
 | 3 ตัวโต๊ด | x100 |
+| 2 ตัวบน | x70 |
+| 2 ตัวล่าง | x70 |
 | วิ่งบน | x3 |
-| วิ่งล่าง | x4.5 |
-
----
-
-## API Endpoints
-
-| Method | Path | Role | คำอธิบาย |
-|--------|------|------|-----------|
-| GET | `/api/dealers` | Admin | ดูเจ้ามือทั้งหมด |
-| POST | `/api/dealers` | Admin | เพิ่มเจ้ามือ |
-| PUT | `/api/dealers/:id` | Admin | แก้ไขเจ้ามือ |
-| GET | `/api/customers` | Admin/Dealer | ดูลูกค้า |
-| POST | `/api/customers` | Admin/Dealer | เพิ่มลูกค้า |
-| GET | `/api/bets` | All | ดูการแทง (scoped) |
-| POST | `/api/bets` | Customer | แทงเลข |
-| GET | `/api/lottery` | All | ดึงผลหวยไทย |
-| POST | `/api/lottery` | Admin | คำนวณผล + ล็อก |
-| GET | `/api/summary` | All | สรุปยอด (scoped) |
+| วิ่งล่าง | x2 |
