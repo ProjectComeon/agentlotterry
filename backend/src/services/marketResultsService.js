@@ -19,6 +19,8 @@ const MANYCAI_MARKETS = [
   { code: 'cqhn', marketId: 'hanoi-specific', name: 'ฮานอยเฉพาะกิจ', sectionId: 'international', type: 'standard' },
   { code: 'tlzc', marketId: 'lao', name: 'หวยลาว', sectionId: 'international', type: 'standard' },
   { code: 'zcvip', marketId: 'lao-vip', name: 'หวยลาว VIP', sectionId: 'international', type: 'standard' },
+  { code: 'ynhn', marketId: 'hanoi-normal', name: 'ฮานอยธรรมดา', sectionId: 'international', type: 'standard' },
+  { code: 'ynma', marketId: 'malay', name: 'มาเลย์', sectionId: 'international', type: 'standard' },
   { code: 'tykc', marketId: 'yeekee-vip', name: 'จับยี่กี VIP', sectionId: 'international', type: 'standard' },
   { code: 'gsth', marketId: 'stock-thai', name: 'หุ้นไทย', sectionId: 'stocks', type: 'stock' },
   { code: 'gshka', marketId: 'stock-hangseng-morning', name: 'ฮั่งเส็งเช้า', sectionId: 'stocks', type: 'stock' },
@@ -58,6 +60,8 @@ const baseSections = [
       { id: 'hanoi-specific', name: 'ฮานอยเฉพาะกิจ', provider: PROVIDER_NAME, status: 'waiting', resultDate: '', headline: '', numbers: [], note: 'รอข้อมูลจากผู้ให้บริการ' },
       { id: 'lao', name: 'หวยลาว', provider: PROVIDER_NAME, status: 'waiting', resultDate: '', headline: '', numbers: [], note: 'รอข้อมูลจากผู้ให้บริการ' },
       { id: 'lao-vip', name: 'หวยลาว VIP', provider: PROVIDER_NAME, status: 'waiting', resultDate: '', headline: '', numbers: [], note: 'รอข้อมูลจากผู้ให้บริการ' },
+      { id: 'hanoi-normal', name: 'ฮานอยธรรมดา', provider: PROVIDER_NAME, status: 'waiting', resultDate: '', headline: '', numbers: [], note: 'รอข้อมูลจากผู้ให้บริการ' },
+      { id: 'malay', name: 'มาเลย์', provider: PROVIDER_NAME, status: 'waiting', resultDate: '', headline: '', numbers: [], note: 'รอข้อมูลจากผู้ให้บริการ' },
       { id: 'yeekee-vip', name: 'จับยี่กี VIP', provider: PROVIDER_NAME, status: 'waiting', resultDate: '', headline: '', numbers: [], note: 'รอข้อมูลจากผู้ให้บริการ' }
     ]
   },
