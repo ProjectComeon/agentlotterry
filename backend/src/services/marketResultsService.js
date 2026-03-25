@@ -12,98 +12,76 @@ const cache = {
 };
 
 const MANYCAI_MARKETS = [
-  { code: 'ynhn', marketId: 'hanoi-normal', name: 'ฮานอย', sectionId: 'international', type: 'standard' },
-  { code: 'ltzc', marketId: 'lao', name: 'หวยลาว', sectionId: 'international', type: 'standard' },
-  { code: 'ynma', marketId: 'malay', name: 'มาเลย์', sectionId: 'international', type: 'standard' },
-  { code: 'gsth', marketId: 'stock-thai-evening', name: 'หุ้นไทย', sectionId: 'stocks', type: 'stock' }
+  { code: 'tgfc', marketId: 'thai-government', name: 'รัฐบาลไทย', sectionId: 'government', type: 'standard' },
+  { code: 'baac', marketId: 'baac', name: 'สลากออมทรัพย์ ธกส.', sectionId: 'government', type: 'standard' },
+  { code: 'hnvip', marketId: 'hanoi-vip', name: 'ฮานอย VIP', sectionId: 'international', type: 'standard' },
+  { code: 'bfhn', marketId: 'hanoi-special', name: 'ฮานอยพิเศษ', sectionId: 'international', type: 'standard' },
+  { code: 'cqhn', marketId: 'hanoi-specific', name: 'ฮานอยเฉพาะกิจ', sectionId: 'international', type: 'standard' },
+  { code: 'tlzc', marketId: 'lao', name: 'หวยลาว', sectionId: 'international', type: 'standard' },
+  { code: 'zcvip', marketId: 'lao-vip', name: 'หวยลาว VIP', sectionId: 'international', type: 'standard' },
+  { code: 'tykc', marketId: 'yeekee-vip', name: 'จับยี่กี VIP', sectionId: 'international', type: 'standard' },
+  { code: 'gsth', marketId: 'stock-thai', name: 'หุ้นไทย', sectionId: 'stocks', type: 'stock' },
+  { code: 'gshka', marketId: 'stock-hangseng-morning', name: 'ฮั่งเส็งเช้า', sectionId: 'stocks', type: 'stock' },
+  { code: 'gshkp', marketId: 'stock-hangseng-afternoon', name: 'ฮั่งเส็งบ่าย', sectionId: 'stocks', type: 'stock' },
+  { code: 'gstw', marketId: 'stock-taiwan', name: 'หุ้นไต้หวัน', sectionId: 'stocks', type: 'stock' },
+  { code: 'gsjpa', marketId: 'stock-nikkei-morning', name: 'นิเคอิเช้า', sectionId: 'stocks', type: 'stock' },
+  { code: 'gsjpp', marketId: 'stock-nikkei-afternoon', name: 'นิเคอิบ่าย', sectionId: 'stocks', type: 'stock' },
+  { code: 'gskr', marketId: 'stock-korea', name: 'หุ้นเกาหลี', sectionId: 'stocks', type: 'stock' },
+  { code: 'gscna', marketId: 'stock-china-morning', name: 'หุ้นจีนเช้า', sectionId: 'stocks', type: 'stock' },
+  { code: 'gscnp', marketId: 'stock-china-afternoon', name: 'หุ้นจีนบ่าย', sectionId: 'stocks', type: 'stock' },
+  { code: 'gssg', marketId: 'stock-singapore', name: 'หุ้นสิงคโปร์', sectionId: 'stocks', type: 'stock' },
+  { code: 'gsin', marketId: 'stock-india', name: 'หุ้นอินเดีย', sectionId: 'stocks', type: 'stock' },
+  { code: 'gseg', marketId: 'stock-egypt', name: 'หุ้นอียิปต์', sectionId: 'stocks', type: 'stock' },
+  { code: 'gsru', marketId: 'stock-russia', name: 'หุ้นรัสเซีย', sectionId: 'stocks', type: 'stock' },
+  { code: 'gsde', marketId: 'stock-germany', name: 'หุ้นเยอรมัน', sectionId: 'stocks', type: 'stock' },
+  { code: 'gsuk', marketId: 'stock-england', name: 'หุ้นอังกฤษ', sectionId: 'stocks', type: 'stock' },
+  { code: 'gsus', marketId: 'stock-dowjones', name: 'หุ้นดาวโจนส์', sectionId: 'stocks', type: 'stock' }
 ];
 
 const baseSections = [
   {
     id: 'government',
     title: 'รัฐบาล',
-    description: 'หวยรัฐบาลและผลที่ใช้บ่อยในระบบ',
+    description: 'หวยรัฐบาลและสลากออมทรัพย์',
     markets: [
-      { id: 'thai-government', name: 'รัฐบาลไทย', provider: 'internal', status: 'waiting', resultDate: '', headline: '', numbers: [], note: 'รอข้อมูลล่าสุด' },
-      { id: 'baac', name: 'ธกส', provider: PROVIDER_NAME, status: 'unsupported', resultDate: '', headline: '', numbers: [], note: 'ยังไม่มีแหล่งข้อมูลที่เชื่อมต่อในระบบตอนนี้' },
-      { id: 'gsb', name: 'ออมสิน', provider: PROVIDER_NAME, status: 'unsupported', resultDate: '', headline: '', numbers: [], note: 'ยังไม่มีแหล่งข้อมูลที่เชื่อมต่อในระบบตอนนี้' }
+      { id: 'thai-government', name: 'รัฐบาลไทย', provider: PROVIDER_NAME, status: 'waiting', resultDate: '', headline: '', numbers: [], note: 'รอข้อมูลจากผู้ให้บริการ' },
+      { id: 'baac', name: 'สลากออมทรัพย์ ธกส.', provider: PROVIDER_NAME, status: 'waiting', resultDate: '', headline: '', numbers: [], note: 'รอข้อมูลจากผู้ให้บริการ' }
     ]
   },
   {
     id: 'international',
     title: 'หวยต่างประเทศ',
-    description: 'ข้อมูลจาก ManyCai สำหรับตลาดที่เปิดใช้แล้ว',
+    description: 'ข้อมูลจาก ManyCai',
     markets: [
-      { id: 'hanoi-special', name: 'ฮานอยพิเศษ', provider: PROVIDER_NAME, status: 'unsupported', resultDate: '', headline: '', numbers: [], note: 'ยังไม่ได้เปิดใช้ ManyCai สำหรับตลาดนี้' },
-      { id: 'hanoi-normal', name: 'ฮานอย', provider: PROVIDER_NAME, status: 'waiting', resultDate: '', headline: '', numbers: [], note: 'รอข้อมูลจากผู้ให้บริการ' },
-      { id: 'hanoi-vip', name: 'ฮานอย VIP', provider: PROVIDER_NAME, status: 'unsupported', resultDate: '', headline: '', numbers: [], note: 'ยังไม่ได้เปิดใช้ ManyCai สำหรับตลาดนี้' },
+      { id: 'hanoi-vip', name: 'ฮานอย VIP', provider: PROVIDER_NAME, status: 'waiting', resultDate: '', headline: '', numbers: [], note: 'รอข้อมูลจากผู้ให้บริการ' },
+      { id: 'hanoi-special', name: 'ฮานอยพิเศษ', provider: PROVIDER_NAME, status: 'waiting', resultDate: '', headline: '', numbers: [], note: 'รอข้อมูลจากผู้ให้บริการ' },
+      { id: 'hanoi-specific', name: 'ฮานอยเฉพาะกิจ', provider: PROVIDER_NAME, status: 'waiting', resultDate: '', headline: '', numbers: [], note: 'รอข้อมูลจากผู้ให้บริการ' },
       { id: 'lao', name: 'หวยลาว', provider: PROVIDER_NAME, status: 'waiting', resultDate: '', headline: '', numbers: [], note: 'รอข้อมูลจากผู้ให้บริการ' },
-      { id: 'malay', name: 'มาเลย์', provider: PROVIDER_NAME, status: 'waiting', resultDate: '', headline: '', numbers: [], note: 'รอข้อมูลจากผู้ให้บริการ' }
-    ]
-  },
-  {
-    id: 'minor',
-    title: 'หวยรายย่อย',
-    description: 'รายการที่ต้อง map provider หรือ source เพิ่มเติมในลำดับถัดไป',
-    markets: [
-      { id: 'minor-hanoi-toyoda', name: 'ฮานอยทอยดา', provider: PROVIDER_NAME, status: 'unsupported', resultDate: '', headline: '', numbers: [], note: 'ยังไม่มี endpoint ที่เชื่อมต่อแล้วในระบบ' },
-      { id: 'minor-hanoi-specific', name: 'ฮานอยเฉพาะกิจ', provider: PROVIDER_NAME, status: 'unsupported', resultDate: '', headline: '', numbers: [], note: 'ยังไม่มี endpoint ที่เชื่อมต่อแล้วในระบบ' },
-      { id: 'minor-hanoi-unity', name: 'ฮานอยสามัคคี', provider: PROVIDER_NAME, status: 'unsupported', resultDate: '', headline: '', numbers: [], note: 'ยังไม่มี endpoint ที่เชื่อมต่อแล้วในระบบ' },
-      { id: 'minor-hanoi-development', name: 'ฮานอยพัฒนา', provider: PROVIDER_NAME, status: 'unsupported', resultDate: '', headline: '', numbers: [], note: 'ยังไม่มี endpoint ที่เชื่อมต่อแล้วในระบบ' },
-      { id: 'minor-lao-unity', name: 'ลาวสามัคคี', provider: PROVIDER_NAME, status: 'unsupported', resultDate: '', headline: '', numbers: [], note: 'ยังไม่มี endpoint ที่เชื่อมต่อแล้วในระบบ' },
-      { id: 'minor-lao-viet', name: 'ลาวเวียด', provider: PROVIDER_NAME, status: 'unsupported', resultDate: '', headline: '', numbers: [], note: 'ยังไม่มี endpoint ที่เชื่อมต่อแล้วในระบบ' },
-      { id: 'minor-lao-vip', name: 'ลาว VIP', provider: PROVIDER_NAME, status: 'unsupported', resultDate: '', headline: '', numbers: [], note: 'ยังไม่มี endpoint ที่เชื่อมต่อแล้วในระบบ' },
-      { id: 'minor-lao-unity-vip', name: 'ลาวสามัคคี VIP', provider: PROVIDER_NAME, status: 'unsupported', resultDate: '', headline: '', numbers: [], note: 'ยังไม่มี endpoint ที่เชื่อมต่อแล้วในระบบ' },
-      { id: 'minor-lao-4d', name: 'ลาว 4D', provider: PROVIDER_NAME, status: 'unsupported', resultDate: '', headline: '', numbers: [], note: 'ยังไม่มี endpoint ที่เชื่อมต่อแล้วในระบบ' },
-      { id: 'minor-lao-star-vip', name: 'ลาวสตาร์ VIP', provider: PROVIDER_NAME, status: 'unsupported', resultDate: '', headline: '', numbers: [], note: 'ยังไม่มี endpoint ที่เชื่อมต่อแล้วในระบบ' },
-      { id: 'minor-hanoi-extra', name: 'ฮานอย Extra', provider: PROVIDER_NAME, status: 'unsupported', resultDate: '', headline: '', numbers: [], note: 'ยังไม่มี endpoint ที่เชื่อมต่อแล้วในระบบ' },
-      { id: 'minor-hanoi-rich', name: 'ฮานอยรวยนิก', provider: PROVIDER_NAME, status: 'unsupported', resultDate: '', headline: '', numbers: [], note: 'ยังไม่มี endpoint ที่เชื่อมต่อแล้วในระบบ' },
-      { id: 'minor-lao-redcross', name: 'ลาวกาชาด', provider: PROVIDER_NAME, status: 'unsupported', resultDate: '', headline: '', numbers: [], note: 'ยังไม่มี endpoint ที่เชื่อมต่อแล้วในระบบ' },
-      { id: 'minor-dowjones-star', name: 'ดาวโจนส์ STAR', provider: PROVIDER_NAME, status: 'unsupported', resultDate: '', headline: '', numbers: [], note: 'ยังไม่มี endpoint ที่เชื่อมต่อแล้วในระบบ' },
-      { id: 'minor-gold-close', name: 'ทองคำปิด', provider: PROVIDER_NAME, status: 'unsupported', resultDate: '', headline: '', numbers: [], note: 'ยังไม่มี endpoint ที่เชื่อมต่อแล้วในระบบ' }
-    ]
-  },
-  {
-    id: 'stocks-vip',
-    title: 'หุ้น VIP',
-    description: 'ยังไม่ได้เปิดใช้ ManyCai สำหรับตลาดหุ้น VIP',
-    markets: [
-      { id: 'vip-singapore', name: 'สิงคโปร์ VIP', provider: PROVIDER_NAME, status: 'unsupported', resultDate: '', headline: '', numbers: [], note: 'ยังไม่ได้เปิดใช้ ManyCai สำหรับตลาดนี้' },
-      { id: 'vip-england', name: 'อังกฤษ VIP', provider: PROVIDER_NAME, status: 'unsupported', resultDate: '', headline: '', numbers: [], note: 'ยังไม่ได้เปิดใช้ ManyCai สำหรับตลาดนี้' },
-      { id: 'vip-germany', name: 'เยอรมัน VIP', provider: PROVIDER_NAME, status: 'unsupported', resultDate: '', headline: '', numbers: [], note: 'ยังไม่ได้เปิดใช้ ManyCai สำหรับตลาดนี้' },
-      { id: 'vip-russia', name: 'รัสเซีย VIP', provider: PROVIDER_NAME, status: 'unsupported', resultDate: '', headline: '', numbers: [], note: 'ยังไม่ได้เปิดใช้ ManyCai สำหรับตลาดนี้' },
-      { id: 'vip-dowjones', name: 'ดาวโจนส์ VIP', provider: PROVIDER_NAME, status: 'unsupported', resultDate: '', headline: '', numbers: [], note: 'ยังไม่ได้เปิดใช้ ManyCai สำหรับตลาดนี้' },
-      { id: 'vip-nikkei', name: 'นิเคอิ VIP', provider: PROVIDER_NAME, status: 'unsupported', resultDate: '', headline: '', numbers: [], note: 'ยังไม่ได้เปิดใช้ ManyCai สำหรับตลาดนี้' },
-      { id: 'vip-china-morning', name: 'จีนเช้า VIP', provider: PROVIDER_NAME, status: 'unsupported', resultDate: '', headline: '', numbers: [], note: 'ยังไม่ได้เปิดใช้ ManyCai สำหรับตลาดนี้' },
-      { id: 'vip-hangseng', name: 'ฮั่งเส็ง VIP', provider: PROVIDER_NAME, status: 'unsupported', resultDate: '', headline: '', numbers: [], note: 'ยังไม่ได้เปิดใช้ ManyCai สำหรับตลาดนี้' },
-      { id: 'vip-taiwan', name: 'ไต้หวัน VIP', provider: PROVIDER_NAME, status: 'unsupported', resultDate: '', headline: '', numbers: [], note: 'ยังไม่ได้เปิดใช้ ManyCai สำหรับตลาดนี้' },
-      { id: 'vip-korea', name: 'เกาหลี VIP', provider: PROVIDER_NAME, status: 'unsupported', resultDate: '', headline: '', numbers: [], note: 'ยังไม่ได้เปิดใช้ ManyCai สำหรับตลาดนี้' },
-      { id: 'vip-nikkei-afternoon', name: 'นิเคอิบ่าย VIP', provider: PROVIDER_NAME, status: 'unsupported', resultDate: '', headline: '', numbers: [], note: 'ยังไม่ได้เปิดใช้ ManyCai สำหรับตลาดนี้' },
-      { id: 'vip-china-afternoon', name: 'จีนบ่าย VIP', provider: PROVIDER_NAME, status: 'unsupported', resultDate: '', headline: '', numbers: [], note: 'ยังไม่ได้เปิดใช้ ManyCai สำหรับตลาดนี้' },
-      { id: 'vip-hangseng-afternoon', name: 'ฮั่งเส็งบ่าย VIP', provider: PROVIDER_NAME, status: 'unsupported', resultDate: '', headline: '', numbers: [], note: 'ยังไม่ได้เปิดใช้ ManyCai สำหรับตลาดนี้' }
+      { id: 'lao-vip', name: 'หวยลาว VIP', provider: PROVIDER_NAME, status: 'waiting', resultDate: '', headline: '', numbers: [], note: 'รอข้อมูลจากผู้ให้บริการ' },
+      { id: 'yeekee-vip', name: 'จับยี่กี VIP', provider: PROVIDER_NAME, status: 'waiting', resultDate: '', headline: '', numbers: [], note: 'รอข้อมูลจากผู้ให้บริการ' }
     ]
   },
   {
     id: 'stocks',
     title: 'หุ้น',
-    description: 'ข้อมูลหุ้นจาก ManyCai สำหรับตลาดที่เปิดใช้แล้ว',
+    description: 'ข้อมูลหุ้นจาก ManyCai',
     markets: [
-      { id: 'stock-singapore', name: 'สิงคโปร์', provider: PROVIDER_NAME, status: 'unsupported', resultDate: '', headline: '', numbers: [], note: 'ยังไม่ได้เปิดใช้ ManyCai สำหรับตลาดนี้' },
-      { id: 'stock-thai-evening', name: 'หุ้นไทย', provider: PROVIDER_NAME, status: 'waiting', resultDate: '', headline: '', numbers: [], note: 'รอข้อมูลจากผู้ให้บริการ' },
-      { id: 'stock-india', name: 'อินเดีย', provider: PROVIDER_NAME, status: 'unsupported', resultDate: '', headline: '', numbers: [], note: 'ยังไม่ได้เปิดใช้ ManyCai สำหรับตลาดนี้' },
-      { id: 'stock-egypt', name: 'อียิปต์', provider: PROVIDER_NAME, status: 'unsupported', resultDate: '', headline: '', numbers: [], note: 'ยังไม่ได้เปิดใช้ ManyCai สำหรับตลาดนี้' },
-      { id: 'stock-england', name: 'อังกฤษ', provider: PROVIDER_NAME, status: 'unsupported', resultDate: '', headline: '', numbers: [], note: 'ยังไม่ได้เปิดใช้ ManyCai สำหรับตลาดนี้' },
-      { id: 'stock-germany', name: 'เยอรมัน', provider: PROVIDER_NAME, status: 'unsupported', resultDate: '', headline: '', numbers: [], note: 'ยังไม่ได้เปิดใช้ ManyCai สำหรับตลาดนี้' },
-      { id: 'stock-russia', name: 'รัสเซีย', provider: PROVIDER_NAME, status: 'unsupported', resultDate: '', headline: '', numbers: [], note: 'ยังไม่ได้เปิดใช้ ManyCai สำหรับตลาดนี้' },
-      { id: 'stock-dowjones', name: 'ดาวโจนส์', provider: PROVIDER_NAME, status: 'unsupported', resultDate: '', headline: '', numbers: [], note: 'ยังไม่ได้เปิดใช้ ManyCai สำหรับตลาดนี้' },
-      { id: 'stock-nikkei-morning', name: 'นิเคอิเช้า', provider: PROVIDER_NAME, status: 'unsupported', resultDate: '', headline: '', numbers: [], note: 'ยังไม่ได้เปิดใช้ ManyCai สำหรับตลาดนี้' },
-      { id: 'stock-china-morning', name: 'จีนเช้า', provider: PROVIDER_NAME, status: 'unsupported', resultDate: '', headline: '', numbers: [], note: 'ยังไม่ได้เปิดใช้ ManyCai สำหรับตลาดนี้' },
-      { id: 'stock-hangseng-morning', name: 'ฮั่งเส็งเช้า', provider: PROVIDER_NAME, status: 'unsupported', resultDate: '', headline: '', numbers: [], note: 'ยังไม่ได้เปิดใช้ ManyCai สำหรับตลาดนี้' },
-      { id: 'stock-taiwan', name: 'ไต้หวัน', provider: PROVIDER_NAME, status: 'unsupported', resultDate: '', headline: '', numbers: [], note: 'ยังไม่ได้เปิดใช้ ManyCai สำหรับตลาดนี้' },
-      { id: 'stock-korea', name: 'เกาหลี', provider: PROVIDER_NAME, status: 'unsupported', resultDate: '', headline: '', numbers: [], note: 'ยังไม่ได้เปิดใช้ ManyCai สำหรับตลาดนี้' },
-      { id: 'stock-nikkei-afternoon', name: 'นิเคอิบ่าย', provider: PROVIDER_NAME, status: 'unsupported', resultDate: '', headline: '', numbers: [], note: 'ยังไม่ได้เปิดใช้ ManyCai สำหรับตลาดนี้' },
-      { id: 'stock-china-afternoon', name: 'จีนบ่าย', provider: PROVIDER_NAME, status: 'unsupported', resultDate: '', headline: '', numbers: [], note: 'ยังไม่ได้เปิดใช้ ManyCai สำหรับตลาดนี้' },
-      { id: 'stock-hangseng-afternoon', name: 'ฮั่งเส็งบ่าย', provider: PROVIDER_NAME, status: 'unsupported', resultDate: '', headline: '', numbers: [], note: 'ยังไม่ได้เปิดใช้ ManyCai สำหรับตลาดนี้' }
+      { id: 'stock-thai', name: 'หุ้นไทย', provider: PROVIDER_NAME, status: 'waiting', resultDate: '', headline: '', numbers: [], note: 'รอข้อมูลจากผู้ให้บริการ' },
+      { id: 'stock-hangseng-morning', name: 'ฮั่งเส็งเช้า', provider: PROVIDER_NAME, status: 'waiting', resultDate: '', headline: '', numbers: [], note: 'รอข้อมูลจากผู้ให้บริการ' },
+      { id: 'stock-hangseng-afternoon', name: 'ฮั่งเส็งบ่าย', provider: PROVIDER_NAME, status: 'waiting', resultDate: '', headline: '', numbers: [], note: 'รอข้อมูลจากผู้ให้บริการ' },
+      { id: 'stock-taiwan', name: 'หุ้นไต้หวัน', provider: PROVIDER_NAME, status: 'waiting', resultDate: '', headline: '', numbers: [], note: 'รอข้อมูลจากผู้ให้บริการ' },
+      { id: 'stock-nikkei-morning', name: 'นิเคอิเช้า', provider: PROVIDER_NAME, status: 'waiting', resultDate: '', headline: '', numbers: [], note: 'รอข้อมูลจากผู้ให้บริการ' },
+      { id: 'stock-nikkei-afternoon', name: 'นิเคอิบ่าย', provider: PROVIDER_NAME, status: 'waiting', resultDate: '', headline: '', numbers: [], note: 'รอข้อมูลจากผู้ให้บริการ' },
+      { id: 'stock-korea', name: 'หุ้นเกาหลี', provider: PROVIDER_NAME, status: 'waiting', resultDate: '', headline: '', numbers: [], note: 'รอข้อมูลจากผู้ให้บริการ' },
+      { id: 'stock-china-morning', name: 'หุ้นจีนเช้า', provider: PROVIDER_NAME, status: 'waiting', resultDate: '', headline: '', numbers: [], note: 'รอข้อมูลจากผู้ให้บริการ' },
+      { id: 'stock-china-afternoon', name: 'หุ้นจีนบ่าย', provider: PROVIDER_NAME, status: 'waiting', resultDate: '', headline: '', numbers: [], note: 'รอข้อมูลจากผู้ให้บริการ' },
+      { id: 'stock-singapore', name: 'หุ้นสิงคโปร์', provider: PROVIDER_NAME, status: 'waiting', resultDate: '', headline: '', numbers: [], note: 'รอข้อมูลจากผู้ให้บริการ' },
+      { id: 'stock-india', name: 'หุ้นอินเดีย', provider: PROVIDER_NAME, status: 'waiting', resultDate: '', headline: '', numbers: [], note: 'รอข้อมูลจากผู้ให้บริการ' },
+      { id: 'stock-egypt', name: 'หุ้นอียิปต์', provider: PROVIDER_NAME, status: 'waiting', resultDate: '', headline: '', numbers: [], note: 'รอข้อมูลจากผู้ให้บริการ' },
+      { id: 'stock-russia', name: 'หุ้นรัสเซีย', provider: PROVIDER_NAME, status: 'waiting', resultDate: '', headline: '', numbers: [], note: 'รอข้อมูลจากผู้ให้บริการ' },
+      { id: 'stock-germany', name: 'หุ้นเยอรมัน', provider: PROVIDER_NAME, status: 'waiting', resultDate: '', headline: '', numbers: [], note: 'รอข้อมูลจากผู้ให้บริการ' },
+      { id: 'stock-england', name: 'หุ้นอังกฤษ', provider: PROVIDER_NAME, status: 'waiting', resultDate: '', headline: '', numbers: [], note: 'รอข้อมูลจากผู้ให้บริการ' },
+      { id: 'stock-dowjones', name: 'หุ้นดาวโจนส์', provider: PROVIDER_NAME, status: 'waiting', resultDate: '', headline: '', numbers: [], note: 'รอข้อมูลจากผู้ให้บริการ' }
     ]
   }
 ];
@@ -151,7 +129,7 @@ const setMarketData = (sections, sectionId, nextMarket) => {
   const section = sections.find((entry) => entry.id === sectionId);
   if (!section) return;
 
-  const marketIndex = section.markets.findIndex((market) => normalizeName(market.name) === normalizeName(nextMarket.name));
+  const marketIndex = section.markets.findIndex((market) => market.id === nextMarket.id);
 
   if (marketIndex >= 0) {
     section.markets[marketIndex] = {

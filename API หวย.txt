@@ -1,0 +1,24 @@
+http://vip.manycai.com/K269c291856f58e/hnvip.json  || หวยฮานอยVIP
+http://vip.manycai.com/K269c291856f58e/tlzc.json   || หวยลาว
+http://vip.manycai.com/K269c291856f58e/tykc.json   || จับยี่กีVIP
+http://vip.manycai.com/K269c291856f58e/tgfc.json   || รัฐบาลไทย
+http://vip.manycai.com/K269c291856f58e/baac.json   ||  สลากออมทรัพย์ ธกส.
+http://vip.manycai.com/K269c291856f58e/gshka.json  || หุ้นฮั่งเส็ง - รอบเช้า
+http://vip.manycai.com/K269c291856f58e/gshkp.json  || หุ้นฮั่งเส็ง - รอบบ่าย
+http://vip.manycai.com/K269c291856f58e/bfhn.json   ||  หวยฮานอยพิเศษ
+http://vip.manycai.com/K269c291856f58e/gstw.json   ||  หุ้นไต้หวัน
+http://vip.manycai.com/K269c291856f58e/gsjpa.json  || นิเคอิ - รอบเช้า
+http://vip.manycai.com/K269c291856f58e/gsjpp.json  ||  นิเคอิ - รอบบ่าย
+http://vip.manycai.com/K269c291856f58e/gskr.json   ||  หุ้นเกาหลี
+http://vip.manycai.com/K269c291856f58e/gscna.json  ||  หุ้นจีนรอบเช้า
+http://vip.manycai.com/K269c291856f58e/gscnp.json  ||  หุ้นจีนรอบบ่าย
+http://vip.manycai.com/K269c291856f58e/gscnp.json  ||  หุ้นสิงคโปร์
+http://vip.manycai.com/K269c291856f58e/gsth.json   ||  หุ้นไทย
+http://vip.manycai.com/K269c291856f58e/gsin.json   ||  หุ้นอินเดีย
+http://vip.manycai.com/K269c291856f58e/gseg.json   ||  หุ้นอียิปต์
+http://vip.manycai.com/K269c291856f58e/gsru.json   ||  หุ้นรัสเซีย
+http://vip.manycai.com/K269c291856f58e/gsde.json   ||  หุ้นเยอรมัน
+http://vip.manycai.com/K269c291856f58e/gsuk.json   ||  หุ้นอังกฤษ
+http://vip.manycai.com/K269c291856f58e/gsus.json   ||  หุ้นดาวโจนส์
+http://vip.manycai.com/K269c291856f58e/cqhn.json   ||  ฮานอยเฉพาะกิจ
+http://vip.manycai.com/K269c291856f58e/zcvip.json  ||  หวยลาวVIP
