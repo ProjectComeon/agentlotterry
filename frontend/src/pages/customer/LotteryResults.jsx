@@ -1,196 +1,298 @@
 import { useEffect, useState } from 'react';
-import { FiActivity, FiAlertCircle, FiAward, FiCheckCircle, FiClock, FiGrid, FiRefreshCw, FiSlash } from 'react-icons/fi';
+import { FiCheckCircle, FiClock, FiRefreshCw, FiSlash } from 'react-icons/fi';
 import { getMarketOverview } from '../../services/api';
 
-const statusMap = {
-  live: { label: 'พร้อมใช้งาน', className: 'badge-success', icon: <FiCheckCircle /> },
-  pending: { label: 'รอผล', className: 'badge-warning', icon: <FiClock /> },
-  waiting: { label: 'รอเชื่อมต่อ', className: 'badge-info', icon: <FiRefreshCw /> },
-  unsupported: { label: 'ยังไม่รองรับ', className: 'badge-danger', icon: <FiSlash /> }
+const statusConfig = {
+  live: { label: 'พร้อม', cls: 'result-status-live' },
+  pending: { label: 'รอผล', cls: 'result-status-pending' },
+  waiting: { label: 'รอเชื่อมต่อ', cls: 'result-status-waiting' },
+  unsupported: { label: 'ไม่รองรับ', cls: 'result-status-unsupported' }
 };
-
-const summaryCards = [
-  { key: 'totalMarkets', label: 'ตลาดทั้งหมด', icon: <FiGrid /> },
-  { key: 'liveCount', label: 'ข้อมูลพร้อมใช้', icon: <FiCheckCircle /> },
-  { key: 'pendingCount', label: 'กำลังรอผล', icon: <FiClock /> },
-  { key: 'unsupportedCount', label: 'ยังไม่รองรับ', icon: <FiSlash /> }
-];
-
-const getStatusMeta = (status) => statusMap[status] || statusMap.waiting;
 
 const LotteryResults = () => {
   const [overview, setOverview] = useState(null);
   const [loading, setLoading] = useState(true);
   const [reloading, setReloading] = useState(false);
-  const [error, setError] = useState('');
+  const [activeSection, setActiveSection] = useState('');
 
-  const loadOverview = async (showReload = false) => {
-    if (showReload) {
-      setReloading(true);
-    } else {
-      setLoading(true);
-    }
-
+  const load = async (showReload = false) => {
+    if (showReload) setReloading(true);
+    else setLoading(true);
     try {
-      setError('');
-      const response = await getMarketOverview();
-      setOverview(response.data);
-    } catch (err) {
-      console.error(err);
-      setError(err.response?.data?.message || 'โหลดภาพรวมตลาดไม่สำเร็จ');
-    } finally {
-      setLoading(false);
-      setReloading(false);
-    }
+      const res = await getMarketOverview();
+      setOverview(res.data);
+      if (!activeSection && res.data?.sections?.length) {
+        setActiveSection(res.data.sections[0].id);
+      }
+    } catch (err) { console.error(err); }
+    finally { setLoading(false); setReloading(false); }
   };
 
-  useEffect(() => {
-    loadOverview();
-  }, []);
+  useEffect(() => { load(); }, []);
 
-  if (loading) {
-    return <div className="loading-container"><div className="spinner"></div></div>;
-  }
+  if (loading) return <div className="loading-container"><div className="spinner"></div></div>;
 
-  if (!overview && error) {
-    return (
-      <div className="animate-fade-in">
-        <div className="card">
-          <div className="empty-state">
-            <div className="empty-state-icon">⚠️</div>
-            <div className="empty-state-text">{error}</div>
-          </div>
-        </div>
-      </div>
-    );
-  }
+  const sections = overview?.sections || [];
+  const currentSection = sections.find((s) => s.id === activeSection) || sections[0];
 
   return (
-    <div className="animate-fade-in">
-      <div className="page-header">
+    <div className="results-page animate-fade-in">
+      {/* Header */}
+      <div className="results-header">
         <div>
-          <h1 className="page-title">🎰 ตลาดหวยและหุ้น</h1>
-          <p className="page-subtitle">หน้าแสดงผลรวมหลายตลาดในดีไซน์ของระบบเรา ดึงข้อมูลสดจาก provider ภายนอกและข้อมูลในระบบ</p>
+          <h1 className="results-title">ผลหวยและหุ้น</h1>
+          <span className="results-update">
+            {overview?.provider?.fetchedAt
+              ? `อัปเดต ${new Date(overview.provider.fetchedAt).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })}`
+              : ''}
+          </span>
         </div>
-        <button className="btn btn-secondary" onClick={() => loadOverview(true)} disabled={reloading}>
-          {reloading ? <div className="spinner" style={{ width: 16, height: 16, borderWidth: 2 }}></div> : <FiRefreshCw />}
-          รีเฟรชข้อมูล
+        <button className="results-refresh" onClick={() => load(true)} disabled={reloading}>
+          <FiRefreshCw className={reloading ? 'spin-animation' : ''} />
         </button>
       </div>
 
-      <div className="market-overview-hero mb-lg">
-        <div className="market-overview-copy">
-          <div className="market-provider-pill">
-            <FiActivity />
-            <span>{overview?.provider?.configured ? `Provider: ${overview.provider.name}` : 'Provider ยังไม่ถูกตั้งค่า'}</span>
-          </div>
-          <h2>ภาพรวมตลาดพร้อมใช้งานในหน้าเดียว</h2>
-          <p>
-            ออกแบบใหม่ให้เรียบ อ่านง่าย และแสดงสถานะข้อมูลชัดเจน ทั้งหวยรัฐบาล หวยต่างประเทศ และตลาดหุ้นที่รองรับ
-          </p>
-          <div className="market-hero-meta">
-            <span>อัปเดตล่าสุด: {overview?.provider?.fetchedAt ? new Date(overview.provider.fetchedAt).toLocaleString('th-TH') : '-'}</span>
-            <span>Cache: {overview?.provider?.cacheTtlMs ? `${Math.round(overview.provider.cacheTtlMs / 1000)} วินาที` : '-'}</span>
-          </div>
-        </div>
-        <div className="overview-stat-grid">
-          {summaryCards.map((item) => (
-            <div className="overview-stat-card" key={item.key}>
-              <div className="overview-stat-icon">{item.icon}</div>
-              <div className="overview-stat-value">{overview?.summary?.[item.key] ?? 0}</div>
-              <div className="overview-stat-label">{item.label}</div>
-            </div>
-          ))}
-        </div>
+      {/* Section Tabs */}
+      <div className="results-tabs">
+        {sections.map((s) => (
+          <button
+            key={s.id}
+            className={`results-tab ${activeSection === s.id ? 'active' : ''}`}
+            onClick={() => setActiveSection(s.id)}
+          >
+            {s.title}
+            <span className="results-tab-count">{s.markets.length}</span>
+          </button>
+        ))}
       </div>
 
-      {error ? (
-        <div className="card mb-lg">
-          <div className="badge badge-danger" style={{ marginBottom: 12 }}>
-            <FiAlertCircle />
-            <span>มีปัญหาในการโหลดข้อมูลบางส่วน</span>
-          </div>
-          <div className="text-muted">{error}</div>
-        </div>
-      ) : null}
+      {/* Market Result Cards */}
+      <div className="results-grid">
+        {currentSection?.markets.map((market) => {
+          const st = statusConfig[market.status] || statusConfig.waiting;
+          const hasNumbers = market.numbers?.some((n) => n.value);
 
-      {overview?.warnings?.length ? (
-        <div className="card mb-lg">
-          <div className="card-header">
-            <h3 className="card-title"><FiAlertCircle style={{ marginRight: 8, color: 'var(--warning)' }} />สถานะการเชื่อมต่อ</h3>
-          </div>
-          <div className="warning-list">
-            {overview.warnings.map((warning, index) => (
-              <div className="warning-item" key={`${warning}-${index}`}>{warning}</div>
-            ))}
-          </div>
-        </div>
-      ) : null}
+          return (
+            <div key={market.id} className={`result-card ${st.cls}`}>
+              <div className="result-card-top">
+                <span className="result-card-name">{market.name}</span>
+                <span className={`result-card-status ${st.cls}`}>{st.label}</span>
+              </div>
 
-      {(overview?.sections || []).map((section) => (
-        <div className="card mb-lg" key={section.id}>
-          <div className="card-header">
-            <div>
-              <h3 className="card-title">{section.title}</h3>
-              <div className="page-subtitle">{section.description}</div>
-            </div>
-            <span className="badge badge-info">{section.markets.length} รายการ</span>
-          </div>
-
-          <div className="market-grid">
-            {section.markets.map((market) => {
-              const statusMeta = getStatusMeta(market.status);
-
-              return (
-                <div className={`market-card market-card-${market.status}`} key={market.id}>
-                  <div className="market-card-header">
-                    <div>
-                      <div className="market-card-title">{market.name}</div>
-                      <div className="market-card-date">{market.resultDate || 'ยังไม่มีวันออกรางวัลล่าสุด'}</div>
+              {hasNumbers ? (
+                <div className="result-card-numbers">
+                  {market.numbers.map((n) => n.value ? (
+                    <div key={n.label} className="result-number-item">
+                      <span className="result-number-label">{n.label}</span>
+                      <span className="result-number-value">{n.value}</span>
                     </div>
-                    <span className={`badge ${statusMeta.className}`}>
-                      {statusMeta.icon}
-                      <span>{statusMeta.label}</span>
-                    </span>
-                  </div>
-
-                  <div className="market-card-headline">{market.headline || '--'}</div>
-
-                  <div className="market-chip-list">
-                    {market.numbers.length ? market.numbers.map((number) => (
-                      <div className="market-chip" key={`${market.id}-${number.label}`}>
-                        <span className="market-chip-label">{number.label}</span>
-                        <strong>{number.value}</strong>
-                      </div>
-                    )) : (
-                      <div className="market-chip market-chip-empty">
-                        <span className="market-chip-label">สถานะ</span>
-                        <strong>{market.note || 'ยังไม่มีข้อมูลสำหรับแสดงผล'}</strong>
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="market-card-footer">
-                    <div className="market-card-note">{market.note || 'พร้อมสำหรับเชื่อมต่อข้อมูลเพิ่มเติม'}</div>
-                    <div className="market-card-provider">{market.provider === 'internal' ? 'ข้อมูลในระบบ' : 'ManyCai'}</div>
-                  </div>
+                  ) : null)}
                 </div>
-              );
-            })}
-          </div>
-        </div>
-      ))}
+              ) : (
+                <div className="result-card-empty">
+                  {market.headline || market.note || 'รอข้อมูล'}
+                </div>
+              )}
 
-      <div className="card">
-        <div className="card-header">
-          <h3 className="card-title"><FiAward style={{ marginRight: 8, color: 'var(--primary-light)' }} />หมายเหตุการใช้งาน</h3>
-        </div>
-        <div className="warning-list">
-          <div className="warning-item">ถ้ายังไม่ได้ตั้งค่า MANYCAI_API_KEY ระบบจะยังแสดงโครงสร้างตลาดพร้อมสถานะรอเชื่อมต่อ</div>
-          <div className="warning-item">หวยรัฐบาลไทยยังอ่านจากฐานข้อมูลเดิมในระบบ เพื่อให้หน้าใหม่ทำงานต่อเนื่องกับ flow เก่า</div>
-          <div className="warning-item">รายการที่ provider ยังไม่รองรับ เช่น ธกส หรือ ออมสิน จะแสดงเป็นยังไม่รองรับไว้ก่อน</div>
-        </div>
+              {market.resultDate && (
+                <div className="result-card-date">{market.resultDate}</div>
+              )}
+            </div>
+          );
+        })}
       </div>
+
+      <style>{`
+        .results-page {
+          display: flex;
+          flex-direction: column;
+          gap: 12px;
+        }
+
+        .results-header {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+        }
+
+        .results-title {
+          font-size: 1.3rem;
+          font-weight: 800;
+          color: var(--text-primary);
+        }
+
+        .results-update {
+          font-size: 0.75rem;
+          color: var(--text-muted);
+        }
+
+        .results-refresh {
+          width: 40px;
+          height: 40px;
+          border-radius: 50%;
+          background: var(--bg-card);
+          border: 1px solid var(--border);
+          color: var(--text-secondary);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-size: 1.1rem;
+          cursor: pointer;
+          transition: var(--transition-fast);
+        }
+
+        .results-refresh:hover {
+          border-color: var(--border-accent);
+          color: var(--primary-light);
+        }
+
+        .spin-animation {
+          animation: spin 0.8s linear infinite;
+        }
+
+        /* Section Tabs */
+        .results-tabs {
+          display: flex;
+          gap: 6px;
+          overflow-x: auto;
+          scrollbar-width: none;
+        }
+
+        .results-tabs::-webkit-scrollbar { display: none; }
+
+        .results-tab {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          padding: 10px 18px;
+          border-radius: 20px;
+          background: var(--bg-card);
+          border: 1px solid var(--border);
+          color: var(--text-secondary);
+          font-size: 0.85rem;
+          font-weight: 600;
+          cursor: pointer;
+          white-space: nowrap;
+          transition: var(--transition-fast);
+        }
+
+        .results-tab:hover {
+          border-color: var(--border-accent);
+        }
+
+        .results-tab.active {
+          background: var(--primary);
+          border-color: var(--primary);
+          color: white;
+        }
+
+        .results-tab-count {
+          font-size: 0.7rem;
+          background: rgba(255,255,255,0.15);
+          padding: 1px 7px;
+          border-radius: 10px;
+        }
+
+        .results-tab.active .results-tab-count {
+          background: rgba(255,255,255,0.25);
+        }
+
+        /* Result Cards Grid */
+        .results-grid {
+          display: grid;
+          grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+          gap: 10px;
+        }
+
+        .result-card {
+          background: var(--bg-card);
+          border: 1px solid var(--border);
+          border-radius: var(--radius-md);
+          padding: 14px;
+          border-top: 3px solid var(--border);
+          transition: var(--transition-fast);
+        }
+
+        .result-card:hover {
+          border-color: var(--border-accent);
+          transform: translateY(-2px);
+          box-shadow: var(--shadow-md);
+        }
+
+        .result-status-live { border-top-color: var(--success); }
+        .result-status-pending { border-top-color: var(--warning); }
+        .result-status-waiting { border-top-color: var(--info); }
+        .result-status-unsupported { border-top-color: var(--danger); }
+
+        .result-card-top {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          margin-bottom: 10px;
+        }
+
+        .result-card-name {
+          font-size: 0.82rem;
+          font-weight: 700;
+          color: var(--text-primary);
+        }
+
+        .result-card-status {
+          font-size: 0.62rem;
+          font-weight: 600;
+          padding: 2px 8px;
+          border-radius: 10px;
+        }
+
+        .result-card-status.result-status-live { background: rgba(16, 185, 129, 0.15); color: #34d399; }
+        .result-card-status.result-status-pending { background: rgba(245, 158, 11, 0.15); color: #fbbf24; }
+        .result-card-status.result-status-waiting { background: rgba(59, 130, 246, 0.15); color: #60a5fa; }
+        .result-card-status.result-status-unsupported { background: rgba(239, 68, 68, 0.15); color: #f87171; }
+
+        .result-card-numbers {
+          display: flex;
+          flex-direction: column;
+          gap: 6px;
+        }
+
+        .result-number-item {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+        }
+
+        .result-number-label {
+          font-size: 0.68rem;
+          color: var(--text-muted);
+        }
+
+        .result-number-value {
+          font-size: 1.1rem;
+          font-weight: 800;
+          color: var(--primary-light);
+          letter-spacing: 0.08em;
+        }
+
+        .result-card-empty {
+          font-size: 0.8rem;
+          color: var(--text-muted);
+          padding: 8px 0;
+        }
+
+        .result-card-date {
+          margin-top: 8px;
+          padding-top: 8px;
+          border-top: 1px solid var(--border-light);
+          font-size: 0.68rem;
+          color: var(--text-muted);
+        }
+
+        @media (max-width: 480px) {
+          .results-grid {
+            grid-template-columns: repeat(2, 1fr);
+          }
+        }
+      `}</style>
     </div>
   );
 };

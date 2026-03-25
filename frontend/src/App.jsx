@@ -2,6 +2,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import { Toaster } from 'react-hot-toast';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import Navbar from './components/Navbar';
+import BottomNav from './components/BottomNav';
 import ProtectedRoute from './components/ProtectedRoute';
 
 // Pages
@@ -21,13 +22,17 @@ import CustomerSummary from './pages/customer/CustomerSummary';
 import LotteryResults from './pages/customer/LotteryResults';
 
 const AppLayout = ({ children }) => {
+  const { user } = useAuth();
+  const showBottomNav = user?.role === 'customer' || user?.role === 'agent';
+
   return (
     <div className="app-layout">
       <div className="main-content">
         <Navbar />
-        <div className="page-content">
+        <div className={`page-content ${showBottomNav ? 'has-bottom-nav' : ''}`}>
           {children}
         </div>
+        {showBottomNav && <BottomNav />}
       </div>
     </div>
   );

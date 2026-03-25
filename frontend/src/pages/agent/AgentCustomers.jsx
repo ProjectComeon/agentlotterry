@@ -55,45 +55,46 @@ const AgentCustomers = () => {
   if (loading) return <div className="loading-container"><div className="spinner"></div></div>;
 
   return (
-    <div className="animate-fade-in">
-      <div className="page-header">
+    <div className="ag-cust animate-fade-in">
+      <div className="ag-cust-header">
         <div>
-          <h1 className="page-title">👥 จัดการลูกค้า</h1>
-          <p className="page-subtitle">ลูกค้าของคุณ ({customers.length} คน)</p>
+          <h1 className="ag-cust-title">ลูกค้า</h1>
+          <span className="ag-cust-count">{customers.length} คน</span>
         </div>
-        <button className="btn btn-primary" onClick={() => setShowModal(true)}><FiPlus /> เพิ่มลูกค้า</button>
+        <button className="btn btn-primary btn-sm" onClick={() => setShowModal(true)}><FiPlus /> เพิ่ม</button>
       </div>
 
-      <div className="card">
-        <div style={{ position: 'relative', marginBottom: 16 }}>
-          <FiSearch style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
-          <input className="form-input" placeholder="ค้นหาลูกค้า..." value={search} onChange={(e) => setSearch(e.target.value)} style={{ paddingLeft: 40 }} />
-        </div>
-        <div className="table-container">
-          <table className="data-table">
-            <thead><tr><th>ชื่อ</th><th>Username</th><th>เบอร์โทร</th><th>Bets</th><th>ยอดแทง</th><th>สถานะ</th><th>จัดการ</th></tr></thead>
-            <tbody>
-              {filtered.length === 0 ? (
-                <tr><td colSpan="7" className="text-center text-muted" style={{ padding: 40 }}>ไม่พบข้อมูล</td></tr>
-              ) : filtered.map(c => (
-                <tr key={c._id}>
-                  <td style={{ fontWeight: 600 }}>{c.name}</td>
-                  <td style={{ color: 'var(--text-secondary)' }}>{c.username}</td>
-                  <td>{c.phone || '-'}</td>
-                  <td>{c.totalBets || 0}</td>
-                  <td>{(c.totalAmount || 0).toLocaleString()} ฿</td>
-                  <td><span className={`badge ${c.isActive ? 'badge-success' : 'badge-danger'}`}>{c.isActive ? 'ใช้งาน' : 'ปิด'}</span></td>
-                  <td>
-                    <div className="flex gap-sm">
-                      <button className="btn btn-secondary btn-sm" onClick={() => openEdit(c)}><FiEdit2 /></button>
-                      <button className="btn btn-danger btn-sm" onClick={() => handleDelete(c)}><FiTrash2 /></button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+      <div className="ag-cust-search">
+        <FiSearch />
+        <input placeholder="ค้นหาลูกค้า..." value={search} onChange={(e) => setSearch(e.target.value)} />
+      </div>
+
+      <div className="ag-cust-list">
+        {filtered.length === 0 ? (
+          <div className="empty-state"><div className="empty-state-text">ไม่พบข้อมูล</div></div>
+        ) : filtered.map((c) => (
+          <div key={c._id} className="ag-cust-card">
+            <div className="ag-cust-card-left">
+              <div className="ag-cust-avatar">{c.name?.charAt(0) || 'U'}</div>
+              <div className="ag-cust-info">
+                <div className="ag-cust-name">{c.name}</div>
+                <div className="ag-cust-username">@{c.username}</div>
+              </div>
+            </div>
+            <div className="ag-cust-card-right">
+              <span className={`ag-cust-status ${c.isActive ? 'active' : ''}`}>{c.isActive ? 'ใช้งาน' : 'ปิด'}</span>
+            </div>
+            <div className="ag-cust-card-stats">
+              <span>{c.totalBets || 0} bets</span>
+              <span>{(c.totalAmount || 0).toLocaleString()} ฿</span>
+              <span>{c.phone || '-'}</span>
+            </div>
+            <div className="ag-cust-card-actions">
+              <button className="ag-cust-btn" onClick={() => openEdit(c)}><FiEdit2 /> แก้ไข</button>
+              <button className="ag-cust-btn ag-cust-btn-danger" onClick={() => handleDelete(c)}><FiTrash2 /> ปิด</button>
+            </div>
+          </div>
+        ))}
       </div>
 
       <Modal isOpen={showModal} onClose={closeModal} title={editCustomer ? 'แก้ไขลูกค้า' : 'เพิ่มลูกค้าใหม่'}>
@@ -108,6 +109,175 @@ const AgentCustomers = () => {
           </div>
         </form>
       </Modal>
+
+      <style>{`
+        .ag-cust {
+          display: flex;
+          flex-direction: column;
+          gap: 12px;
+        }
+
+        .ag-cust-header {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+        }
+
+        .ag-cust-header > div {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+        }
+
+        .ag-cust-title {
+          font-size: 1.3rem;
+          font-weight: 800;
+        }
+
+        .ag-cust-count {
+          font-size: 0.78rem;
+          color: var(--text-muted);
+          background: var(--bg-surface);
+          padding: 3px 10px;
+          border-radius: 16px;
+        }
+
+        .ag-cust-search {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          padding: 10px 14px;
+          background: var(--bg-card);
+          border: 1px solid var(--border);
+          border-radius: var(--radius-md);
+          color: var(--text-muted);
+        }
+
+        .ag-cust-search input {
+          background: none;
+          border: none;
+          color: var(--text-primary);
+          font-size: 0.85rem;
+          flex: 1;
+          min-width: 0;
+        }
+
+        .ag-cust-search input::placeholder { color: var(--text-muted); }
+
+        .ag-cust-list {
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+        }
+
+        .ag-cust-card {
+          background: var(--bg-card);
+          border: 1px solid var(--border);
+          border-radius: var(--radius-md);
+          padding: 14px;
+        }
+
+        .ag-cust-card-left {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          margin-bottom: 10px;
+        }
+
+        .ag-cust-avatar {
+          width: 40px;
+          height: 40px;
+          border-radius: 50%;
+          background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          color: white;
+          font-weight: 700;
+          font-size: 1rem;
+          flex-shrink: 0;
+        }
+
+        .ag-cust-info {
+          flex: 1;
+          min-width: 0;
+        }
+
+        .ag-cust-name {
+          font-size: 0.95rem;
+          font-weight: 700;
+        }
+
+        .ag-cust-username {
+          font-size: 0.75rem;
+          color: var(--text-muted);
+        }
+
+        .ag-cust-card-right {
+          position: absolute;
+          top: 14px;
+          right: 14px;
+        }
+
+        .ag-cust-card {
+          position: relative;
+        }
+
+        .ag-cust-status {
+          font-size: 0.65rem;
+          font-weight: 700;
+          padding: 2px 8px;
+          border-radius: 10px;
+          background: rgba(239, 68, 68, 0.15);
+          color: #f87171;
+        }
+
+        .ag-cust-status.active {
+          background: rgba(16, 185, 129, 0.15);
+          color: #34d399;
+        }
+
+        .ag-cust-card-stats {
+          display: flex;
+          gap: 16px;
+          padding: 8px 0;
+          border-top: 1px solid var(--border-light);
+          border-bottom: 1px solid var(--border-light);
+          margin-bottom: 10px;
+          font-size: 0.78rem;
+          color: var(--text-secondary);
+        }
+
+        .ag-cust-card-actions {
+          display: flex;
+          gap: 8px;
+        }
+
+        .ag-cust-btn {
+          display: flex;
+          align-items: center;
+          gap: 4px;
+          padding: 6px 14px;
+          border-radius: var(--radius-sm);
+          background: var(--bg-surface);
+          border: 1px solid var(--border);
+          color: var(--text-secondary);
+          font-size: 0.78rem;
+          font-weight: 600;
+          cursor: pointer;
+          transition: var(--transition-fast);
+        }
+
+        .ag-cust-btn:hover {
+          border-color: var(--border-accent);
+          color: var(--primary-light);
+        }
+
+        .ag-cust-btn-danger:hover {
+          border-color: var(--danger);
+          color: var(--danger);
+        }
+      `}</style>
     </div>
   );
 };
