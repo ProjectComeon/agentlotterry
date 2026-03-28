@@ -9,10 +9,17 @@ const connectDB = require('./src/config/db');
 const authRoutes = require('./src/routes/authRoutes');
 const adminRoutes = require('./src/routes/adminRoutes');
 const agentRoutes = require('./src/routes/agentRoutes');
-const customerRoutes = require('./src/routes/customerRoutes');
+const catalogRoutes = require('./src/routes/catalogRoutes');
 const lotteryRoutes = require('./src/routes/lotteryRoutes');
+const memberRoutes = require('./src/routes/memberRoutes');
+const resultsRoutes = require('./src/routes/resultsRoutes');
+const walletRoutes = require('./src/routes/walletRoutes');
+const presenceRoutes = require('./src/routes/presenceRoutes');
+const { ensureCatalogSeed } = require('./src/services/catalogService');
 
 const app = express();
+let startupError = null;
+let startupComplete = false;
 
 // Connect to MongoDB & auto-seed admin
 const User = require('./src/models/User');
@@ -29,14 +36,25 @@ const autoSeed = async () => {
         phone: '',
         isActive: true
       });
-      console.log('✅ Auto-seeded admin account (admin / admin123)');
+      console.log('Auto-seeded admin account (admin / admin123)');
     }
   } catch (err) {
     console.error('Seed check error:', err.message);
   }
 };
 
-connectDB().then(() => autoSeed());
+const bootstrapApp = async () => {
+  try {
+    await connectDB();
+    await autoSeed();
+    await ensureCatalogSeed();
+    startupComplete = true;
+  } catch (error) {
+    startupError = error;
+    console.error('Startup error:', error.message);
+    throw error;
+  }
+};
 
 // Middleware
 app.use(helmet());
@@ -52,12 +70,22 @@ app.use(express.urlencoded({ extended: true }));
 app.use('/api/auth', authRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/agent', agentRoutes);
-app.use('/api/customer', customerRoutes);
+app.use('/api/catalog', catalogRoutes);
 app.use('/api/lottery', lotteryRoutes);
+app.use('/api/member', memberRoutes);
+app.use('/api/results', resultsRoutes);
+app.use('/api/wallet', walletRoutes);
+app.use('/api/presence', presenceRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+  const status = startupError ? 'error' : startupComplete ? 'ok' : 'starting';
+  res.status(startupError ? 500 : startupComplete ? 200 : 503).json({
+    status,
+    startupComplete,
+    ...(startupError && { startupError: startupError.message }),
+    timestamp: new Date().toISOString()
+  });
 });
 
 // 404 handler
@@ -67,7 +95,7 @@ app.use((req, res) => {
 
 // Error handler
 app.use((err, req, res, next) => {
-  console.error('❌ Error:', err.message);
+  console.error('Error:', err.message);
   res.status(err.status || 500).json({
     message: err.message || 'Internal Server Error',
     ...(process.env.NODE_ENV === 'development' && { stack: err.stack })
@@ -75,8 +103,15 @@ app.use((err, req, res, next) => {
 });
 
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => {
-  console.log(`🚀 Server running on port ${PORT}`);
-});
+
+bootstrapApp()
+  .then(() => {
+    app.listen(PORT, () => {
+      console.log(`Server running on port ${PORT}`);
+    });
+  })
+  .catch(() => {
+    process.exit(1);
+  });
 
 module.exports = app;

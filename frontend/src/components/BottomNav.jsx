@@ -1,19 +1,29 @@
 import { useLocation, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { FiHome, FiDollarSign, FiList, FiAward, FiFileText, FiUsers } from 'react-icons/fi';
+import {
+  FiAward,
+  FiDollarSign,
+  FiFileText,
+  FiHome,
+  FiLayers,
+  FiList,
+  FiUsers
+} from 'react-icons/fi';
 
 const navItems = {
   customer: [
-    { path: '/customer', label: 'แทงหวย', icon: <FiDollarSign /> },
-    { path: '/customer/history', label: 'ประวัติ', icon: <FiList /> },
-    { path: '/customer/lottery', label: 'ผลหวย', icon: <FiAward /> },
-    { path: '/customer/summary', label: 'สรุป', icon: <FiFileText /> },
+    { path: '/customer', label: 'Market', icon: <FiLayers /> },
+    { path: '/customer/bet', label: 'Bet', icon: <FiDollarSign /> },
+    { path: '/customer/history', label: 'History', icon: <FiList /> },
+    { path: '/customer/lottery', label: 'Result', icon: <FiAward /> },
+    { path: '/customer/summary', label: 'Summary', icon: <FiFileText /> },
+    { path: '/customer/wallet', label: 'Wallet', icon: <FiDollarSign /> }
   ],
   agent: [
-    { path: '/agent', label: 'หน้าแรก', icon: <FiHome /> },
-    { path: '/agent/customers', label: 'ลูกค้า', icon: <FiUsers /> },
-    { path: '/agent/bets', label: 'โพย', icon: <FiList /> },
-    { path: '/agent/reports', label: 'รายงาน', icon: <FiFileText /> },
+    { path: '/agent', label: 'Home', icon: <FiHome /> },
+    { path: '/agent/customers', label: 'Members', icon: <FiUsers /> },
+    { path: '/agent/bets', label: 'Slips', icon: <FiList /> },
+    { path: '/agent/reports', label: 'Reports', icon: <FiFileText /> }
   ]
 };
 
@@ -21,13 +31,14 @@ const BottomNav = () => {
   const { user } = useAuth();
   const location = useLocation();
   const items = navItems[user?.role];
+  const isActivePath = (path) => location.pathname === path || (path !== `/${user?.role}` && location.pathname.startsWith(`${path}/`));
 
   if (!items) return null;
 
   return (
     <nav className="bottom-nav">
       {items.map((item) => {
-        const isActive = location.pathname === item.path;
+        const isActive = isActivePath(item.path);
         return (
           <Link
             key={item.path}

@@ -1,34 +1,48 @@
 import { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate, useLocation, Link } from 'react-router-dom';
-import { FiMenu, FiX, FiLogOut, FiUser, FiHome, FiUsers, FiFileText, FiDollarSign, FiAward, FiList } from 'react-icons/fi';
+import {
+  FiAward,
+  FiDollarSign,
+  FiFileText,
+  FiHome,
+  FiLayers,
+  FiList,
+  FiLogOut,
+  FiMenu,
+  FiUser,
+  FiUsers,
+  FiX
+} from 'react-icons/fi';
 
 const menuItems = {
   admin: [
-    { path: '/admin', label: 'แดชบอร์ด', icon: <FiHome /> },
-    { path: '/admin/agents', label: 'จัดการเจ้ามือ', icon: <FiUsers /> },
-    { path: '/admin/customers', label: 'จัดการลูกค้า', icon: <FiUser /> },
-    { path: '/admin/lottery', label: 'ผลหวย / คำนวณ', icon: <FiAward /> },
-    { path: '/admin/reports', label: 'รายงาน', icon: <FiFileText /> },
+    { path: '/admin', label: 'Dashboard', icon: <FiHome /> },
+    { path: '/admin/agents', label: 'Agents', icon: <FiUsers /> },
+    { path: '/admin/customers', label: 'Members', icon: <FiUser /> },
+    { path: '/admin/lottery', label: 'Results', icon: <FiAward /> },
+    { path: '/admin/reports', label: 'Reports', icon: <FiFileText /> }
   ],
   agent: [
-    { path: '/agent', label: 'แดชบอร์ด', icon: <FiHome /> },
-    { path: '/agent/customers', label: 'จัดการลูกค้า', icon: <FiUsers /> },
-    { path: '/agent/bets', label: 'รายการแทง', icon: <FiList /> },
-    { path: '/agent/reports', label: 'สรุปยอด', icon: <FiFileText /> },
+    { path: '/agent', label: 'Dashboard', icon: <FiHome /> },
+    { path: '/agent/customers', label: 'Members', icon: <FiUsers /> },
+    { path: '/agent/bets', label: 'Bets', icon: <FiList /> },
+    { path: '/agent/reports', label: 'Reports', icon: <FiFileText /> }
   ],
   customer: [
-    { path: '/customer', label: 'แทงหวย', icon: <FiDollarSign /> },
-    { path: '/customer/history', label: 'ประวัติ', icon: <FiList /> },
-    { path: '/customer/summary', label: 'สรุปได้เสีย', icon: <FiFileText /> },
-    { path: '/customer/lottery', label: 'ผลหวย', icon: <FiAward /> },
+    { path: '/customer', label: 'Markets', icon: <FiLayers /> },
+    { path: '/customer/bet', label: 'Bet', icon: <FiDollarSign /> },
+    { path: '/customer/history', label: 'History', icon: <FiList /> },
+    { path: '/customer/summary', label: 'Summary', icon: <FiFileText /> },
+    { path: '/customer/lottery', label: 'Results', icon: <FiAward /> },
+    { path: '/customer/wallet', label: 'Wallet', icon: <FiDollarSign /> }
   ]
 };
 
 const roleLabels = {
-  admin: 'ผู้ดูแลระบบ',
-  agent: 'เจ้ามือ',
-  customer: 'ลูกค้า'
+  admin: 'Administrator',
+  agent: 'Agent',
+  customer: 'Member'
 };
 
 const Navbar = () => {
@@ -43,10 +57,11 @@ const Navbar = () => {
   };
 
   const items = menuItems[user?.role] || [];
+  const roleLabel = user?.displayRole || roleLabels[user?.role] || '-';
+  const isItemActive = (path) => location.pathname === path || (path !== `/${user?.role}` && location.pathname.startsWith(`${path}/`));
 
   return (
     <>
-      {/* Top Navbar */}
       <nav className="navbar">
         <div className="navbar-left">
           <button className="navbar-toggle" onClick={() => setMobileOpen(!mobileOpen)}>
@@ -59,11 +74,11 @@ const Navbar = () => {
         </div>
 
         <div className="navbar-center">
-          {items.map(item => (
+          {items.map((item) => (
             <Link
               key={item.path}
               to={item.path}
-              className={`navbar-link ${location.pathname === item.path ? 'active' : ''}`}
+              className={`navbar-link ${isItemActive(item.path) ? 'active' : ''}`}
             >
               {item.icon}
               <span>{item.label}</span>
@@ -76,42 +91,43 @@ const Navbar = () => {
             <div className="navbar-user-avatar">{user?.name?.charAt(0) || 'U'}</div>
             <div className="navbar-user-info">
               <div className="navbar-user-name">{user?.name}</div>
-              <div className="navbar-user-role">{roleLabels[user?.role]}</div>
+              <div className="navbar-user-role">{roleLabel}</div>
             </div>
           </div>
-          <button className="navbar-logout" onClick={handleLogout} title="ออกจากระบบ">
+          <button className="navbar-logout" onClick={handleLogout} title="Logout">
             <FiLogOut />
           </button>
         </div>
       </nav>
 
-      {/* Mobile Menu */}
       {mobileOpen && (
         <div className="mobile-menu-overlay" onClick={() => setMobileOpen(false)}>
-          <div className="mobile-menu" onClick={e => e.stopPropagation()}>
+          <div className="mobile-menu" onClick={(event) => event.stopPropagation()}>
             <div className="mobile-menu-header">
               <div className="navbar-user">
                 <div className="navbar-user-avatar">{user?.name?.charAt(0) || 'U'}</div>
                 <div className="navbar-user-info">
                   <div className="navbar-user-name">{user?.name}</div>
-                  <div className="navbar-user-role">{roleLabels[user?.role]}</div>
+                  <div className="navbar-user-role">{roleLabel}</div>
                 </div>
               </div>
             </div>
-            {items.map(item => (
+
+            {items.map((item) => (
               <Link
                 key={item.path}
                 to={item.path}
-                className={`mobile-menu-link ${location.pathname === item.path ? 'active' : ''}`}
+                className={`mobile-menu-link ${isItemActive(item.path) ? 'active' : ''}`}
                 onClick={() => setMobileOpen(false)}
               >
                 {item.icon}
                 <span>{item.label}</span>
               </Link>
             ))}
+
             <button className="mobile-menu-logout" onClick={handleLogout}>
               <FiLogOut />
-              <span>ออกจากระบบ</span>
+              <span>Logout</span>
             </button>
           </div>
         </div>
@@ -240,6 +256,7 @@ const Navbar = () => {
         .navbar-user-role {
           font-size: 0.7rem;
           color: var(--text-muted);
+          text-transform: capitalize;
         }
 
         .navbar-logout {
@@ -262,7 +279,6 @@ const Navbar = () => {
           color: white;
         }
 
-        /* Mobile */
         .mobile-menu-overlay {
           display: none;
           position: fixed;

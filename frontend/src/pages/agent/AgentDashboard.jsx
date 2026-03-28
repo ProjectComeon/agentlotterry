@@ -1,254 +1,154 @@
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
+import { FiClock, FiDollarSign, FiTrendingUp, FiUsers, FiWifi } from 'react-icons/fi';
 import { getAgentDashboard } from '../../services/api';
-import { FiUsers, FiDollarSign, FiTrendingUp, FiClock } from 'react-icons/fi';
+import { useCatalog } from '../../context/CatalogContext';
 
-const betTypeLabels = { '3top': '3 ตัวบน', '3tod': '3 ตัวโต๊ด', '2top': '2 ตัวบน', '2bottom': '2 ตัวล่าง', 'run_top': 'วิ่งบน', 'run_bottom': 'วิ่งล่าง' };
+const betTypeLabels = { '3top': '3 Top', '3tod': '3 Tod', '2top': '2 Top', '2bottom': '2 Bottom', 'run_top': 'Run Top', 'run_bottom': 'Run Bottom' };
+const money = (value) => Number(value || 0).toLocaleString();
 
 const AgentDashboard = () => {
+  const { announcements, markAnnouncementRead } = useCatalog();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const load = async () => {
-      try { const res = await getAgentDashboard(); setData(res.data); }
-      catch (err) { console.error(err); }
-      finally { setLoading(false); }
+      try {
+        const res = await getAgentDashboard();
+        setData(res.data);
+      } catch (error) {
+        console.error(error);
+      } finally {
+        setLoading(false);
+      }
     };
+
     load();
   }, []);
 
-  if (loading) return <div className="loading-container"><div className="spinner"></div></div>;
+  if (loading) {
+    return <div className="loading-container"><div className="spinner"></div></div>;
+  }
 
-  const s = data?.stats || {};
+  const stats = data?.stats || {};
 
   return (
-    <div className="ag-dash animate-fade-in">
-      <h1 className="ag-dash-title">แดชบอร์ด</h1>
-
-      {/* Profit hero */}
-      <div className={`ag-dash-hero ${(s.netProfit || 0) >= 0 ? 'positive' : 'negative'}`}>
-        <span className="ag-dash-hero-label">กำไรสุทธิ</span>
-        <span className="ag-dash-hero-value">
-          {(s.netProfit || 0) >= 0 ? '+' : ''}{(s.netProfit || 0).toLocaleString()} ฿
-        </span>
-      </div>
-
-      {/* Stats grid */}
-      <div className="ag-dash-stats">
-        <div className="ag-dash-stat">
-          <FiUsers className="ag-dash-stat-icon" />
-          <span className="ag-dash-stat-value">{s.totalCustomers || 0}</span>
-          <span className="ag-dash-stat-label">ลูกค้า ({s.activeCustomers || 0} ใช้งาน)</span>
-        </div>
-        <div className="ag-dash-stat">
-          <FiClock className="ag-dash-stat-icon ag-dash-stat-icon-blue" />
-          <span className="ag-dash-stat-value">{s.pendingBets || 0}</span>
-          <span className="ag-dash-stat-label">รอผล</span>
-        </div>
-        <div className="ag-dash-stat">
-          <FiDollarSign className="ag-dash-stat-icon ag-dash-stat-icon-yellow" />
-          <span className="ag-dash-stat-value">{(s.totalAmount || 0).toLocaleString()}</span>
-          <span className="ag-dash-stat-label">ยอดแทง (฿)</span>
+    <div className="agent-dash-page animate-fade-in">
+      <div className="page-header">
+        <div>
+          <h1 className="page-title">Agent Dashboard</h1>
+          <p className="page-subtitle">Live member activity, credit exposure, and the latest submitted items.</p>
         </div>
       </div>
 
-      {/* Recent bets */}
-      <div className="ag-dash-section-title">รายการล่าสุด</div>
-      <div className="ag-dash-bets">
-        {data?.recentBets?.length > 0 ? data.recentBets.map((bet, i) => (
-          <div key={i} className={`ag-dash-bet ag-dash-bet-${bet.result || 'pending'}`}>
-            <div className="ag-dash-bet-left">
-              <span className="ag-dash-bet-number">{bet.number}</span>
-              <div className="ag-dash-bet-info">
-                <span className="ag-dash-bet-name">{bet.customerId?.name || 'N/A'}</span>
-                <span className="ag-dash-bet-meta">{betTypeLabels[bet.betType]} • {bet.roundDate}</span>
+      <section className={`agent-hero ${(stats.netProfit || 0) >= 0 ? 'positive' : 'negative'}`}>
+        <span>Net result</span>
+        <strong>{(stats.netProfit || 0) >= 0 ? '+' : ''}{money(stats.netProfit)} ฿</strong>
+        <small>Total won {money(stats.totalWon)} ฿ from sales {money(stats.totalAmount)} ฿</small>
+      </section>
+
+      <section className="dash-grid">
+        <div className="dash-card"><FiUsers /><strong>{stats.totalCustomers || 0}</strong><span>members</span><small>{stats.activeCustomers || 0} active</small></div>
+        <div className="dash-card"><FiWifi /><strong>{stats.onlineCustomers || 0}</strong><span>online</span><small>recently active</small></div>
+        <div className="dash-card"><FiClock /><strong>{stats.pendingBets || 0}</strong><span>pending items</span><small>{stats.totalBets || 0} total</small></div>
+        <div className="dash-card"><FiDollarSign /><strong>{money(stats.agentCreditBalance)}</strong><span>agent credit</span><small>available wallet balance</small></div>
+        <div className="dash-card"><FiDollarSign /><strong>{money(stats.totalCreditBalance)}</strong><span>member credit</span><small>balance in system</small></div>
+        <div className="dash-card"><FiTrendingUp /><strong>{Number(stats.averageStockPercent || 0).toFixed(1)}%</strong><span>avg stock</span><small>across members</small></div>
+      </section>
+
+      <section className="card">
+        <div className="card-header">
+          <h3 className="card-title">Latest items</h3>
+        </div>
+
+        <div className="recent-list">
+          {data?.recentBets?.length ? data.recentBets.map((bet) => (
+            <div key={bet._id} className={`recent-row recent-${bet.result || 'pending'}`}>
+              <div>
+                <strong>{bet.number}</strong>
+                <div className="recent-meta">{bet.customerId?.name || 'Unknown'} • {betTypeLabels[bet.betType] || bet.betType}</div>
+                <div className="recent-meta">{bet.marketName || bet.marketId} • {bet.roundTitle || bet.roundDate}</div>
+              </div>
+              <div className="recent-right">
+                <strong>{money(bet.amount)} ฿</strong>
+                <span>{bet.result || 'pending'}</span>
               </div>
             </div>
-            <div className="ag-dash-bet-right">
-              <span className="ag-dash-bet-amount">{bet.amount.toLocaleString()} ฿</span>
-              <span className={`ag-dash-bet-badge ag-dash-bet-badge-${bet.result || 'pending'}`}>
-                {bet.result === 'won' ? 'ถูก' : bet.result === 'lost' ? 'ไม่ถูก' : 'รอผล'}
-              </span>
-            </div>
+          )) : (
+            <div className="empty-state"><div className="empty-state-text">No recent items.</div></div>
+          )}
+        </div>
+      </section>
+
+      {data?.onlineMembers?.length ? (
+        <section className="card">
+          <div className="card-header">
+            <h3 className="card-title">Members online</h3>
           </div>
-        )) : (
-          <div className="empty-state"><div className="empty-state-text">ยังไม่มีรายการ</div></div>
-        )}
-      </div>
+
+          <div className="recent-list">
+            {data.onlineMembers.map((member) => (
+              <div key={member.id} className="recent-row recent-pending">
+                <div>
+                  <strong>{member.name}</strong>
+                  <div className="recent-meta">@{member.username} • {member.memberCode || '-'}</div>
+                </div>
+                <div className="recent-right">
+                  <strong>online</strong>
+                  <span>{new Date(member.lastActiveAt).toLocaleString()}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      ) : null}
+
+      {announcements.length ? (
+        <section className="card">
+          <div className="card-header">
+            <h3 className="card-title">Announcements</h3>
+          </div>
+
+          <div className="recent-list">
+            {announcements.map((announcement) => (
+              <div key={announcement.id} className="recent-row recent-pending">
+                <div>
+                  <strong>{announcement.title}</strong>
+                  <div className="recent-meta">{announcement.body}</div>
+                </div>
+                <div className="recent-right">
+                  {!announcement.isRead ? (
+                    <button className="btn btn-secondary btn-sm" onClick={() => markAnnouncementRead(announcement.id)}>
+                      Mark read
+                    </button>
+                  ) : (
+                    <span>read</span>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      ) : null}
 
       <style>{`
-        .ag-dash {
-          display: flex;
-          flex-direction: column;
-          gap: 12px;
-        }
-
-        .ag-dash-title {
-          font-size: 1.3rem;
-          font-weight: 800;
-        }
-
-        .ag-dash-hero {
-          padding: 20px;
-          border-radius: var(--radius-lg);
-          text-align: center;
-        }
-
-        .ag-dash-hero.positive {
-          background: linear-gradient(135deg, rgba(16, 185, 129, 0.12), rgba(16, 185, 129, 0.04));
-          border: 1px solid rgba(16, 185, 129, 0.25);
-        }
-
-        .ag-dash-hero.negative {
-          background: linear-gradient(135deg, rgba(239, 68, 68, 0.12), rgba(239, 68, 68, 0.04));
-          border: 1px solid rgba(239, 68, 68, 0.25);
-        }
-
-        .ag-dash-hero-label {
-          display: block;
-          font-size: 0.78rem;
-          color: var(--text-muted);
-          margin-bottom: 4px;
-        }
-
-        .ag-dash-hero-value {
-          display: block;
-          font-size: 2rem;
-          font-weight: 800;
-        }
-
-        .ag-dash-hero.positive .ag-dash-hero-value { color: var(--success); }
-        .ag-dash-hero.negative .ag-dash-hero-value { color: var(--danger); }
-
-        .ag-dash-stats {
-          display: grid;
-          grid-template-columns: repeat(3, 1fr);
-          gap: 8px;
-        }
-
-        .ag-dash-stat {
-          background: var(--bg-card);
-          border: 1px solid var(--border);
-          border-radius: var(--radius-md);
-          padding: 14px;
-          text-align: center;
-        }
-
-        .ag-dash-stat-icon {
-          font-size: 1.2rem;
-          color: var(--primary-light);
-          margin-bottom: 6px;
-        }
-
-        .ag-dash-stat-icon-blue { color: #60a5fa; }
-        .ag-dash-stat-icon-yellow { color: #fbbf24; }
-
-        .ag-dash-stat-value {
-          display: block;
-          font-size: 1.3rem;
-          font-weight: 800;
-        }
-
-        .ag-dash-stat-label {
-          display: block;
-          font-size: 0.68rem;
-          color: var(--text-muted);
-          margin-top: 2px;
-        }
-
-        .ag-dash-section-title {
-          font-size: 0.85rem;
-          font-weight: 700;
-          color: var(--text-secondary);
-          margin-top: 4px;
-        }
-
-        .ag-dash-bets {
-          display: flex;
-          flex-direction: column;
-          gap: 6px;
-        }
-
-        .ag-dash-bet {
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          padding: 12px 14px;
-          background: var(--bg-card);
-          border: 1px solid var(--border);
-          border-radius: var(--radius-md);
-          border-left: 3px solid var(--border);
-        }
-
-        .ag-dash-bet-pending { border-left-color: var(--warning); }
-        .ag-dash-bet-won { border-left-color: var(--success); }
-        .ag-dash-bet-lost { border-left-color: var(--danger); }
-
-        .ag-dash-bet-left {
-          display: flex;
-          align-items: center;
-          gap: 12px;
-        }
-
-        .ag-dash-bet-number {
-          font-size: 1.2rem;
-          font-weight: 800;
-          color: var(--primary-light);
-          letter-spacing: 0.08em;
-          min-width: 50px;
-        }
-
-        .ag-dash-bet-info {
-          display: flex;
-          flex-direction: column;
-        }
-
-        .ag-dash-bet-name {
-          font-size: 0.82rem;
-          font-weight: 600;
-        }
-
-        .ag-dash-bet-meta {
-          font-size: 0.7rem;
-          color: var(--text-muted);
-        }
-
-        .ag-dash-bet-right {
-          display: flex;
-          flex-direction: column;
-          align-items: flex-end;
-          gap: 4px;
-        }
-
-        .ag-dash-bet-amount {
-          font-size: 0.88rem;
-          font-weight: 700;
-        }
-
-        .ag-dash-bet-badge {
-          font-size: 0.65rem;
-          font-weight: 700;
-          padding: 2px 8px;
-          border-radius: 10px;
-        }
-
-        .ag-dash-bet-badge-pending { background: rgba(245, 158, 11, 0.15); color: #fbbf24; }
-        .ag-dash-bet-badge-won { background: rgba(16, 185, 129, 0.15); color: #34d399; }
-        .ag-dash-bet-badge-lost { background: rgba(239, 68, 68, 0.15); color: #f87171; }
-
-        @media (max-width: 480px) {
-          .ag-dash-stats {
-            grid-template-columns: 1fr 1fr 1fr;
-          }
-
-          .ag-dash-stat {
-            padding: 10px 8px;
-          }
-
-          .ag-dash-stat-value {
-            font-size: 1.1rem;
-          }
-        }
+        .agent-dash-page, .recent-list { display: flex; flex-direction: column; gap: 16px; }
+        .agent-hero, .dash-card, .recent-row { border-radius: var(--radius-md); border: 1px solid var(--border); }
+        .agent-hero { padding: 22px; display: flex; flex-direction: column; gap: 8px; }
+        .agent-hero.positive { background: linear-gradient(135deg, rgba(16, 185, 129, 0.14), rgba(16, 185, 129, 0.05)); }
+        .agent-hero.negative { background: linear-gradient(135deg, rgba(239, 68, 68, 0.14), rgba(239, 68, 68, 0.05)); }
+        .agent-hero span, .agent-hero small, .dash-card span, .dash-card small, .recent-meta { color: var(--text-muted); }
+        .agent-hero strong { font-size: 2rem; }
+        .dash-grid { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 12px; }
+        .dash-card { background: var(--bg-card); padding: 16px; display: flex; flex-direction: column; gap: 8px; }
+        .dash-card svg { color: var(--primary-light); font-size: 1.1rem; }
+        .dash-card strong { font-size: 1.25rem; }
+        .recent-row { background: var(--bg-card); padding: 14px; display: flex; align-items: center; justify-content: space-between; gap: 12px; border-left-width: 3px; }
+        .recent-pending { border-left-color: var(--warning); }
+        .recent-won { border-left-color: var(--success); }
+        .recent-lost { border-left-color: var(--danger); }
+        .recent-right { text-align: right; }
+        @media (max-width: 920px) { .dash-grid { grid-template-columns: 1fr 1fr; } }
       `}</style>
     </div>
   );

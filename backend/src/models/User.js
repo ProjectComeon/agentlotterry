@@ -20,7 +20,17 @@ const userSchema = new mongoose.Schema({
     enum: ['admin', 'agent', 'customer'],
     required: true
   },
+  displayRole: {
+    type: String,
+    trim: true,
+    default: ''
+  },
   agentId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    default: null
+  },
+  parentUserId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
     default: null
@@ -30,6 +40,12 @@ const userSchema = new mongoose.Schema({
     required: [true, 'Name is required'],
     trim: true
   },
+  memberCode: {
+    type: String,
+    trim: true,
+    uppercase: true,
+    default: null
+  },
   phone: {
     type: String,
     trim: true,
@@ -38,6 +54,53 @@ const userSchema = new mongoose.Schema({
   isActive: {
     type: Boolean,
     default: true
+  },
+  stockPercent: {
+    type: Number,
+    default: 0,
+    min: 0,
+    max: 100
+  },
+  creditBalance: {
+    type: Number,
+    default: 0
+  },
+  ownerPercent: {
+    type: Number,
+    default: 0,
+    min: 0,
+    max: 100
+  },
+  keepPercent: {
+    type: Number,
+    default: 0,
+    min: 0,
+    max: 100
+  },
+  commissionRate: {
+    type: Number,
+    default: 0,
+    min: 0,
+    max: 100
+  },
+  defaultRateProfileId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'RateProfile',
+    default: null
+  },
+  notes: {
+    type: String,
+    trim: true,
+    default: ''
+  },
+  status: {
+    type: String,
+    enum: ['active', 'inactive', 'suspended'],
+    default: 'active'
+  },
+  lastActiveAt: {
+    type: Date,
+    default: Date.now
   }
 }, {
   timestamps: true
@@ -45,6 +108,16 @@ const userSchema = new mongoose.Schema({
 
 // Hash password before saving
 userSchema.pre('save', async function(next) {
+  if (!this.displayRole) {
+    this.displayRole = this.role === 'customer' ? 'member' : this.role;
+  }
+
+  if (!this.parentUserId && this.agentId) {
+    this.parentUserId = this.agentId;
+  }
+
+  this.status = this.isActive ? (this.status === 'suspended' ? 'suspended' : 'active') : 'inactive';
+
   if (!this.isModified('password')) return next();
   const salt = await bcrypt.genSalt(10);
   this.password = await bcrypt.hash(this.password, salt);

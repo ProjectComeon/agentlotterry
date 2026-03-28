@@ -1,431 +1,581 @@
 import { useEffect, useMemo, useState } from 'react';
-import { getMarketOverview, placeBets } from '../../services/api';
 import toast from 'react-hot-toast';
-import { FiChevronDown, FiChevronUp, FiPlus, FiRefreshCw, FiSend, FiTrash2, FiX } from 'react-icons/fi';
+import {
+  FiAlertCircle,
+  FiClock,
+  FiLayers,
+  FiRefreshCw,
+  FiRotateCcw,
+  FiSave,
+  FiSend,
+  FiShuffle,
+  FiStar
+} from 'react-icons/fi';
+import { getCatalogRounds, createMemberSlip, parseMemberSlip } from '../../services/api';
+import { useCatalog } from '../../context/CatalogContext';
 
-const betTypes = [
-  { value: '3top', label: '3 ตัวบน', digits: 3, rate: 500 },
-  { value: '3tod', label: '3 ตัวโต๊ด', digits: 3, rate: 100 },
-  { value: '2top', label: '2 ตัวบน', digits: 2, rate: 70 },
-  { value: '2bottom', label: '2 ตัวล่าง', digits: 2, rate: 70 },
-  { value: 'run_top', label: 'วิ่งบน', digits: 1, rate: 3 },
-  { value: 'run_bottom', label: 'วิ่งล่าง', digits: 1, rate: 2 }
-];
+const betTypeLabels = {
+  '3top': '3 ตัวบน',
+  '3tod': '3 ตัวโต๊ด',
+  '2top': '2 ตัวบน',
+  '2bottom': '2 ตัวล่าง',
+  'run_top': 'วิ่งบน',
+  'run_bottom': 'วิ่งล่าง'
+};
 
-const disabledStatuses = new Set(['unsupported']);
+const roundStatusLabels = {
+  open: 'เปิดรับ',
+  upcoming: 'กำลังจะเปิด',
+  closed: 'ปิดรับ',
+  resulted: 'ประกาศผล',
+  missing: 'ไม่มีงวด'
+};
 
 const CustomerBet = () => {
-  const [overview, setOverview] = useState(null);
-  const [selectedMarketId, setSelectedMarketId] = useState('thai-government');
-  const [bets, setBets] = useState([{ betType: '3top', number: '', amount: '' }]);
-  const [loadingMarkets, setLoadingMarkets] = useState(true);
-  const [reloadingMarkets, setReloadingMarkets] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
+  const {
+    loading,
+    selectedLottery,
+    selectedRound,
+    selectedRateProfile,
+    setSelectedRound,
+    setSelectedRateProfile
+  } = useCatalog();
+  const [rounds, setRounds] = useState([]);
+  const [loadingRounds, setLoadingRounds] = useState(false);
   const [activeBetType, setActiveBetType] = useState('3top');
-  const [showMarketPicker, setShowMarketPicker] = useState(false);
-
-  const loadMarkets = async (showReload = false) => {
-    if (showReload) setReloadingMarkets(true);
-    else setLoadingMarkets(true);
-
-    try {
-      const res = await getMarketOverview();
-      setOverview(res.data);
-    } catch (err) {
-      console.error(err);
-      toast.error(err.response?.data?.message || 'โหลดตลาดไม่สำเร็จ');
-    } finally {
-      setLoadingMarkets(false);
-      setReloadingMarkets(false);
-    }
-  };
-
-  useEffect(() => { loadMarkets(); }, []);
-
-  const marketSections = useMemo(() => {
-    if (!overview?.sections) return [];
-    return overview.sections
-      .map((s) => ({
-        ...s,
-        markets: s.markets.filter((m) => {
-          if (disabledStatuses.has(m.status)) return false;
-          if (m.provider !== 'manycai') return true;
-          return overview.provider?.configured;
-        })
-      }))
-      .filter((s) => s.markets.length > 0);
-  }, [overview]);
-
-  const allMarkets = useMemo(
-    () => marketSections.flatMap((s) => s.markets.map((m) => ({ ...m, sectionTitle: s.title }))),
-    [marketSections]
-  );
+  const [defaultAmount, setDefaultAmount] = useState('');
+  const [rawInput, setRawInput] = useState('');
+  const [memo, setMemo] = useState('');
+  const [reverse, setReverse] = useState(false);
+  const [includeDoubleSet, setIncludeDoubleSet] = useState(false);
+  const [preview, setPreview] = useState(null);
+  const [previewing, setPreviewing] = useState(false);
+  const [savingDraft, setSavingDraft] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
-    if (!allMarkets.length) return;
-    if (!allMarkets.some((m) => m.id === selectedMarketId)) {
-      setSelectedMarketId(allMarkets[0].id);
+    if (!selectedLottery?.supportedBetTypes?.length) return;
+    if (!selectedLottery.supportedBetTypes.includes(activeBetType)) {
+      setActiveBetType(selectedLottery.supportedBetTypes[0]);
     }
-  }, [allMarkets, selectedMarketId]);
+  }, [selectedLottery, activeBetType]);
 
-  const selectedMarket = allMarkets.find((m) => m.id === selectedMarketId) || null;
+  useEffect(() => {
+    const loadRounds = async () => {
+      if (!selectedLottery?.id) {
+        setRounds([]);
+        return;
+      }
 
-  const addBet = () => setBets([...bets, { betType: activeBetType, number: '', amount: '' }]);
+      setLoadingRounds(true);
+      try {
+        const res = await getCatalogRounds(selectedLottery.id);
+        const nextRounds = res.data || [];
+        setRounds(nextRounds);
+        if (nextRounds.length && !nextRounds.some((round) => round.id === selectedRound?.id)) {
+          setSelectedRound(nextRounds[0].id);
+        }
+      } catch (error) {
+        console.error(error);
+        toast.error('โหลดงวดหวยไม่สำเร็จ');
+      } finally {
+        setLoadingRounds(false);
+      }
+    };
 
-  const removeBet = (index) => {
-    if (bets.length <= 1) return;
-    setBets(bets.filter((_, i) => i !== index));
-  };
+    loadRounds();
+  }, [selectedLottery?.id]);
 
-  const updateBet = (index, field, value) => {
-    const updated = [...bets];
-    updated[index] = { ...updated[index], [field]: value };
-    setBets(updated);
-  };
+  useEffect(() => {
+    setPreview(null);
+  }, [selectedLottery?.id, selectedRound?.id, selectedRateProfile?.id, activeBetType, defaultAmount, rawInput, reverse, includeDoubleSet]);
 
-  const getDigits = (betType) => betTypes.find((b) => b.value === betType)?.digits || 3;
-  const getRate = (betType) => betTypes.find((b) => b.value === betType)?.rate || 0;
-  const totalAmount = bets.reduce((sum, bet) => sum + (Number(bet.amount) || 0), 0);
-  const validBetCount = bets.filter((b) => b.number && b.amount).length;
+  const selectedRoundMeta = useMemo(
+    () => rounds.find((round) => round.id === selectedRound?.id) || selectedRound || null,
+    [rounds, selectedRound]
+  );
 
-  const handleSubmit = async () => {
-    if (!selectedMarket) return toast.error('กรุณาเลือกตลาดก่อนส่งโพย');
+  const helperLabel = useMemo(() => {
+    if (includeDoubleSet) {
+      return activeBetType.startsWith('3') ? 'เลขเบิ้ล 3 หลัก' : activeBetType.startsWith('2') ? 'เลขเบิ้ล 2 หลัก' : 'ชุดเลขช่วย';
+    }
+    return 'เปิด helper';
+  }, [includeDoubleSet, activeBetType]);
 
-    const validBets = bets.filter((b) => b.number && b.amount);
-    if (!validBets.length) return toast.error('กรุณากรอกข้อมูลอย่างน้อย 1 รายการ');
+  const buildPayload = () => ({
+    lotteryId: selectedLottery?.id,
+    roundId: selectedRoundMeta?.id,
+    rateProfileId: selectedRateProfile?.id,
+    betType: activeBetType,
+    defaultAmount: Number(defaultAmount || 0),
+    rawInput,
+    reverse,
+    includeDoubleSet,
+    memo
+  });
 
-    for (const bet of validBets) {
-      const digits = getDigits(bet.betType);
-      if (bet.number.length !== digits) return toast.error(`${betTypes.find((t) => t.value === bet.betType)?.label} ต้องกรอก ${digits} หลัก`);
-      if (!/^\d+$/.test(bet.number)) return toast.error('เลขที่แทงต้องเป็นตัวเลขเท่านั้น');
-      if (Number(bet.amount) < 1) return toast.error('จำนวนเงินต้องอย่างน้อย 1 บาท');
+  const handlePreview = async () => {
+    if (!selectedLottery?.id || !selectedRoundMeta?.id) {
+      toast.error('กรุณาเลือกตลาดและงวดก่อน');
+      return;
     }
 
-    setSubmitting(true);
+    setPreviewing(true);
     try {
-      const res = await placeBets({
-        marketId: selectedMarket.id,
-        bets: validBets.map((b) => ({ betType: b.betType, number: b.number, amount: Number(b.amount) }))
-      });
-      toast.success(`ส่งโพย ${res.data.market?.name || selectedMarket.name} สำเร็จ`);
-      setBets([{ betType: activeBetType, number: '', amount: '' }]);
-    } catch (err) {
-      toast.error(err.response?.data?.message || 'แทงไม่สำเร็จ');
+      const res = await parseMemberSlip(buildPayload());
+      setPreview(res.data);
+    } catch (error) {
+      console.error(error);
+      toast.error(error.response?.data?.message || 'สร้าง preview ไม่สำเร็จ');
     } finally {
-      setSubmitting(false);
+      setPreviewing(false);
     }
   };
 
-  if (loadingMarkets) return <div className="loading-container"><div className="spinner"></div></div>;
+  const handleCreateSlip = async (action) => {
+    if (!preview) {
+      await handlePreview();
+      return;
+    }
+
+    const setLoadingState = action === 'draft' ? setSavingDraft : setSubmitting;
+    setLoadingState(true);
+    try {
+      const res = await createMemberSlip({
+        ...buildPayload(),
+        action
+      });
+
+      toast.success(
+        action === 'draft'
+          ? `บันทึกโพย ${res.data.slipNumber} แล้ว`
+          : `ส่งรายการซื้อ ${res.data.slipNumber} สำเร็จ`
+      );
+
+      setRawInput('');
+      setMemo('');
+      setDefaultAmount('');
+      setReverse(false);
+      setIncludeDoubleSet(false);
+      setPreview(null);
+    } catch (error) {
+      console.error(error);
+      toast.error(error.response?.data?.message || 'สร้าง slip ไม่สำเร็จ');
+    } finally {
+      setLoadingState(false);
+    }
+  };
+
+  const clearComposer = () => {
+    setRawInput('');
+    setMemo('');
+    setDefaultAmount('');
+    setReverse(false);
+    setIncludeDoubleSet(false);
+    setPreview(null);
+  };
+
+  if (loading) {
+    return <div className="loading-container"><div className="spinner"></div></div>;
+  }
 
   return (
-    <div className="bet-page animate-fade-in">
-      {/* Market Selector Bar */}
-      <div className="bet-market-bar">
-        <button
-          className="bet-market-selector"
-          onClick={() => setShowMarketPicker(!showMarketPicker)}
-        >
-          <div className="bet-market-selector-info">
-            <span className="bet-market-selector-label">ตลาด</span>
-            <span className="bet-market-selector-name">{selectedMarket?.name || 'เลือกตลาด'}</span>
-          </div>
-          <div className="bet-market-selector-right">
-            {selectedMarket?.headline && (
-              <span className="bet-market-selector-headline">{selectedMarket.headline}</span>
-            )}
-            {showMarketPicker ? <FiChevronUp /> : <FiChevronDown />}
-          </div>
-        </button>
-        <button
-          className="bet-market-refresh"
-          onClick={() => loadMarkets(true)}
-          disabled={reloadingMarkets}
-          title="รีเฟรช"
-        >
-          <FiRefreshCw className={reloadingMarkets ? 'spin-animation' : ''} />
+    <div className="animate-fade-in slip-console-page">
+      <div className="page-header">
+        <div>
+          <h1 className="page-title">betting console</h1>
+          <p className="page-subtitle">แทงแบบ fast input, preview รายการ, บันทึกโพย และส่งรายการซื้อเป็น slip</p>
+        </div>
+        <button className="btn btn-secondary" onClick={handlePreview} disabled={previewing || !selectedLottery}>
+          {previewing ? <FiRefreshCw className="spin-animation" /> : <FiLayers />}
+          รีวิวโพย
         </button>
       </div>
 
-      {/* Market Picker Dropdown */}
-      {showMarketPicker && (
-        <div className="bet-market-dropdown">
-          {marketSections.map((section) => (
-            <div key={section.id} className="bet-market-dropdown-section">
-              <div className="bet-market-dropdown-title">{section.title}</div>
-              <div className="bet-market-dropdown-list">
-                {section.markets.map((market) => (
-                  <button
-                    key={market.id}
-                    className={`bet-market-dropdown-item ${selectedMarketId === market.id ? 'active' : ''}`}
-                    onClick={() => { setSelectedMarketId(market.id); setShowMarketPicker(false); }}
-                  >
-                    <span className="bet-market-dropdown-item-name">{market.name}</span>
-                    <span className="bet-market-dropdown-item-result">{market.headline || '--'}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
+      <section className="card slip-console-hero">
+        <div className="slip-console-hero-main">
+          <div className="market-provider-pill"><FiLayers /> {selectedLottery?.name || '-'}</div>
+          <h2>{selectedLottery?.description || 'ตลาดที่เลือกไว้จาก catalog'}</h2>
+          <div className="market-hero-meta">
+            <span><FiClock /> {selectedRoundMeta?.title || '-'}</span>
+            <span>{roundStatusLabels[selectedRoundMeta?.status] || '-'}</span>
+            <span>{selectedRateProfile?.name || '-'}</span>
+          </div>
+        </div>
+        <div className="slip-console-hero-side">
+          <label className="slip-field">
+            <span>งวด</span>
+            <select
+              value={selectedRoundMeta?.id || ''}
+              onChange={(event) => setSelectedRound(event.target.value)}
+              disabled={loadingRounds || !rounds.length}
+            >
+              {rounds.map((round) => (
+                <option key={round.id} value={round.id}>
+                  {round.title} • {roundStatusLabels[round.status] || round.status}
+                </option>
+              ))}
+            </select>
+          </label>
+          <div className="catalog-rate-chips">
+            {(selectedLottery?.rateProfiles || []).map((profile) => (
+              <button
+                key={profile.id}
+                type="button"
+                className={`catalog-chip ${selectedRateProfile?.id === profile.id ? 'catalog-chip-active' : ''}`}
+                onClick={() => setSelectedRateProfile(profile.id)}
+              >
+                {profile.name}
+              </button>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <section className="card">
+        <div className="card-header">
+          <h3 className="card-title">ตัวควบคุมของโพย</h3>
+        </div>
+
+        <div className="bet-type-tabs">
+          {(selectedLottery?.supportedBetTypes || []).map((betType) => (
+            <button
+              key={betType}
+              className={`bet-type-tab ${activeBetType === betType ? 'active' : ''}`}
+              onClick={() => setActiveBetType(betType)}
+            >
+              <span className="bet-type-tab-label">{betTypeLabels[betType]}</span>
+              <span className="bet-type-tab-rate">x{selectedRateProfile?.rates?.[betType] || 0}</span>
+            </button>
           ))}
         </div>
-      )}
 
-      {/* Bet Type Tabs */}
-      <div className="bet-type-tabs">
-        {betTypes.map((type) => (
+        <div className="slip-grid mt-md">
+          <label className="slip-field">
+            <span>จำนวนมาตรฐาน</span>
+            <input
+              type="number"
+              min="1"
+              placeholder="เช่น 10"
+              value={defaultAmount}
+              onChange={(event) => setDefaultAmount(event.target.value)}
+            />
+          </label>
+
+          <label className="slip-field">
+            <span>บันทึกช่วยจำ</span>
+            <input
+              type="text"
+              placeholder="ตั้งชื่อโพยหรือจดสั้นๆ"
+              value={memo}
+              onChange={(event) => setMemo(event.target.value)}
+            />
+          </label>
+        </div>
+
+        <div className="slip-helper-row">
           <button
-            key={type.value}
-            className={`bet-type-tab ${activeBetType === type.value ? 'active' : ''}`}
-            onClick={() => setActiveBetType(type.value)}
+            type="button"
+            className={`helper-btn ${reverse ? 'active' : ''}`}
+            onClick={() => setReverse((value) => !value)}
           >
-            <span className="bet-type-tab-label">{type.label}</span>
-            <span className="bet-type-tab-rate">x{type.rate}</span>
+            <FiShuffle /> กลับเลข
           </button>
-        ))}
-      </div>
+          <button
+            type="button"
+            className={`helper-btn ${includeDoubleSet ? 'active' : ''}`}
+            onClick={() => setIncludeDoubleSet((value) => !value)}
+          >
+            <FiStar /> {helperLabel}
+          </button>
+          <button type="button" className="helper-btn" onClick={clearComposer}>
+            <FiRotateCcw /> เคลียร์
+          </button>
+        </div>
 
-      {/* Bet Entry Cards */}
-      <div className="bet-entries">
-        {bets.map((bet, index) => (
-          <div key={index} className="bet-entry-card">
-            <div className="bet-entry-top">
-              <select
-                className="bet-entry-type"
-                value={bet.betType}
-                onChange={(e) => { updateBet(index, 'betType', e.target.value); updateBet(index, 'number', ''); }}
-              >
-                {betTypes.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
-              </select>
-              {bets.length > 1 && (
-                <button className="bet-entry-remove" onClick={() => removeBet(index)}>
-                  <FiX />
-                </button>
-              )}
-            </div>
-            <div className="bet-entry-inputs">
-              <div className="bet-entry-number-wrap">
-                <input
-                  className="bet-entry-number"
-                  type="text"
-                  inputMode="numeric"
-                  placeholder={`เลข ${getDigits(bet.betType)} หลัก`}
-                  value={bet.number}
-                  onChange={(e) => {
-                    const v = e.target.value.replace(/\D/g, '').slice(0, getDigits(bet.betType));
-                    updateBet(index, 'number', v);
-                  }}
-                  maxLength={getDigits(bet.betType)}
-                />
+        <label className="slip-field mt-md">
+          <span>fast bet input</span>
+          <textarea
+            rows="10"
+            placeholder={'กรอก 1 รายการต่อ 1 บรรทัด\n123 10\n456=20\n789'}
+            value={rawInput}
+            onChange={(event) => setRawInput(event.target.value)}
+          />
+        </label>
+
+        <div className="slip-note">
+          <FiAlertCircle />
+          <span>รูปแบบที่รองรับ: `123 10`, `123=10`, `123/10` หรือกรอกเฉพาะเลขแล้วใช้จำนวนมาตรฐาน</span>
+        </div>
+      </section>
+
+      <section className="card">
+        <div className="card-header">
+          <h3 className="card-title">preview slip</h3>
+        </div>
+
+        {!preview ? (
+          <div className="empty-state">
+            <div className="empty-state-icon"><FiLayers /></div>
+            <div className="empty-state-text">กด “รีวิวโพย” เพื่อสร้างรายการก่อนส่งจริง</div>
+          </div>
+        ) : (
+          <>
+            <div className="preview-summary-grid">
+              <div className="preview-stat">
+                <span className="preview-stat-label">จำนวนรายการ</span>
+                <strong>{preview.summary.itemCount}</strong>
               </div>
-              <div className="bet-entry-amount-wrap">
-                <input
-                  className="bet-entry-amount"
-                  type="number"
-                  inputMode="numeric"
-                  placeholder="จำนวนเงิน"
-                  value={bet.amount}
-                  onChange={(e) => updateBet(index, 'amount', e.target.value)}
-                  min="1"
-                />
-                <span className="bet-entry-currency">฿</span>
+              <div className="preview-stat">
+                <span className="preview-stat-label">ยอดแทงรวม</span>
+                <strong>{preview.summary.totalAmount.toLocaleString()} ฿</strong>
+              </div>
+              <div className="preview-stat">
+                <span className="preview-stat-label">จ่ายสูงสุด</span>
+                <strong>{preview.summary.potentialPayout.toLocaleString()} ฿</strong>
+              </div>
+              <div className="preview-stat">
+                <span className="preview-stat-label">สถานะงวด</span>
+                <strong>{roundStatusLabels[preview.roundStatus?.status] || '-'}</strong>
               </div>
             </div>
-            {bet.number && bet.amount && (
-              <div className="bet-entry-preview">
-                เลข <strong>{bet.number}</strong> • {betTypes.find((t) => t.value === bet.betType)?.label} • <strong>{Number(bet.amount).toLocaleString()} ฿</strong> → ถูกได้ <span className="text-accent">{(Number(bet.amount) * getRate(bet.betType)).toLocaleString()} ฿</span>
+
+            <div className="table-container mt-md">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>#</th>
+                    <th>เลข</th>
+                    <th>จำนวน</th>
+                    <th>เรท</th>
+                    <th>ที่มา</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {preview.items.slice(0, 30).map((item, index) => (
+                    <tr key={`${item.number}-${index}`}>
+                      <td>{index + 1}</td>
+                      <td style={{ fontWeight: 700, letterSpacing: '0.08em' }}>{item.number}</td>
+                      <td>{item.amount.toLocaleString()} ฿</td>
+                      <td>x{item.payRate}</td>
+                      <td>
+                        {item.sourceFlags.fromDoubleSet ? 'double set' : item.sourceFlags.fromReverse ? 'reverse' : 'manual'}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {preview.items.length > 30 && (
+              <div className="slip-note">
+                <FiAlertCircle />
+                <span>แสดง 30 รายการแรกจากทั้งหมด {preview.items.length} รายการ</span>
               </div>
             )}
-          </div>
-        ))}
+          </>
+        )}
+      </section>
 
-        <button className="bet-add-btn" onClick={addBet}>
-          <FiPlus /> เพิ่มรายการ
-        </button>
-      </div>
-
-      {/* Floating Submit Bar */}
-      <div className="bet-submit-bar">
-        <div className="bet-submit-info">
-          <span className="bet-submit-count">{validBetCount} รายการ</span>
-          <span className="bet-submit-total">{totalAmount.toLocaleString()} ฿</span>
-        </div>
+      <div className="slip-action-bar">
         <button
-          className="bet-submit-btn"
-          onClick={handleSubmit}
-          disabled={submitting || !selectedMarket || validBetCount === 0}
+          className="btn btn-secondary"
+          onClick={() => handleCreateSlip('draft')}
+          disabled={savingDraft || submitting || !preview}
         >
-          {submitting ? <div className="spinner" style={{ width: 18, height: 18, borderWidth: 2 }}></div> : <><FiSend /> ส่งโพย</>}
+          <FiSave /> บันทึกโพย
+        </button>
+        <button
+          className="btn btn-primary"
+          onClick={() => handleCreateSlip('submit')}
+          disabled={savingDraft || submitting || !preview || selectedRoundMeta?.status !== 'open'}
+        >
+          <FiSend /> ส่งรายการซื้อ
         </button>
       </div>
 
       <style>{`
-        .bet-page {
+        .slip-console-page {
+          display: flex;
+          flex-direction: column;
+          gap: 16px;
+          padding-bottom: 96px;
+        }
+
+        .slip-console-hero {
+          display: grid;
+          grid-template-columns: 1.4fr 1fr;
+          gap: 20px;
+        }
+
+        .slip-console-hero-main h2 {
+          font-size: 1.4rem;
+          font-weight: 800;
+          color: var(--text-primary);
+          margin: 10px 0 8px;
+        }
+
+        .slip-console-hero-side {
           display: flex;
           flex-direction: column;
           gap: 12px;
-          padding-bottom: 80px;
         }
 
-        /* Market Selector */
-        .bet-market-bar {
+        .slip-grid {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 12px;
+        }
+
+        .slip-field {
           display: flex;
+          flex-direction: column;
           gap: 8px;
         }
 
-        .bet-market-selector {
-          flex: 1;
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          padding: 12px 16px;
-          background: var(--bg-card);
-          border: 1px solid var(--border);
-          border-radius: var(--radius-md);
-          color: var(--text-primary);
-          cursor: pointer;
-          transition: var(--transition-fast);
-        }
-
-        .bet-market-selector:hover {
-          border-color: var(--border-accent);
-        }
-
-        .bet-market-selector-info {
-          display: flex;
-          flex-direction: column;
-          align-items: flex-start;
-          gap: 2px;
-        }
-
-        .bet-market-selector-label {
-          font-size: 0.7rem;
-          color: var(--text-muted);
-          text-transform: uppercase;
-          letter-spacing: 0.05em;
-        }
-
-        .bet-market-selector-name {
-          font-size: 1rem;
+        .slip-field span {
+          font-size: 0.78rem;
           font-weight: 700;
-        }
-
-        .bet-market-selector-right {
-          display: flex;
-          align-items: center;
-          gap: 10px;
-          color: var(--text-muted);
-        }
-
-        .bet-market-selector-headline {
-          font-size: 1.3rem;
-          font-weight: 800;
-          color: var(--primary-light);
-          letter-spacing: 0.06em;
-        }
-
-        .bet-market-refresh {
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          width: 48px;
-          background: var(--bg-card);
-          border: 1px solid var(--border);
-          border-radius: var(--radius-md);
           color: var(--text-secondary);
-          font-size: 1.1rem;
-          cursor: pointer;
-          transition: var(--transition-fast);
+          text-transform: uppercase;
+          letter-spacing: 0.04em;
         }
 
-        .bet-market-refresh:hover {
-          border-color: var(--border-accent);
-          color: var(--primary-light);
-        }
-
-        .spin-animation {
-          animation: spin 0.8s linear infinite;
-        }
-
-        /* Market Dropdown */
-        .bet-market-dropdown {
-          background: var(--bg-card);
+        .slip-field input,
+        .slip-field select,
+        .slip-field textarea {
+          width: 100%;
+          background: var(--bg-input);
           border: 1px solid var(--border);
           border-radius: var(--radius-md);
-          padding: 8px;
-          max-height: 340px;
-          overflow-y: auto;
-        }
-
-        .bet-market-dropdown-section {
-          margin-bottom: 8px;
-        }
-
-        .bet-market-dropdown-section:last-child {
-          margin-bottom: 0;
-        }
-
-        .bet-market-dropdown-title {
-          font-size: 0.72rem;
-          font-weight: 700;
-          color: var(--text-muted);
-          text-transform: uppercase;
-          letter-spacing: 0.06em;
-          padding: 8px 10px 4px;
-        }
-
-        .bet-market-dropdown-list {
-          display: grid;
-          grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-          gap: 4px;
-        }
-
-        .bet-market-dropdown-item {
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          padding: 10px 12px;
-          border-radius: var(--radius-sm);
-          background: none;
-          border: 1px solid transparent;
           color: var(--text-primary);
-          cursor: pointer;
+          padding: 12px 14px;
           transition: var(--transition-fast);
-          font-size: 0.85rem;
-          text-align: left;
         }
 
-        .bet-market-dropdown-item:hover {
-          background: var(--bg-surface-hover);
+        .slip-field textarea {
+          resize: vertical;
+          min-height: 220px;
+          font-family: inherit;
+          line-height: 1.55;
         }
 
-        .bet-market-dropdown-item.active {
+        .slip-field input:focus,
+        .slip-field select:focus,
+        .slip-field textarea:focus {
+          border-color: var(--primary);
+          box-shadow: 0 0 0 3px var(--primary-subtle);
+        }
+
+        .slip-helper-row {
+          display: flex;
+          gap: 10px;
+          flex-wrap: wrap;
+          margin-top: 14px;
+        }
+
+        .helper-btn {
+          display: inline-flex;
+          align-items: center;
+          gap: 8px;
+          padding: 10px 14px;
+          border-radius: 999px;
+          background: var(--bg-surface);
+          border: 1px solid var(--border);
+          color: var(--text-secondary);
+          font-size: 0.84rem;
+          font-weight: 700;
+          transition: var(--transition-fast);
+        }
+
+        .helper-btn.active {
           background: var(--primary-subtle);
           border-color: var(--border-accent);
           color: var(--primary-light);
         }
 
-        .bet-market-dropdown-item-name {
-          font-weight: 600;
+        .slip-note {
+          display: flex;
+          align-items: flex-start;
+          gap: 10px;
+          margin-top: 12px;
+          padding: 12px 14px;
+          background: rgba(56, 189, 248, 0.08);
+          border: 1px solid rgba(56, 189, 248, 0.18);
+          border-radius: var(--radius-md);
+          color: var(--text-secondary);
+          font-size: 0.84rem;
+          line-height: 1.5;
         }
 
-        .bet-market-dropdown-item-result {
-          font-weight: 700;
+        .preview-summary-grid {
+          display: grid;
+          grid-template-columns: repeat(4, minmax(0, 1fr));
+          gap: 12px;
+        }
+
+        .preview-stat {
+          padding: 16px;
+          background: var(--bg-surface);
+          border: 1px solid var(--border);
+          border-radius: var(--radius-md);
+        }
+
+        .preview-stat-label {
+          display: block;
+          font-size: 0.72rem;
           color: var(--text-muted);
-          font-size: 0.8rem;
-          letter-spacing: 0.04em;
+          margin-bottom: 6px;
+          text-transform: uppercase;
+          letter-spacing: 0.05em;
         }
 
-        .bet-market-dropdown-item.active .bet-market-dropdown-item-result {
+        .preview-stat strong {
+          font-size: 1.1rem;
+          color: var(--text-primary);
+        }
+
+        .slip-action-bar {
+          position: sticky;
+          bottom: 16px;
+          display: flex;
+          justify-content: flex-end;
+          gap: 12px;
+          padding: 14px 16px;
+          background: rgba(15, 23, 42, 0.82);
+          border: 1px solid var(--border);
+          border-radius: var(--radius-lg);
+          backdrop-filter: blur(12px);
+        }
+
+        .catalog-rate-chips {
+          display: flex;
+          gap: 8px;
+          flex-wrap: wrap;
+        }
+
+        .catalog-chip {
+          padding: 8px 14px;
+          border-radius: 999px;
+          background: var(--bg-surface);
+          border: 1px solid var(--border);
+          color: var(--text-secondary);
+          font-size: 0.82rem;
+          font-weight: 700;
+          transition: var(--transition-fast);
+        }
+
+        .catalog-chip-active {
+          background: var(--primary-subtle);
+          border-color: var(--border-accent);
           color: var(--primary-light);
         }
 
-        /* Bet Type Tabs */
         .bet-type-tabs {
           display: flex;
-          gap: 6px;
+          gap: 8px;
           overflow-x: auto;
-          padding: 2px 0;
-          -webkit-overflow-scrolling: touch;
+          padding-bottom: 4px;
           scrollbar-width: none;
         }
 
@@ -437,273 +587,49 @@ const CustomerBet = () => {
           display: flex;
           flex-direction: column;
           align-items: center;
-          gap: 2px;
+          gap: 4px;
           padding: 10px 16px;
           border-radius: var(--radius-md);
-          background: var(--bg-card);
+          background: var(--bg-surface);
           border: 1px solid var(--border);
           color: var(--text-secondary);
-          cursor: pointer;
+          min-width: 92px;
           transition: var(--transition-fast);
-          white-space: nowrap;
-          min-width: 80px;
-        }
-
-        .bet-type-tab:hover {
-          border-color: var(--border-accent);
         }
 
         .bet-type-tab.active {
-          background: linear-gradient(135deg, var(--primary), var(--primary-dark));
-          border-color: var(--primary);
           color: white;
+          border-color: var(--primary);
+          background: linear-gradient(135deg, var(--primary), var(--primary-dark));
         }
 
         .bet-type-tab-label {
           font-size: 0.8rem;
-          font-weight: 600;
+          font-weight: 700;
+          white-space: nowrap;
         }
 
         .bet-type-tab-rate {
-          font-size: 0.7rem;
-          opacity: 0.7;
+          font-size: 0.72rem;
+          opacity: 0.85;
         }
 
-        /* Bet Entry Cards */
-        .bet-entries {
-          display: flex;
-          flex-direction: column;
-          gap: 8px;
-        }
-
-        .bet-entry-card {
-          background: var(--bg-card);
-          border: 1px solid var(--border);
-          border-radius: var(--radius-md);
-          padding: 14px;
-        }
-
-        .bet-entry-top {
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          margin-bottom: 10px;
-        }
-
-        .bet-entry-type {
-          padding: 6px 12px;
-          background: var(--bg-surface);
-          border: 1px solid var(--border);
-          border-radius: var(--radius-sm);
-          color: var(--text-primary);
-          font-size: 0.82rem;
-          font-weight: 600;
-          appearance: none;
-          background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' fill='%2394a3b8' viewBox='0 0 16 16'%3E%3Cpath d='M8 11L3 6h10z'/%3E%3C/svg%3E");
-          background-repeat: no-repeat;
-          background-position: right 10px center;
-          padding-right: 28px;
-        }
-
-        .bet-entry-remove {
-          width: 30px;
-          height: 30px;
-          border-radius: 50%;
-          background: rgba(239, 68, 68, 0.1);
-          border: none;
-          color: var(--danger);
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          cursor: pointer;
-          font-size: 0.9rem;
-          transition: var(--transition-fast);
-        }
-
-        .bet-entry-remove:hover {
-          background: var(--danger);
-          color: white;
-        }
-
-        .bet-entry-inputs {
-          display: grid;
-          grid-template-columns: 1fr 1fr;
-          gap: 8px;
-        }
-
-        .bet-entry-number-wrap,
-        .bet-entry-amount-wrap {
-          position: relative;
-        }
-
-        .bet-entry-number {
-          width: 100%;
-          padding: 14px 12px;
-          background: var(--bg-input);
-          border: 1px solid var(--border);
-          border-radius: var(--radius-sm);
-          color: var(--text-primary);
-          font-size: 1.4rem;
-          font-weight: 800;
-          text-align: center;
-          letter-spacing: 0.2em;
-          transition: var(--transition-fast);
-        }
-
-        .bet-entry-number:focus {
-          border-color: var(--primary);
-          box-shadow: 0 0 0 3px var(--primary-subtle);
-        }
-
-        .bet-entry-number::placeholder {
-          font-size: 0.85rem;
-          font-weight: 400;
-          letter-spacing: 0;
-          color: var(--text-muted);
-        }
-
-        .bet-entry-amount {
-          width: 100%;
-          padding: 14px 30px 14px 12px;
-          background: var(--bg-input);
-          border: 1px solid var(--border);
-          border-radius: var(--radius-sm);
-          color: var(--text-primary);
-          font-size: 1.1rem;
-          font-weight: 700;
-          transition: var(--transition-fast);
-        }
-
-        .bet-entry-amount:focus {
-          border-color: var(--primary);
-          box-shadow: 0 0 0 3px var(--primary-subtle);
-        }
-
-        .bet-entry-amount::placeholder {
-          font-size: 0.85rem;
-          font-weight: 400;
-          color: var(--text-muted);
-        }
-
-        .bet-entry-currency {
-          position: absolute;
-          right: 12px;
-          top: 50%;
-          transform: translateY(-50%);
-          color: var(--text-muted);
-          font-weight: 600;
-          font-size: 0.85rem;
-          pointer-events: none;
-        }
-
-        .bet-entry-preview {
-          margin-top: 8px;
-          padding: 8px 10px;
-          background: var(--bg-surface);
-          border-radius: var(--radius-sm);
-          font-size: 0.78rem;
-          color: var(--text-secondary);
-        }
-
-        .bet-add-btn {
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          gap: 6px;
-          padding: 14px;
-          border-radius: var(--radius-md);
-          border: 2px dashed var(--border);
-          background: none;
-          color: var(--text-muted);
-          font-size: 0.9rem;
-          font-weight: 600;
-          cursor: pointer;
-          transition: var(--transition-fast);
-        }
-
-        .bet-add-btn:hover {
-          border-color: var(--primary);
-          color: var(--primary-light);
-          background: var(--primary-subtle);
-        }
-
-        /* Submit Bar */
-        .bet-submit-bar {
-          position: fixed;
-          bottom: 64px;
-          left: 0;
-          right: 0;
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          padding: 12px 16px;
-          background: var(--bg-surface);
-          border-top: 1px solid var(--border);
-          z-index: 90;
-          backdrop-filter: blur(12px);
-        }
-
-        .bet-submit-info {
-          display: flex;
-          flex-direction: column;
-        }
-
-        .bet-submit-count {
-          font-size: 0.75rem;
-          color: var(--text-muted);
-        }
-
-        .bet-submit-total {
-          font-size: 1.2rem;
-          font-weight: 800;
-          color: var(--primary-light);
-        }
-
-        .bet-submit-btn {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-          padding: 12px 28px;
-          background: linear-gradient(135deg, var(--primary), var(--primary-dark));
-          color: white;
-          border: none;
-          border-radius: var(--radius-md);
-          font-size: 0.95rem;
-          font-weight: 700;
-          cursor: pointer;
-          transition: var(--transition);
-          box-shadow: 0 4px 16px var(--primary-glow);
-        }
-
-        .bet-submit-btn:hover:not(:disabled) {
-          background: linear-gradient(135deg, var(--primary-light), var(--primary));
-          transform: translateY(-1px);
-        }
-
-        .bet-submit-btn:disabled {
-          opacity: 0.4;
-          cursor: not-allowed;
-          transform: none;
-        }
-
-        @media (min-width: 769px) {
-          .bet-submit-bar {
-            bottom: 0;
-          }
-
-          .bet-market-dropdown-list {
-            grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-          }
-        }
-
-        @media (max-width: 480px) {
-          .bet-entry-inputs {
+        @media (max-width: 920px) {
+          .slip-console-hero,
+          .slip-grid,
+          .preview-summary-grid {
             grid-template-columns: 1fr;
           }
+        }
 
-          .bet-type-tab {
-            min-width: 70px;
-            padding: 8px 12px;
+        @media (max-width: 640px) {
+          .slip-action-bar {
+            flex-direction: column;
+          }
+
+          .slip-action-bar .btn {
+            width: 100%;
+            justify-content: center;
           }
         }
       `}</style>

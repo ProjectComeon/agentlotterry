@@ -4,25 +4,23 @@ const authorize = require('../middleware/rbac');
 const LotteryResult = require('../models/LotteryResult');
 const { fetchLotteryResult, saveLotteryResult, getLatestResult } = require('../services/lotteryService');
 const { getMarketOverview } = require('../services/marketResultsService');
-const { calculateResults } = require('../services/calculationService');
 const { createAuditLog } = require('../middleware/auditLog');
 
 const router = express.Router();
 
-// GET /api/lottery/latest - ดูผลหวยล่าสุด (all roles)
 router.get('/latest', auth, async (req, res) => {
   try {
     const result = await getLatestResult();
     if (!result) {
       return res.json({ message: 'No lottery results available', result: null });
     }
+
     res.json(result);
   } catch (error) {
     res.status(500).json({ message: 'Server error' });
   }
 });
 
-// GET /api/lottery/results - ดูผลหวยทั้งหมด
 router.get('/results', auth, async (req, res) => {
   try {
     const results = await LotteryResult.find().sort({ roundDate: -1 }).limit(20);
@@ -42,7 +40,6 @@ router.get('/markets', auth, async (req, res) => {
   }
 });
 
-// POST /api/lottery/fetch - ดึงผลหวยจาก API (Admin only)
 router.post('/fetch', auth, authorize('admin'), async (req, res) => {
   try {
     const { roundDate } = req.body;
@@ -52,13 +49,17 @@ router.post('/fetch', auth, authorize('admin'), async (req, res) => {
     }
 
     const resultData = await fetchLotteryResult(roundDate);
-    const saved = await saveLotteryResult(resultData);
+    const saved = await saveLotteryResult({
+      ...resultData,
+      sourceType: 'api'
+    });
 
-    await createAuditLog(req.user._id, 'FETCH_LOTTERY', roundDate);
+    await createAuditLog(req.user._id, 'FETCH_LOTTERY', roundDate, saved.settlement || {});
 
     res.json({
-      message: 'Lottery result fetched and saved successfully',
-      result: saved
+      message: 'Lottery result fetched, saved, and settled successfully',
+      result: saved.result,
+      settlement: saved.settlement
     });
   } catch (error) {
     console.error('Fetch lottery error:', error);
@@ -66,7 +67,6 @@ router.post('/fetch', auth, authorize('admin'), async (req, res) => {
   }
 });
 
-// POST /api/lottery/manual - บันทึกผลหวยเอง (Admin only)
 router.post('/manual', auth, authorize('admin'), async (req, res) => {
   try {
     const { roundDate, firstPrize, threeTopList, threeBotList, twoBottom, runTop, runBottom } = req.body;
@@ -83,41 +83,21 @@ router.post('/manual', auth, authorize('admin'), async (req, res) => {
       twoBottom: twoBottom || firstPrize.slice(-2),
       runTop: runTop || [],
       runBottom: runBottom || [],
-      fetchedAt: new Date()
+      fetchedAt: new Date(),
+      sourceType: 'manual'
     };
 
     const saved = await saveLotteryResult(resultData);
-    await createAuditLog(req.user._id, 'MANUAL_LOTTERY', roundDate, resultData);
+    await createAuditLog(req.user._id, 'MANUAL_LOTTERY', roundDate, saved.settlement || {});
 
     res.json({
-      message: 'Lottery result saved successfully',
-      result: saved
+      message: 'Lottery result saved and settled successfully',
+      result: saved.result,
+      settlement: saved.settlement
     });
   } catch (error) {
     console.error('Manual lottery error:', error);
-    res.status(500).json({ message: 'Server error' });
-  }
-});
-
-// POST /api/lottery/calculate - คำนวณผล (Admin only)
-router.post('/calculate', auth, authorize('admin'), async (req, res) => {
-  try {
-    const { roundDate } = req.body;
-
-    if (!roundDate) {
-      return res.status(400).json({ message: 'Round date is required' });
-    }
-
-    const result = await calculateResults(roundDate);
-    await createAuditLog(req.user._id, 'CALCULATE_RESULTS', roundDate, result);
-
-    res.json({
-      message: 'Results calculated and bets locked successfully',
-      ...result
-    });
-  } catch (error) {
-    console.error('Calculate error:', error);
-    res.status(500).json({ message: error.message || 'Failed to calculate results' });
+    res.status(500).json({ message: error.message || 'Server error' });
   }
 });
 

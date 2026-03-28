@@ -1,9 +1,25 @@
 const express = require('express');
 const User = require('../models/User');
-const Bet = require('../models/Bet');
 const auth = require('../middleware/auth');
 const authorize = require('../middleware/rbac');
 const { createAuditLog } = require('../middleware/auditLog');
+const {
+  getBetTotals,
+  getRecentBetItems,
+  getTotalsGroupedByField,
+  getAgentReportRows,
+  listAgentBetItems,
+  getAgentReportsBundle
+} = require('../services/analyticsService');
+const {
+  getAgentMemberBootstrap,
+  getAgentMembers,
+  getAgentMemberDetail,
+  createAgentMember,
+  updateAgentMember,
+  deactivateAgentMember,
+  isUserOnline
+} = require('../services/memberManagementService');
 
 const router = express.Router();
 
@@ -14,37 +30,62 @@ router.use(auth, authorize('agent'));
 router.get('/dashboard', async (req, res) => {
   try {
     const agentId = req.user._id;
-    
-    const totalCustomers = await User.countDocuments({ agentId, role: 'customer' });
-    const activeCustomers = await User.countDocuments({ agentId, role: 'customer', isActive: true });
-    
-    const betStats = await Bet.aggregate([
-      { $match: { agentId: agentId } },
-      { $group: {
-        _id: null,
-        totalAmount: { $sum: '$amount' },
-        totalWon: { $sum: '$wonAmount' },
-        totalBets: { $sum: 1 },
-        pendingBets: { $sum: { $cond: [{ $eq: ['$result', 'pending'] }, 1, 0] } }
-      }}
+    const onlineSince = new Date(Date.now() - 5 * 60 * 1000);
+    const [totalCustomers, activeCustomers, onlineCustomers, memberRows, betStats, recentBets, onlineMemberRows] = await Promise.all([
+      User.countDocuments({ agentId, role: 'customer' }),
+      User.countDocuments({ agentId, role: 'customer', isActive: true }),
+      User.countDocuments({
+        agentId,
+        role: 'customer',
+        isActive: true,
+        status: 'active',
+        lastActiveAt: { $gte: onlineSince }
+      }),
+      User.find({ agentId, role: 'customer' })
+        .select('creditBalance stockPercent isActive status lastActiveAt'),
+      getBetTotals({ agentId }),
+      getRecentBetItems({ agentId, limit: 10 }),
+      User.find({
+        agentId,
+        role: 'customer',
+        isActive: true,
+        status: 'active',
+        lastActiveAt: { $gte: onlineSince }
+      })
+        .select('name username memberCode lastActiveAt')
+        .sort({ lastActiveAt: -1 })
+        .limit(6)
     ]);
 
-    const recentBets = await Bet.find({ agentId })
-      .sort({ createdAt: -1 })
-      .limit(10)
-      .populate('customerId', 'name username');
+    const totalCreditBalance = memberRows.reduce((sum, member) => sum + (member.creditBalance || 0), 0);
+    const averageStockPercent = memberRows.length
+      ? memberRows.reduce((sum, member) => sum + (member.stockPercent || 0), 0) / memberRows.length
+      : 0;
 
     res.json({
       stats: {
         totalCustomers,
         activeCustomers,
-        totalBets: betStats[0]?.totalBets || 0,
-        pendingBets: betStats[0]?.pendingBets || 0,
-        totalAmount: betStats[0]?.totalAmount || 0,
-        totalWon: betStats[0]?.totalWon || 0,
-        netProfit: (betStats[0]?.totalAmount || 0) - (betStats[0]?.totalWon || 0)
+        onlineCustomers,
+        agentCreditBalance: req.user.creditBalance || 0,
+        totalBets: betStats.totalBets,
+        pendingBets: betStats.pendingBets,
+        totalAmount: betStats.totalAmount,
+        totalWon: betStats.totalWon,
+        netProfit: betStats.netProfit,
+        totalCreditBalance,
+        averageStockPercent
       },
       recentBets
+      ,
+      onlineMembers: onlineMemberRows.map((member) => ({
+        id: member._id.toString(),
+        name: member.name,
+        username: member.username,
+        memberCode: member.memberCode || '',
+        lastActiveAt: member.lastActiveAt,
+        isOnline: isUserOnline(member)
+      }))
     });
   } catch (error) {
     console.error('Agent dashboard error:', error);
@@ -52,34 +93,156 @@ router.get('/dashboard', async (req, res) => {
   }
 });
 
+// GET /api/agent/config/bootstrap
+router.get('/config/bootstrap', async (req, res) => {
+  try {
+    const bootstrap = await getAgentMemberBootstrap({ agentId: req.user._id });
+    res.json(bootstrap);
+  } catch (error) {
+    console.error('Agent config bootstrap error:', error);
+    res.status(500).json({ message: 'Failed to load member config bootstrap' });
+  }
+});
+
+// GET /api/agent/config/members/:id
+router.get('/config/members/:id', async (req, res) => {
+  try {
+    const detail = await getAgentMemberDetail({
+      agentId: req.user._id,
+      memberId: req.params.id
+    });
+
+    res.json({
+      member: detail.member,
+      lotteryConfigs: detail.lotteryConfigs
+    });
+  } catch (error) {
+    res.status(404).json({ message: error.message || 'Member not found' });
+  }
+});
+
+// PUT /api/agent/config/members/:id/lotteries
+router.put('/config/members/:id/lotteries', async (req, res) => {
+  try {
+    const detail = await updateAgentMember({
+      agentId: req.user._id,
+      memberId: req.params.id,
+      payload: {
+        lotterySettings: req.body.lotterySettings || []
+      }
+    });
+
+    await createAuditLog(req.user._id, 'UPDATE_MEMBER_LOTTERY_CONFIG', detail.member.id, {
+      enabledLotteryCount: detail.lotteryConfigs.filter((lottery) => lottery.isEnabled).length
+    });
+
+    res.json({
+      member: detail.member,
+      lotteryConfigs: detail.lotteryConfigs
+    });
+  } catch (error) {
+    res.status(400).json({ message: error.message || 'Failed to update lottery config' });
+  }
+});
+
+// GET /api/agent/members
+router.get('/members', async (req, res) => {
+  try {
+    const members = await getAgentMembers({
+      agentId: req.user._id,
+      search: req.query.search || '',
+      status: req.query.status || '',
+      online: req.query.online || ''
+    });
+
+    res.json(members);
+  } catch (error) {
+    console.error('Agent members list error:', error);
+    res.status(500).json({ message: 'Failed to load members' });
+  }
+});
+
+// GET /api/agent/members/:id
+router.get('/members/:id', async (req, res) => {
+  try {
+    const detail = await getAgentMemberDetail({
+      agentId: req.user._id,
+      memberId: req.params.id
+    });
+
+    res.json(detail);
+  } catch (error) {
+    res.status(404).json({ message: error.message || 'Member not found' });
+  }
+});
+
+// POST /api/agent/members
+router.post('/members', async (req, res) => {
+  try {
+    const detail = await createAgentMember({
+      agentId: req.user._id,
+      payload: req.body
+    });
+
+    await createAuditLog(req.user._id, 'CREATE_MEMBER', detail.member.id, {
+      username: detail.member.username,
+      name: detail.member.name,
+      memberCode: detail.member.memberCode
+    });
+
+    res.status(201).json(detail);
+  } catch (error) {
+    res.status(400).json({ message: error.message || 'Failed to create member' });
+  }
+});
+
+// PUT /api/agent/members/:id
+router.put('/members/:id', async (req, res) => {
+  try {
+    const detail = await updateAgentMember({
+      agentId: req.user._id,
+      memberId: req.params.id,
+      payload: req.body
+    });
+
+    await createAuditLog(req.user._id, 'UPDATE_MEMBER', detail.member.id, {
+      username: detail.member.username,
+      name: detail.member.name,
+      memberCode: detail.member.memberCode
+    });
+
+    res.json(detail);
+  } catch (error) {
+    res.status(400).json({ message: error.message || 'Failed to update member' });
+  }
+});
+
 // GET /api/agent/customers
 router.get('/customers', async (req, res) => {
   try {
-    const customers = await User.find({ agentId: req.user._id, role: 'customer' })
-      .select('-password')
-      .sort({ createdAt: -1 });
+    const members = await getAgentMembers({
+      agentId: req.user._id,
+      search: req.query.search || '',
+      status: req.query.status || '',
+      online: req.query.online || ''
+    });
 
-    const customersWithStats = await Promise.all(
-      customers.map(async (customer) => {
-        const betStats = await Bet.aggregate([
-          { $match: { customerId: customer._id } },
-          { $group: {
-            _id: null,
-            totalAmount: { $sum: '$amount' },
-            totalWon: { $sum: '$wonAmount' },
-            count: { $sum: 1 }
-          }}
-        ]);
-        return {
-          ...customer.toJSON(),
-          totalBets: betStats[0]?.count || 0,
-          totalAmount: betStats[0]?.totalAmount || 0,
-          totalWon: betStats[0]?.totalWon || 0
-        };
-      })
-    );
-
-    res.json(customersWithStats);
+    res.json(members.map((member) => ({
+      _id: member.id,
+      username: member.username,
+      name: member.name,
+      memberCode: member.memberCode,
+      phone: member.phone,
+      isActive: member.isActive,
+      status: member.status,
+      isOnline: member.isOnline,
+      creditBalance: member.creditBalance,
+      stockPercent: member.stockPercent,
+      lastActiveAt: member.lastActiveAt,
+      totalBets: member.totals.totalBets,
+      totalAmount: member.totals.totalAmount,
+      totalWon: member.totals.totalWon
+    })));
   } catch (error) {
     res.status(500).json({ message: 'Server error' });
   }
@@ -88,80 +251,51 @@ router.get('/customers', async (req, res) => {
 // POST /api/agent/customers
 router.post('/customers', async (req, res) => {
   try {
-    const { username, password, name, phone } = req.body;
-
-    if (!username || !password || !name) {
-      return res.status(400).json({ message: 'Username, password, and name are required' });
-    }
-
-    const existing = await User.findOne({ username: username.toLowerCase() });
-    if (existing) {
-      return res.status(400).json({ message: 'Username already exists' });
-    }
-
-    const customer = await User.create({
-      username,
-      password,
-      role: 'customer',
-      name,
-      phone: phone || '',
-      agentId: req.user._id
+    const detail = await createAgentMember({
+      agentId: req.user._id,
+      payload: req.body
     });
 
-    await createAuditLog(req.user._id, 'CREATE_CUSTOMER', customer._id.toString(), { name });
-    res.status(201).json(customer);
+    await createAuditLog(req.user._id, 'CREATE_CUSTOMER', detail.member.id, { name: detail.member.name });
+    res.status(201).json(detail.member);
   } catch (error) {
-    res.status(500).json({ message: 'Server error' });
+    res.status(400).json({ message: error.message || 'Server error' });
   }
 });
 
 // PUT /api/agent/customers/:id
 router.put('/customers/:id', async (req, res) => {
   try {
-    const { name, phone, isActive, password } = req.body;
-    const customer = await User.findOne({ 
-      _id: req.params.id, 
-      role: 'customer',
-      agentId: req.user._id 
+    const payload = {
+      ...req.body,
+      status: req.body.status || (req.body.isActive === false ? 'inactive' : req.body.isActive === true ? 'active' : undefined)
+    };
+
+    const detail = await updateAgentMember({
+      agentId: req.user._id,
+      memberId: req.params.id,
+      payload
     });
 
-    if (!customer) {
-      return res.status(404).json({ message: 'Customer not found' });
-    }
-
-    if (name) customer.name = name;
-    if (phone !== undefined) customer.phone = phone;
-    if (isActive !== undefined) customer.isActive = isActive;
-    if (password) customer.password = password;
-
-    await customer.save();
-    await createAuditLog(req.user._id, 'UPDATE_CUSTOMER', customer._id.toString(), { name });
-    res.json(customer);
+    await createAuditLog(req.user._id, 'UPDATE_CUSTOMER', detail.member.id, { name: detail.member.name });
+    res.json(detail.member);
   } catch (error) {
-    res.status(500).json({ message: 'Server error' });
+    res.status(400).json({ message: error.message || 'Server error' });
   }
 });
 
 // DELETE /api/agent/customers/:id
 router.delete('/customers/:id', async (req, res) => {
   try {
-    const customer = await User.findOne({ 
-      _id: req.params.id, 
-      role: 'customer',
-      agentId: req.user._id 
+    const customer = await deactivateAgentMember({
+      agentId: req.user._id,
+      memberId: req.params.id
     });
-
-    if (!customer) {
-      return res.status(404).json({ message: 'Customer not found' });
-    }
-
-    customer.isActive = false;
-    await customer.save();
 
     await createAuditLog(req.user._id, 'DEACTIVATE_CUSTOMER', customer._id.toString(), { name: customer.name });
     res.json({ message: 'Customer deactivated successfully' });
   } catch (error) {
-    res.status(500).json({ message: 'Server error' });
+    res.status(404).json({ message: error.message || 'Server error' });
   }
 });
 
@@ -169,14 +303,12 @@ router.delete('/customers/:id', async (req, res) => {
 router.get('/bets', async (req, res) => {
   try {
     const { roundDate, customerId, marketId } = req.query;
-    const filter = { agentId: req.user._id };
-    if (roundDate) filter.roundDate = roundDate;
-    if (customerId) filter.customerId = customerId;
-    if (marketId) filter.marketId = marketId;
-
-    const bets = await Bet.find(filter)
-      .sort({ createdAt: -1 })
-      .populate('customerId', 'name username');
+    const bets = await listAgentBetItems({
+      agentId: req.user._id,
+      roundDate,
+      customerId,
+      marketId
+    });
 
     res.json(bets);
   } catch (error) {
@@ -187,42 +319,17 @@ router.get('/bets', async (req, res) => {
 // GET /api/agent/reports
 router.get('/reports', async (req, res) => {
   try {
-    const { roundDate, marketId } = req.query;
-    const matchFilter = { agentId: req.user._id };
-    if (roundDate) matchFilter.roundDate = roundDate;
-    if (marketId) matchFilter.marketId = marketId;
+    const { roundDate, marketId, customerId, startDate, endDate, legacy } = req.query;
+    const report = await getAgentReportsBundle({
+      agentId: req.user._id,
+      roundDate,
+      marketId,
+      customerId,
+      startDate,
+      endDate
+    });
 
-    const report = await Bet.aggregate([
-      { $match: matchFilter },
-      { $group: {
-        _id: {
-          roundDate: '$roundDate',
-          marketId: '$marketId',
-          marketName: '$marketName'
-        },
-        totalAmount: { $sum: '$amount' },
-        totalWon: { $sum: '$wonAmount' },
-        betCount: { $sum: 1 },
-        wonCount: { $sum: { $cond: [{ $eq: ['$result', 'won'] }, 1, 0] } },
-        lostCount: { $sum: { $cond: [{ $eq: ['$result', 'lost'] }, 1, 0] } },
-        pendingCount: { $sum: { $cond: [{ $eq: ['$result', 'pending'] }, 1, 0] } }
-      }},
-      { $project: {
-        roundDate: '$_id.roundDate',
-        marketId: '$_id.marketId',
-        marketName: '$_id.marketName',
-        totalAmount: 1,
-        totalWon: 1,
-        netProfit: { $subtract: ['$totalAmount', '$totalWon'] },
-        betCount: 1,
-        wonCount: 1,
-        lostCount: 1,
-        pendingCount: 1
-      }},
-      { $sort: { roundDate: -1, marketName: 1 } }
-    ]);
-
-    res.json(report);
+    res.json(legacy === '1' ? report.legacyRows : report);
   } catch (error) {
     res.status(500).json({ message: 'Server error' });
   }

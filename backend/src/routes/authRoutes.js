@@ -46,7 +46,17 @@ router.post('/login', async (req, res) => {
         username: user.username,
         name: user.name,
         role: user.role,
-        phone: user.phone
+        displayRole: user.displayRole || (user.role === 'customer' ? 'member' : user.role),
+        memberCode: user.memberCode,
+        phone: user.phone,
+        creditBalance: user.creditBalance,
+        stockPercent: user.stockPercent,
+        ownerPercent: user.ownerPercent,
+        keepPercent: user.keepPercent,
+        commissionRate: user.commissionRate,
+        status: user.status,
+        defaultRateProfileId: user.defaultRateProfileId,
+        lastActiveAt: user.lastActiveAt
       }
     });
   } catch (error) {

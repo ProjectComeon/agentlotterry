@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react';
-import { getCustomerSummary } from '../../services/api';
-import { FiTrendingUp, FiTrendingDown } from 'react-icons/fi';
+import { useEffect, useState } from 'react';
+import { FiTrendingDown, FiTrendingUp } from 'react-icons/fi';
+import { getMemberSummary } from '../../services/api';
 
 const CustomerSummary = () => {
   const [data, setData] = useState(null);
@@ -8,74 +8,84 @@ const CustomerSummary = () => {
 
   useEffect(() => {
     const load = async () => {
-      try { const res = await getCustomerSummary({}); setData(res.data); }
-      catch (err) { console.error(err); }
-      finally { setLoading(false); }
+      try {
+        const res = await getMemberSummary({});
+        setData(res.data);
+      } catch (error) {
+        console.error(error);
+      } finally {
+        setLoading(false);
+      }
     };
+
     load();
   }, []);
 
-  if (loading) return <div className="loading-container"><div className="spinner"></div></div>;
+  if (loading) {
+    return <div className="loading-container"><div className="spinner"></div></div>;
+  }
 
-  const o = data?.overall || { totalAmount: 0, totalWon: 0, netResult: 0, totalBets: 0 };
+  const overall = data?.overall || {
+    totalAmount: 0,
+    totalWon: 0,
+    netResult: 0,
+    totalBets: 0
+  };
 
   return (
     <div className="summary-page animate-fade-in">
       <h1 className="summary-title">สรุปได้เสีย</h1>
 
-      {/* Net result hero */}
-      <div className={`summary-hero ${o.netResult >= 0 ? 'positive' : 'negative'}`}>
+      <div className={`summary-hero ${overall.netResult >= 0 ? 'positive' : 'negative'}`}>
         <span className="summary-hero-label">ผลได้เสียรวม</span>
         <span className="summary-hero-value">
-          {o.netResult >= 0 ? '+' : ''}{o.netResult.toLocaleString()} ฿
+          {overall.netResult >= 0 ? '+' : ''}{overall.netResult.toLocaleString()} ฿
         </span>
         <span className="summary-hero-icon">
-          {o.netResult >= 0 ? <FiTrendingUp /> : <FiTrendingDown />}
+          {overall.netResult >= 0 ? <FiTrendingUp /> : <FiTrendingDown />}
         </span>
       </div>
 
-      {/* Stats row */}
       <div className="summary-stats">
         <div className="summary-stat">
-          <span className="summary-stat-value">{o.totalBets}</span>
+          <span className="summary-stat-value">{overall.totalBets}</span>
           <span className="summary-stat-label">แทง (ครั้ง)</span>
         </div>
         <div className="summary-stat-divider"></div>
         <div className="summary-stat">
-          <span className="summary-stat-value">{o.totalAmount.toLocaleString()}</span>
+          <span className="summary-stat-value">{overall.totalAmount.toLocaleString()}</span>
           <span className="summary-stat-label">ยอดแทง (฿)</span>
         </div>
         <div className="summary-stat-divider"></div>
         <div className="summary-stat">
-          <span className="summary-stat-value summary-stat-won">{o.totalWon.toLocaleString()}</span>
+          <span className="summary-stat-value summary-stat-won">{overall.totalWon.toLocaleString()}</span>
           <span className="summary-stat-label">ยอดถูก (฿)</span>
         </div>
       </div>
 
-      {/* Round cards */}
       <div className="summary-section-title">สรุปรายงวด</div>
       <div className="summary-rounds">
         {(!data?.rounds || data.rounds.length === 0) ? (
           <div className="empty-state">
             <div className="empty-state-text">ไม่มีข้อมูล</div>
           </div>
-        ) : data.rounds.map((r, i) => (
-          <div key={i} className="summary-round-card">
+        ) : data.rounds.map((round) => (
+          <div key={`${round.roundCode}-${round.marketId}`} className="summary-round-card">
             <div className="summary-round-top">
               <div>
-                <div className="summary-round-market">{r.marketName || 'รัฐบาลไทย'}</div>
-                <div className="summary-round-date">{r.roundDate} • {r.betCount} ครั้ง</div>
+                <div className="summary-round-market">{round.marketName || 'รัฐบาลไทย'}</div>
+                <div className="summary-round-date">{round.roundCode || round.roundDate} • {round.betCount} ครั้ง</div>
               </div>
-              <div className={`summary-round-net ${(r.netResult || 0) >= 0 ? 'positive' : 'negative'}`}>
-                {(r.netResult || 0) >= 0 ? '+' : ''}{(r.netResult || 0).toLocaleString()} ฿
+              <div className={`summary-round-net ${(round.netResult || 0) >= 0 ? 'positive' : 'negative'}`}>
+                {(round.netResult || 0) >= 0 ? '+' : ''}{(round.netResult || 0).toLocaleString()} ฿
               </div>
             </div>
             <div className="summary-round-bottom">
-              <span>แทง {(r.totalAmount || 0).toLocaleString()} ฿</span>
+              <span>แทง {(round.totalAmount || 0).toLocaleString()} ฿</span>
               <span className="summary-round-results">
-                <span className="summary-dot dot-won"></span>{r.wonCount}
-                <span className="summary-dot dot-lost"></span>{r.lostCount}
-                <span className="summary-dot dot-pending"></span>{r.pendingCount}
+                <span className="summary-dot dot-won"></span>{round.wonCount || 0}
+                <span className="summary-dot dot-lost"></span>{round.lostCount || 0}
+                <span className="summary-dot dot-pending"></span>{round.pendingCount || 0}
               </span>
             </div>
           </div>
@@ -95,7 +105,6 @@ const CustomerSummary = () => {
           color: var(--text-primary);
         }
 
-        /* Hero */
         .summary-hero {
           position: relative;
           padding: 24px;
@@ -141,7 +150,6 @@ const CustomerSummary = () => {
         .summary-hero.positive .summary-hero-icon { color: var(--success); }
         .summary-hero.negative .summary-hero-icon { color: var(--danger); }
 
-        /* Stats row */
         .summary-stats {
           display: flex;
           align-items: center;
@@ -180,7 +188,6 @@ const CustomerSummary = () => {
           background: var(--border);
         }
 
-        /* Section */
         .summary-section-title {
           font-size: 0.85rem;
           font-weight: 700;
@@ -188,7 +195,6 @@ const CustomerSummary = () => {
           margin-top: 4px;
         }
 
-        /* Round cards */
         .summary-rounds {
           display: flex;
           flex-direction: column;
@@ -218,11 +224,10 @@ const CustomerSummary = () => {
         .summary-round-date {
           font-size: 0.72rem;
           color: var(--text-muted);
-          margin-top: 2px;
         }
 
         .summary-round-net {
-          font-size: 1rem;
+          font-size: 0.98rem;
           font-weight: 800;
         }
 

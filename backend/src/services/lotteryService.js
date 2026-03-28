@@ -1,5 +1,6 @@
 const axios = require('axios');
 const LotteryResult = require('../models/LotteryResult');
+const { settleRoundById, syncLegacyThaiGovernmentResult } = require('./resultService');
 
 const THAI_LOTTO_LATEST_URL = (process.env.THAI_LOTTO_API_URL || 'https://lotto.api.rayriffy.com').replace(/\/$/, '');
 
@@ -121,14 +122,23 @@ const fetchLotteryResult = async (roundDate) => {
  */
 const saveLotteryResult = async (resultData) => {
   const existing = await LotteryResult.findOne({ roundDate: resultData.roundDate });
-  
+  let savedResult = null;
+
   if (existing) {
     Object.assign(existing, resultData);
-    await existing.save();
-    return existing;
+    savedResult = await existing.save();
+  } else {
+    savedResult = await LotteryResult.create(resultData);
   }
 
-  return await LotteryResult.create(resultData);
+  const syncedResult = await syncLegacyThaiGovernmentResult(savedResult, resultData.sourceType || 'legacy');
+  const settlement = syncedResult ? await settleRoundById(syncedResult.round._id, { force: true }) : null;
+
+  return {
+    result: savedResult,
+    syncedResult,
+    settlement
+  };
 };
 
 /**

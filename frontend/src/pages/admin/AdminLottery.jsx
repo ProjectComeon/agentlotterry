@@ -1,95 +1,106 @@
-import { useState, useEffect } from 'react';
-import { getLatestLottery, getLotteryResults, fetchLottery, manualLottery, calculateLottery } from '../../services/api';
-import Modal from '../../components/Modal';
+import { useEffect, useState } from 'react';
 import toast from 'react-hot-toast';
-import { FiDownload, FiPlay, FiEdit3, FiAward } from 'react-icons/fi';
+import { FiAward, FiDownload, FiEdit3 } from 'react-icons/fi';
+import Modal from '../../components/Modal';
+import { fetchLottery, getLatestLottery, getLotteryResults, manualLottery } from '../../services/api';
 
 const AdminLottery = () => {
   const [latest, setLatest] = useState(null);
   const [results, setResults] = useState([]);
   const [loading, setLoading] = useState(true);
   const [fetchDate, setFetchDate] = useState('');
-  const [calcDate, setCalcDate] = useState('');
   const [showManual, setShowManual] = useState(false);
   const [manualForm, setManualForm] = useState({
-    roundDate: '', firstPrize: '', twoBottom: '',
-    threeTopList: '', threeBotList: '', runTop: '', runBottom: ''
+    roundDate: '',
+    firstPrize: '',
+    twoBottom: '',
+    threeTopList: '',
+    threeBotList: '',
+    runTop: '',
+    runBottom: ''
   });
 
-  useEffect(() => { loadData(); }, []);
+  useEffect(() => {
+    loadData();
+  }, []);
 
   const loadData = async () => {
     try {
       const [latestRes, resultsRes] = await Promise.all([getLatestLottery(), getLotteryResults()]);
       setLatest(latestRes.data);
       setResults(resultsRes.data);
-    } catch (err) { console.error(err); }
-    finally { setLoading(false); }
+    } catch (error) {
+      console.error(error);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleFetch = async () => {
     if (!fetchDate) return toast.error('กรุณาระบุวันที่งวด');
+
     try {
       toast.loading('กำลังดึงผลหวย...');
-      await fetchLottery({ roundDate: fetchDate });
+      const res = await fetchLottery({ roundDate: fetchDate });
       toast.dismiss();
-      toast.success('ดึงผลหวยสำเร็จ');
+      const settlement = res.data?.settlement;
+      if (settlement) {
+        toast.success(`บันทึกผลและสรุปโพยแล้ว: ถูก ${settlement.wonCount}, ไม่ถูก ${settlement.lostCount}`);
+      } else {
+        toast.success('ดึงผลหวยสำเร็จ');
+      }
       loadData();
-    } catch (err) {
+    } catch (error) {
       toast.dismiss();
-      toast.error(err.response?.data?.message || 'ดึงผลหวยไม่สำเร็จ');
+      toast.error(error.response?.data?.message || 'ดึงผลหวยไม่สำเร็จ');
     }
   };
 
-  const handleCalculate = async () => {
-    if (!calcDate) return toast.error('กรุณาระบุวันที่งวด');
-    if (!confirm(`ยืนยันคำนวณผลงวด ${calcDate} ? (Bets จะถูกล็อค)`)) return;
-    try {
-      const res = await calculateLottery({ roundDate: calcDate });
-      toast.success(`คำนวณเสร็จ! ถูก: ${res.data.wonCount}, ไม่ถูก: ${res.data.lostCount}`);
-      loadData();
-    } catch (err) {
-      toast.error(err.response?.data?.message || 'คำนวณไม่สำเร็จ');
-    }
-  };
+  const handleManualSave = async (event) => {
+    event.preventDefault();
 
-  const handleManualSave = async (e) => {
-    e.preventDefault();
     try {
-      const data = {
+      const payload = {
         ...manualForm,
-        threeTopList: manualForm.threeTopList ? manualForm.threeTopList.split(',').map(s => s.trim()) : [],
-        threeBotList: manualForm.threeBotList ? manualForm.threeBotList.split(',').map(s => s.trim()) : [],
-        runTop: manualForm.runTop ? manualForm.runTop.split(',').map(s => s.trim()) : [],
-        runBottom: manualForm.runBottom ? manualForm.runBottom.split(',').map(s => s.trim()) : [],
+        threeTopList: manualForm.threeTopList ? manualForm.threeTopList.split(',').map((item) => item.trim()) : [],
+        threeBotList: manualForm.threeBotList ? manualForm.threeBotList.split(',').map((item) => item.trim()) : [],
+        runTop: manualForm.runTop ? manualForm.runTop.split(',').map((item) => item.trim()) : [],
+        runBottom: manualForm.runBottom ? manualForm.runBottom.split(',').map((item) => item.trim()) : []
       };
-      await manualLottery(data);
-      toast.success('บันทึกผลหวยสำเร็จ');
+
+      const res = await manualLottery(payload);
+      const settlement = res.data?.settlement;
+      if (settlement) {
+        toast.success(`บันทึกผลและสรุปโพยแล้ว: ถูก ${settlement.wonCount}, ไม่ถูก ${settlement.lostCount}`);
+      } else {
+        toast.success('บันทึกผลหวยสำเร็จ');
+      }
       setShowManual(false);
       loadData();
-    } catch (err) {
-      toast.error(err.response?.data?.message || 'บันทึกไม่สำเร็จ');
+    } catch (error) {
+      toast.error(error.response?.data?.message || 'บันทึกไม่สำเร็จ');
     }
   };
 
-  if (loading) return <div className="loading-container"><div className="spinner"></div></div>;
+  if (loading) {
+    return <div className="loading-container"><div className="spinner"></div></div>;
+  }
 
   return (
     <div className="animate-fade-in">
       <div className="page-header">
         <div>
-          <h1 className="page-title">🎰 ผลหวย / คำนวณ</h1>
-          <p className="page-subtitle">ดึงผลหวย, กรอกเอง, คำนวณแพ้ชนะ</p>
+          <h1 className="page-title">ผลหวย</h1>
+          <p className="page-subtitle">ดึงผลหรือกรอกผล แล้วระบบจะสรุปโพยให้อัตโนมัติ</p>
         </div>
       </div>
 
-      {/* Latest Result */}
-      {latest && latest.firstPrize && (
+      {latest && latest.firstPrize ? (
         <div className="card mb-lg" style={{ borderColor: 'var(--border-accent)', boxShadow: 'var(--shadow-glow)' }}>
           <div className="card-header">
-            <h3 className="card-title"><FiAward style={{ marginRight: 8, color: 'var(--primary)' }} />ผลหวยล่าสุด - งวด {latest.roundDate}</h3>
+            <h3 className="card-title"><FiAward style={{ marginRight: 8, color: 'var(--primary)' }} />ผลล่าสุด - งวด {latest.roundDate}</h3>
             <span className={`badge ${latest.isCalculated ? 'badge-success' : 'badge-warning'}`}>
-              {latest.isCalculated ? 'คำนวณแล้ว' : 'ยังไม่คำนวณ'}
+              {latest.isCalculated ? 'สรุปโพยแล้ว' : 'รอสรุปโพย'}
             </span>
           </div>
           <div className="grid grid-3" style={{ gap: 16 }}>
@@ -107,34 +118,24 @@ const AdminLottery = () => {
             </div>
           </div>
         </div>
-      )}
+      ) : null}
 
-      {/* Actions */}
-      <div className="grid grid-3 mb-lg">
+      <div className="grid grid-2 mb-lg">
         <div className="card">
           <h4 style={{ marginBottom: 12, fontWeight: 600 }}><FiDownload style={{ marginRight: 6 }} />ดึงผลจาก API</h4>
           <div className="form-group">
-            <input className="form-input" placeholder="YYYY-MM-DD" value={fetchDate} onChange={(e) => setFetchDate(e.target.value)} />
+            <input className="form-input" placeholder="YYYY-MM-DD" value={fetchDate} onChange={(event) => setFetchDate(event.target.value)} />
           </div>
           <button className="btn btn-primary w-full" onClick={handleFetch}><FiDownload /> ดึงผล</button>
         </div>
 
         <div className="card">
-          <h4 style={{ marginBottom: 12, fontWeight: 600 }}><FiPlay style={{ marginRight: 6 }} />คำนวณผล</h4>
-          <div className="form-group">
-            <input className="form-input" placeholder="YYYY-MM-DD" value={calcDate} onChange={(e) => setCalcDate(e.target.value)} />
-          </div>
-          <button className="btn btn-primary w-full" onClick={handleCalculate}><FiPlay /> คำนวณ</button>
-        </div>
-
-        <div className="card">
           <h4 style={{ marginBottom: 12, fontWeight: 600 }}><FiEdit3 style={{ marginRight: 6 }} />กรอกผลเอง</h4>
-          <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: 12 }}>กรอกผลหวยเองในกรณี API ไม่ทำงาน</p>
+          <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: 12 }}>ใช้เมื่อ API ภายนอกยังไม่พร้อม แล้วระบบจะสรุปโพยให้อัตโนมัติหลังบันทึก</p>
           <button className="btn btn-secondary w-full" onClick={() => setShowManual(true)}><FiEdit3 /> กรอกผล</button>
         </div>
       </div>
 
-      {/* Results History */}
       <div className="card">
         <div className="card-header">
           <h3 className="card-title">ประวัติผลหวย</h3>
@@ -154,15 +155,15 @@ const AdminLottery = () => {
               {results.length === 0 ? (
                 <tr><td colSpan="5" className="text-center text-muted" style={{ padding: 40 }}>ไม่มีข้อมูล</td></tr>
               ) : (
-                results.map(r => (
-                  <tr key={r._id}>
-                    <td style={{ fontWeight: 600 }}>{r.roundDate}</td>
-                    <td style={{ color: 'var(--primary-light)', fontWeight: 700, fontSize: '1.1rem' }}>{r.firstPrize}</td>
-                    <td>{r.firstPrize?.slice(-3)}</td>
-                    <td>{r.twoBottom}</td>
+                results.map((result) => (
+                  <tr key={result._id}>
+                    <td style={{ fontWeight: 600 }}>{result.roundDate}</td>
+                    <td style={{ color: 'var(--primary-light)', fontWeight: 700, fontSize: '1.1rem' }}>{result.firstPrize}</td>
+                    <td>{result.firstPrize?.slice(-3)}</td>
+                    <td>{result.twoBottom}</td>
                     <td>
-                      <span className={`badge ${r.isCalculated ? 'badge-success' : 'badge-warning'}`}>
-                        {r.isCalculated ? 'คำนวณแล้ว' : 'รอคำนวณ'}
+                      <span className={`badge ${result.isCalculated ? 'badge-success' : 'badge-warning'}`}>
+                        {result.isCalculated ? 'สรุปโพยแล้ว' : 'รอสรุปโพย'}
                       </span>
                     </td>
                   </tr>
@@ -173,26 +174,25 @@ const AdminLottery = () => {
         </div>
       </div>
 
-      {/* Manual Entry Modal */}
       <Modal isOpen={showManual} onClose={() => setShowManual(false)} title="กรอกผลหวย" size="lg">
         <form onSubmit={handleManualSave}>
           <div className="grid grid-2">
             <div className="form-group">
               <label className="form-label">วันที่งวด (YYYY-MM-DD) *</label>
-              <input className="form-input" value={manualForm.roundDate} onChange={(e) => setManualForm({...manualForm, roundDate: e.target.value})} required />
+              <input className="form-input" value={manualForm.roundDate} onChange={(event) => setManualForm({ ...manualForm, roundDate: event.target.value })} required />
             </div>
             <div className="form-group">
               <label className="form-label">รางวัลที่ 1 (6 หลัก) *</label>
-              <input className="form-input" value={manualForm.firstPrize} onChange={(e) => setManualForm({...manualForm, firstPrize: e.target.value})} required maxLength={6} />
+              <input className="form-input" value={manualForm.firstPrize} onChange={(event) => setManualForm({ ...manualForm, firstPrize: event.target.value })} required maxLength={6} />
             </div>
             <div className="form-group">
               <label className="form-label">2 ตัวล่าง</label>
-              <input className="form-input" value={manualForm.twoBottom} onChange={(e) => setManualForm({...manualForm, twoBottom: e.target.value})} maxLength={2} />
+              <input className="form-input" value={manualForm.twoBottom} onChange={(event) => setManualForm({ ...manualForm, twoBottom: event.target.value })} maxLength={2} />
             </div>
           </div>
           <div className="modal-footer">
             <button type="button" className="btn btn-secondary" onClick={() => setShowManual(false)}>ยกเลิก</button>
-            <button type="submit" className="btn btn-primary">บันทึก</button>
+            <button type="submit" className="btn btn-primary">บันทึกผล</button>
           </div>
         </form>
       </Modal>

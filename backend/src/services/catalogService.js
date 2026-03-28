@@ -1,0 +1,525 @@
+const Announcement = require('../models/Announcement');
+const AnnouncementRead = require('../models/AnnouncementRead');
+const DrawRound = require('../models/DrawRound');
+const LotteryLeague = require('../models/LotteryLeague');
+const LotteryResult = require('../models/LotteryResult');
+const LotteryType = require('../models/LotteryType');
+const RateProfile = require('../models/RateProfile');
+const ResultRecord = require('../models/ResultRecord');
+const { getMemberConfigRows } = require('./memberManagementService');
+const {
+  DEFAULT_RATE_TIERS,
+  LOTTERY_LEAGUES,
+  LOTTERY_TYPES,
+  DEFAULT_ANNOUNCEMENTS
+} = require('../constants/catalogDefinitions');
+const {
+  createBangkokDate,
+  formatBangkokDate,
+  formatBangkokDateTime,
+  getBangkokParts
+} = require('../utils/bangkokTime');
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+let catalogSeedPromise = null;
+const toIdString = (value) => value?._id?.toString?.() || value?.toString?.() || '';
+
+const upsertByCode = async (Model, code, payload) => {
+  await Model.updateOne({ code }, { $set: payload }, { upsert: true });
+  return Model.findOne({ code });
+};
+
+const getBangkokWeekday = (date) => {
+  const shifted = new Date(date.getTime() + 7 * 60 * 60 * 1000);
+  return shifted.getUTCDay();
+};
+
+const getRoundStatus = (round, now = new Date()) => {
+  if (!round) {
+    return {
+      status: 'missing',
+      label: 'ยังไม่มีงวด',
+      countdownSeconds: null
+    };
+  }
+
+  if (round.resultPublishedAt) {
+    return {
+      status: 'resulted',
+      label: 'ประกาศผลแล้ว',
+      countdownSeconds: 0
+    };
+  }
+
+  if (now < round.openAt) {
+    return {
+      status: 'upcoming',
+      label: 'กำลังจะเปิดรับ',
+      countdownSeconds: Math.max(0, Math.floor((round.openAt - now) / 1000))
+    };
+  }
+
+  if (now >= round.openAt && now <= round.closeAt) {
+    return {
+      status: 'open',
+      label: 'เปิดรับเดิมพัน',
+      countdownSeconds: Math.max(0, Math.floor((round.closeAt - now) / 1000))
+    };
+  }
+
+  return {
+    status: 'closed',
+    label: 'ปิดรับ รอผล',
+    countdownSeconds: Math.max(0, Math.floor((round.drawAt - now) / 1000))
+  };
+};
+
+const buildMonthlyOccurrences = (schedule, startDate, horizonDays) => {
+  const occurrences = [];
+  const start = new Date(startDate.getTime() - schedule.openLeadDays * DAY_MS);
+  const end = new Date(startDate.getTime() + horizonDays * DAY_MS);
+
+  for (let cursor = new Date(start); cursor <= end; cursor = new Date(cursor.getTime() + DAY_MS)) {
+    const parts = getBangkokParts(cursor);
+    if (!schedule.days.includes(parts.day)) continue;
+
+    const drawAt = createBangkokDate(parts.year, parts.month, parts.day, schedule.drawHour, schedule.drawMinute);
+    const closeAt = createBangkokDate(parts.year, parts.month, parts.day, schedule.closeHour, schedule.closeMinute);
+    const openAt = new Date(drawAt.getTime() - schedule.openLeadDays * DAY_MS);
+
+    occurrences.push({
+      code: formatBangkokDate(drawAt),
+      title: `งวด ${formatBangkokDate(drawAt)}`,
+      openAt,
+      closeAt,
+      drawAt
+    });
+  }
+
+  return occurrences;
+};
+
+const buildDailyOccurrences = (schedule, startDate, horizonDays) => {
+  const occurrences = [];
+  const start = new Date(startDate.getTime() - DAY_MS);
+  const end = new Date(startDate.getTime() + horizonDays * DAY_MS);
+
+  for (let cursor = new Date(start); cursor <= end; cursor = new Date(cursor.getTime() + DAY_MS)) {
+    const parts = getBangkokParts(cursor);
+    const drawAt = createBangkokDate(parts.year, parts.month, parts.day, schedule.drawHour, schedule.drawMinute);
+    const weekday = getBangkokWeekday(drawAt);
+    if (schedule.weekdays && !schedule.weekdays.includes(weekday)) continue;
+
+    const closeAt = createBangkokDate(parts.year, parts.month, parts.day, schedule.closeHour, schedule.closeMinute);
+    const openAt = new Date(drawAt.getTime() - schedule.openLeadDays * DAY_MS);
+
+    occurrences.push({
+      code: formatBangkokDate(drawAt),
+      title: `รอบ ${formatBangkokDate(drawAt)}`,
+      openAt,
+      closeAt,
+      drawAt
+    });
+  }
+
+  return occurrences;
+};
+
+const generateOccurrences = (schedule, startDate = new Date(), horizonDays = 45) => {
+  if (schedule.type === 'monthly') {
+    return buildMonthlyOccurrences(schedule, startDate, horizonDays);
+  }
+  return buildDailyOccurrences(schedule, startDate, horizonDays);
+};
+
+const ensureRoundsForLottery = async (lotteryType) => {
+  const occurrences = generateOccurrences(lotteryType.schedule);
+
+  for (const occurrence of occurrences) {
+    const status = getRoundStatus(occurrence).status;
+    await DrawRound.updateOne(
+      {
+        lotteryTypeId: lotteryType._id,
+        code: occurrence.code
+      },
+      {
+        $set: {
+          title: occurrence.title,
+          openAt: occurrence.openAt,
+          closeAt: occurrence.closeAt,
+          drawAt: occurrence.drawAt,
+          status,
+          isActive: true
+        }
+      },
+      { upsert: true }
+    );
+  }
+};
+
+const runCatalogSeed = async () => {
+  const rateProfiles = [];
+  for (const rateTier of DEFAULT_RATE_TIERS) {
+    const rateProfile = await upsertByCode(RateProfile, rateTier.code, rateTier);
+    rateProfiles.push(rateProfile);
+  }
+
+  const rateProfileIds = rateProfiles.map((profile) => profile._id);
+  const defaultRateProfile = rateProfiles.find((profile) => profile.isDefault) || rateProfiles[0];
+
+  const leaguesByCode = {};
+  for (const league of LOTTERY_LEAGUES) {
+    leaguesByCode[league.code] = await upsertByCode(LotteryLeague, league.code, league);
+  }
+
+  for (let index = 0; index < LOTTERY_TYPES.length; index++) {
+    const definition = LOTTERY_TYPES[index];
+    const lotteryType = await upsertByCode(LotteryType, definition.code, {
+      ...definition,
+      leagueId: leaguesByCode[definition.leagueCode]._id,
+      sortOrder: index + 1,
+      rateProfileIds,
+      defaultRateProfileId: defaultRateProfile?._id || null
+    });
+
+    await ensureRoundsForLottery(lotteryType);
+  }
+
+  for (const announcement of DEFAULT_ANNOUNCEMENTS) {
+    await upsertByCode(Announcement, announcement.code, announcement);
+  }
+};
+
+const ensureCatalogSeed = async ({ force = false } = {}) => {
+  if (!catalogSeedPromise || force) {
+    catalogSeedPromise = runCatalogSeed().catch((error) => {
+      catalogSeedPromise = null;
+      throw error;
+    });
+  }
+
+  return catalogSeedPromise;
+};
+
+const mapLegacyResult = (legacyResult, lotteryType) => {
+  if (!legacyResult || !lotteryType) return null;
+  return {
+    id: `legacy-${legacyResult._id}`,
+    lotteryTypeId: lotteryType._id.toString(),
+    lotteryCode: lotteryType.code,
+    lotteryName: lotteryType.name,
+    roundCode: legacyResult.roundDate,
+    headline: legacyResult.firstPrize || legacyResult.twoBottom || '-',
+    firstPrize: legacyResult.firstPrize || '',
+    twoTop: legacyResult.firstPrize ? legacyResult.firstPrize.slice(-2) : '',
+    twoBottom: legacyResult.twoBottom || '',
+    threeTop: legacyResult.firstPrize ? legacyResult.firstPrize.slice(-3) : '',
+    threeBottom: legacyResult.threeBotList?.[0] || '',
+    runTop: legacyResult.runTop || [],
+    runBottom: legacyResult.runBottom || [],
+    resultPublishedAt: legacyResult.updatedAt || legacyResult.createdAt,
+    sourceType: 'legacy',
+    sourceUrl: ''
+  };
+};
+
+const getRecentResults = async ({ lotteryId = null, limit = 20 } = {}) => {
+  const results = await ResultRecord.find({ isPublished: true, ...(lotteryId && { lotteryTypeId: lotteryId }) })
+    .sort({ updatedAt: -1 })
+    .limit(limit)
+    .populate('lotteryTypeId', 'code name shortName provider')
+    .populate('drawRoundId', 'code title drawAt resultPublishedAt');
+
+  const mapped = results.map((record) => ({
+    id: record._id.toString(),
+    lotteryTypeId: record.lotteryTypeId?._id?.toString(),
+    lotteryCode: record.lotteryTypeId?.code,
+    lotteryName: record.lotteryTypeId?.name,
+    lotteryShortName: record.lotteryTypeId?.shortName,
+    provider: record.lotteryTypeId?.provider || '',
+    roundCode: record.drawRoundId?.code || '',
+    roundTitle: record.drawRoundId?.title || '',
+    drawAt: record.drawRoundId?.drawAt,
+    resultPublishedAt: record.drawRoundId?.resultPublishedAt || record.updatedAt,
+    headline: record.headline || record.firstPrize || record.twoBottom || '-',
+    firstPrize: record.firstPrize || '',
+    twoTop: record.twoTop || '',
+    twoBottom: record.twoBottom || '',
+    threeTop: record.threeTop || '',
+    threeBottom: record.threeBottom || '',
+    runTop: record.runTop || [],
+    runBottom: record.runBottom || [],
+    sourceType: record.sourceType,
+    sourceUrl: record.sourceUrl || ''
+  }));
+
+  if (lotteryId) return mapped;
+
+  const thaiGov = await LotteryType.findOne({ code: 'thai_government' });
+  const legacyLatest = await LotteryResult.findOne().sort({ updatedAt: -1, roundDate: -1 });
+  const legacyMapped = mapLegacyResult(legacyLatest, thaiGov);
+
+  if (legacyMapped && !mapped.find((item) => item.roundCode === legacyMapped.roundCode && item.lotteryCode === legacyMapped.lotteryCode)) {
+    mapped.unshift(legacyMapped);
+  }
+
+  return mapped.slice(0, limit);
+};
+
+const getAnnouncementFilter = (viewer = null) => {
+  if (!viewer?.role) {
+    return { isActive: true };
+  }
+
+  return {
+    isActive: true,
+    $or: [
+      { audience: { $size: 0 } },
+      { audience: viewer.role }
+    ]
+  };
+};
+
+const getCatalogOverview = async (viewer = null) => {
+  await ensureCatalogSeed();
+
+  const [leagues, lotteries, rounds, announcements, recentResults] = await Promise.all([
+    LotteryLeague.find({ isActive: true }).sort({ sortOrder: 1, name: 1 }),
+    LotteryType.find({ isActive: true })
+      .sort({ sortOrder: 1, name: 1 })
+      .populate('leagueId', 'code name')
+      .populate('rateProfileIds')
+      .populate('defaultRateProfileId'),
+    DrawRound.find({ isActive: true, drawAt: { $gte: new Date(Date.now() - 5 * DAY_MS) } })
+      .sort({ drawAt: 1 }),
+    Announcement.find(getAnnouncementFilter(viewer)).sort({ publishedAt: -1 }).limit(5),
+    getRecentResults({ limit: 25 })
+  ]);
+
+  let memberConfigMap = null;
+  if (viewer?.role === 'customer') {
+    const memberConfigRows = await getMemberConfigRows({ member: viewer, lotteries });
+    memberConfigMap = memberConfigRows.reduce((acc, row) => {
+      acc[row.lotteryTypeId] = row;
+      return acc;
+    }, {});
+  }
+
+  const roundsByLottery = rounds.reduce((acc, round) => {
+    const key = round.lotteryTypeId.toString();
+    acc[key] = acc[key] || [];
+    acc[key].push(round);
+    return acc;
+  }, {});
+
+  const resultsByLottery = recentResults.reduce((acc, result) => {
+    if (!result.lotteryTypeId) return acc;
+    if (!acc[result.lotteryTypeId]) acc[result.lotteryTypeId] = result;
+    return acc;
+  }, {});
+  const announcementReads = viewer?._id && announcements.length
+    ? await AnnouncementRead.find({
+      userId: viewer._id,
+      announcementId: { $in: announcements.map((item) => item._id) }
+    }).select('announcementId readAt')
+    : [];
+  const announcementReadMap = announcementReads.reduce((acc, item) => {
+    acc[toIdString(item.announcementId)] = item.readAt;
+    return acc;
+  }, {});
+
+  const lotteryCards = lotteries.map((lottery) => {
+    const memberConfig = memberConfigMap?.[lottery._id.toString()] || null;
+    if (viewer?.role === 'customer' && !memberConfig?.isEnabled) {
+      return null;
+    }
+
+    const visibleRateProfiles = (lottery.rateProfileIds || [])
+      .filter((profile) => profile.isActive)
+      .filter((profile) => !memberConfig?.rateProfileId || profile._id.toString() === memberConfig.rateProfileId);
+    const selectedRateProfile = visibleRateProfiles[0] || null;
+    const effectiveRates = memberConfig?.useCustomRates
+      ? memberConfig.customRates
+      : selectedRateProfile?.rates || {};
+    const supportedBetTypes = memberConfig?.enabledBetTypes?.length
+      ? lottery.supportedBetTypes.filter((betType) => memberConfig.enabledBetTypes.includes(betType))
+      : lottery.supportedBetTypes;
+    const lotteryRounds = (roundsByLottery[lottery._id.toString()] || []).sort((a, b) => a.drawAt - b.drawAt);
+    const now = new Date();
+    const activeRound =
+      lotteryRounds.find((round) => now <= round.closeAt) ||
+      lotteryRounds.find((round) => now <= round.drawAt) ||
+      lotteryRounds[0] ||
+      null;
+    const statusMeta = getRoundStatus(activeRound, now);
+    const latestResult = resultsByLottery[lottery._id.toString()] || null;
+
+    return {
+      id: lottery._id.toString(),
+      code: lottery.code,
+      name: lottery.name,
+      shortName: lottery.shortName,
+      description: lottery.description,
+      provider: lottery.provider,
+      leagueId: lottery.leagueId?._id?.toString() || lottery.leagueId?.toString(),
+      leagueCode: lottery.leagueId?.code || '',
+      leagueName: lottery.leagueId?.name || '',
+      supportedBetTypes,
+      status: statusMeta.status,
+      statusLabel: statusMeta.label,
+      countdownSeconds: statusMeta.countdownSeconds,
+      activeRound: activeRound ? {
+        id: activeRound._id.toString(),
+        code: activeRound.code,
+        title: activeRound.title,
+        openAt: activeRound.openAt,
+        closeAt: activeRound.closeAt,
+        drawAt: activeRound.drawAt,
+        displayDate: formatBangkokDate(activeRound.drawAt),
+        displayDrawAt: formatBangkokDateTime(activeRound.drawAt),
+        displayCloseAt: formatBangkokDateTime(activeRound.closeAt)
+      } : null,
+      rateProfiles: selectedRateProfile ? [{
+        id: selectedRateProfile._id.toString(),
+        code: memberConfig?.useCustomRates ? `${selectedRateProfile.code}_custom` : selectedRateProfile.code,
+        name: memberConfig?.useCustomRates ? `${selectedRateProfile.name} (Custom)` : selectedRateProfile.name,
+        description: selectedRateProfile.description,
+        isDefault: true,
+        rates: effectiveRates
+      }] : [],
+      defaultRateProfileId: memberConfig?.rateProfileId || lottery.defaultRateProfileId?._id?.toString() || null,
+      memberLimits: memberConfig ? {
+        minimumBet: memberConfig.minimumBet,
+        maximumBet: memberConfig.maximumBet,
+        maximumPerNumber: memberConfig.maximumPerNumber,
+        keepMode: memberConfig.keepMode,
+        keepCapAmount: memberConfig.keepCapAmount,
+        blockedNumbers: memberConfig.blockedNumbers || []
+      } : null,
+      latestResult
+    };
+  }).filter(Boolean);
+
+  const leaguesPayload = leagues.map((league) => ({
+    id: league._id.toString(),
+    code: league.code,
+    name: league.name,
+    description: league.description,
+    lotteries: lotteryCards.filter((lottery) => lottery.leagueCode === league.code)
+  })).filter((league) => league.lotteries.length > 0);
+
+  const firstLottery = lotteryCards[0] || null;
+  const selectionDefaults = {
+    leagueId: firstLottery?.leagueId || null,
+    lotteryId: firstLottery?.id || null,
+    roundId: firstLottery?.activeRound?.id || null,
+    rateProfileId: firstLottery?.defaultRateProfileId || firstLottery?.rateProfiles?.[0]?.id || null
+  };
+
+  return {
+    generatedAt: new Date().toISOString(),
+    selectionDefaults,
+    announcements: announcements.map((item) => ({
+      id: item._id.toString(),
+      code: item.code,
+      title: item.title,
+      body: item.body,
+      audience: item.audience,
+      publishedAt: item.publishedAt,
+      isRead: Boolean(announcementReadMap[item._id.toString()]),
+      readAt: announcementReadMap[item._id.toString()] || null
+    })),
+    leagues: leaguesPayload,
+    recentResults
+  };
+};
+
+const markAnnouncementRead = async ({ viewer, announcementId }) => {
+  await ensureCatalogSeed();
+
+  const announcement = await Announcement.findOne({
+    _id: announcementId,
+    ...getAnnouncementFilter(viewer)
+  });
+
+  if (!announcement) {
+    throw new Error('Announcement not found');
+  }
+
+  await AnnouncementRead.updateOne(
+    {
+      announcementId,
+      userId: viewer._id
+    },
+    {
+      $set: {
+        readAt: new Date()
+      }
+    },
+    { upsert: true }
+  );
+
+  return {
+    id: announcement._id.toString(),
+    isRead: true
+  };
+};
+
+const getLotteryOptions = async (viewer = null) => {
+  const overview = await getCatalogOverview(viewer);
+  return overview.leagues.flatMap((league) =>
+    league.lotteries.map((lottery) => ({
+      id: lottery.id,
+      name: lottery.name,
+      code: lottery.code,
+      leagueId: league.id,
+      leagueName: league.name,
+      roundId: lottery.activeRound?.id || null,
+      roundTitle: lottery.activeRound?.title || null,
+      defaultRateProfileId: lottery.defaultRateProfileId
+    }))
+  );
+};
+
+const getRoundsByLottery = async (lotteryId, viewer = null) => {
+  await ensureCatalogSeed();
+
+  if (viewer?.role === 'customer') {
+    const lotteries = await LotteryType.find({ _id: lotteryId, isActive: true })
+      .populate('leagueId', 'code name')
+      .populate('rateProfileIds', 'code name description isActive rates')
+      .populate('defaultRateProfileId', 'code name description isActive rates');
+
+    if (!lotteries.length) {
+      return [];
+    }
+
+    const memberConfigRows = await getMemberConfigRows({ member: viewer, lotteries });
+    if (!memberConfigRows[0]?.isEnabled) {
+      return [];
+    }
+  }
+
+  const rounds = await DrawRound.find({ lotteryTypeId: lotteryId, isActive: true }).sort({ drawAt: 1 }).limit(20);
+  return rounds.map((round) => ({
+    id: round._id.toString(),
+    code: round.code,
+    title: round.title,
+    openAt: round.openAt,
+    closeAt: round.closeAt,
+    drawAt: round.drawAt,
+    displayDate: formatBangkokDate(round.drawAt),
+    displayCloseAt: formatBangkokDateTime(round.closeAt),
+    ...getRoundStatus(round)
+  }));
+};
+
+module.exports = {
+  ensureCatalogSeed,
+  getCatalogOverview,
+  getLotteryOptions,
+  getRoundsByLottery,
+  getRecentResults,
+  getRoundStatus,
+  markAnnouncementRead
+};

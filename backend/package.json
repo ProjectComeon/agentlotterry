@@ -6,7 +6,13 @@
   "scripts": {
     "start": "node server.js",
     "dev": "node --watch server.js",
-    "seed": "node src/seed.js"
+    "seed": "node src/seed.js",
+    "e2e:smoke": "node src/scripts/e2eSmoke.js",
+    "legacy:cleanup": "node src/scripts/cleanupLegacyData.js",
+    "legacy:cleanup:dry": "node src/scripts/cleanupLegacyData.js --mode=dry-run",
+    "legacy:cleanup:migrate": "node src/scripts/cleanupLegacyData.js --mode=migrate --yes",
+    "legacy:cleanup:archive": "node src/scripts/cleanupLegacyData.js --mode=archive --yes",
+    "legacy:cleanup:purge": "node src/scripts/cleanupLegacyData.js --mode=purge --yes"
   },
   "dependencies": {
     "axios": "^1.7.0",

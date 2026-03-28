@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, useEffect } from 'react';
-import { getMe } from '../services/api';
+import { getMe, sendPresenceHeartbeat } from '../services/api';
 
 const AuthContext = createContext(null);
 
@@ -12,6 +12,30 @@ export const AuthProvider = ({ children }) => {
   useEffect(() => {
     checkAuth();
   }, []);
+
+  useEffect(() => {
+    if (!user) {
+      return undefined;
+    }
+
+    let cancelled = false;
+    const beat = async () => {
+      try {
+        await sendPresenceHeartbeat();
+      } catch (error) {
+        if (!cancelled) {
+          console.error('Presence heartbeat failed', error);
+        }
+      }
+    };
+
+    beat();
+    const intervalId = window.setInterval(beat, 60000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+    };
+  }, [user?.id]);
 
   const checkAuth = async () => {
     const token = localStorage.getItem('token');

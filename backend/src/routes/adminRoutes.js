@@ -1,9 +1,14 @@
 const express = require('express');
 const User = require('../models/User');
-const Bet = require('../models/Bet');
 const auth = require('../middleware/auth');
 const authorize = require('../middleware/rbac');
 const { createAuditLog } = require('../middleware/auditLog');
+const {
+  getBetTotals,
+  getRecentBetItems,
+  getTotalsGroupedByField,
+  getAgentReportRows
+} = require('../services/analyticsService');
 
 const router = express.Router();
 
@@ -13,28 +18,21 @@ router.use(auth, authorize('admin'));
 // GET /api/admin/dashboard
 router.get('/dashboard', async (req, res) => {
   try {
-    const totalAgents = await User.countDocuments({ role: 'agent' });
-    const totalCustomers = await User.countDocuments({ role: 'customer' });
-    const activeAgents = await User.countDocuments({ role: 'agent', isActive: true });
-    const activeCustomers = await User.countDocuments({ role: 'customer', isActive: true });
-    
-    const totalBets = await Bet.countDocuments();
-    const pendingBets = await Bet.countDocuments({ result: 'pending' });
-    
-    const betSummary = await Bet.aggregate([
-      { $group: {
-        _id: null,
-        totalAmount: { $sum: '$amount' },
-        totalWon: { $sum: '$wonAmount' },
-        count: { $sum: 1 }
-      }}
+    const [
+      totalAgents,
+      totalCustomers,
+      activeAgents,
+      activeCustomers,
+      betStats,
+      recentBets
+    ] = await Promise.all([
+      User.countDocuments({ role: 'agent' }),
+      User.countDocuments({ role: 'customer' }),
+      User.countDocuments({ role: 'agent', isActive: true }),
+      User.countDocuments({ role: 'customer', isActive: true }),
+      getBetTotals(),
+      getRecentBetItems({ limit: 10 })
     ]);
-
-    const recentBets = await Bet.find()
-      .sort({ createdAt: -1 })
-      .limit(10)
-      .populate('customerId', 'name username')
-      .populate('agentId', 'name username');
 
     res.json({
       stats: {
@@ -42,11 +40,11 @@ router.get('/dashboard', async (req, res) => {
         totalCustomers,
         activeAgents,
         activeCustomers,
-        totalBets,
-        pendingBets,
-        totalAmount: betSummary[0]?.totalAmount || 0,
-        totalWon: betSummary[0]?.totalWon || 0,
-        netProfit: (betSummary[0]?.totalAmount || 0) - (betSummary[0]?.totalWon || 0)
+        totalBets: betStats.totalBets,
+        pendingBets: betStats.pendingBets,
+        totalAmount: betStats.totalAmount,
+        totalWon: betStats.totalWon,
+        netProfit: betStats.netProfit
       },
       recentBets
     });
@@ -59,30 +57,38 @@ router.get('/dashboard', async (req, res) => {
 // GET /api/admin/agents
 router.get('/agents', async (req, res) => {
   try {
-    const agents = await User.find({ role: 'agent' }).select('-password').sort({ createdAt: -1 });
-    
-    // Get customer count for each agent
-    const agentsWithStats = await Promise.all(
-      agents.map(async (agent) => {
-        const customerCount = await User.countDocuments({ agentId: agent._id, role: 'customer' });
-        const betStats = await Bet.aggregate([
-          { $match: { agentId: agent._id } },
-          { $group: {
-            _id: null,
-            totalAmount: { $sum: '$amount' },
-            totalWon: { $sum: '$wonAmount' },
-            count: { $sum: 1 }
-          }}
-        ]);
-        return {
-          ...agent.toJSON(),
-          customerCount,
-          totalBets: betStats[0]?.count || 0,
-          totalAmount: betStats[0]?.totalAmount || 0,
-          totalWon: betStats[0]?.totalWon || 0
-        };
-      })
-    );
+    const [agents, customerRows, betStatsByAgent] = await Promise.all([
+      User.find({ role: 'agent' }).select('-password').sort({ createdAt: -1 }),
+      User.aggregate([
+        { $match: { role: 'customer', agentId: { $ne: null } } },
+        {
+          $group: {
+            _id: '$agentId',
+            customerCount: { $sum: 1 }
+          }
+        }
+      ]),
+      getTotalsGroupedByField('agentId')
+    ]);
+
+    const customerCountMap = customerRows.reduce((acc, row) => {
+      if (row._id) {
+        acc[row._id.toString()] = row.customerCount;
+      }
+      return acc;
+    }, {});
+
+    const agentsWithStats = agents.map((agent) => {
+      const stat = betStatsByAgent[agent._id.toString()] || {};
+
+      return {
+        ...agent.toJSON(),
+        customerCount: customerCountMap[agent._id.toString()] || 0,
+        totalBets: stat.count || 0,
+        totalAmount: stat.totalAmount || 0,
+        totalWon: stat.totalWon || 0
+      };
+    });
 
     res.json(agentsWithStats);
   } catch (error) {
@@ -264,52 +270,12 @@ router.delete('/customers/:id', async (req, res) => {
 router.get('/reports', async (req, res) => {
   try {
     const { roundDate, startDate, endDate, marketId } = req.query;
-    
-    let matchFilter = {};
-    if (roundDate) {
-      matchFilter.roundDate = roundDate;
-    } else if (startDate && endDate) {
-      matchFilter.createdAt = {
-        $gte: new Date(startDate),
-        $lte: new Date(endDate)
-      };
-    }
-    if (marketId) matchFilter.marketId = marketId;
-
-    const report = await Bet.aggregate([
-      { $match: matchFilter },
-      { $group: {
-        _id: { roundDate: '$roundDate', marketId: '$marketId', marketName: '$marketName', agentId: '$agentId' },
-        totalAmount: { $sum: '$amount' },
-        totalWon: { $sum: '$wonAmount' },
-        betCount: { $sum: 1 },
-        wonCount: { $sum: { $cond: [{ $eq: ['$result', 'won'] }, 1, 0] } },
-        lostCount: { $sum: { $cond: [{ $eq: ['$result', 'lost'] }, 1, 0] } },
-        pendingCount: { $sum: { $cond: [{ $eq: ['$result', 'pending'] }, 1, 0] } }
-      }},
-      { $lookup: {
-        from: 'users',
-        localField: '_id.agentId',
-        foreignField: '_id',
-        as: 'agent'
-      }},
-      { $unwind: { path: '$agent', preserveNullAndEmptyArrays: true } },
-      { $project: {
-        roundDate: '$_id.roundDate',
-        marketId: '$_id.marketId',
-        marketName: '$_id.marketName',
-        agentName: '$agent.name',
-        agentUsername: '$agent.username',
-        totalAmount: 1,
-        totalWon: 1,
-        netProfit: { $subtract: ['$totalAmount', '$totalWon'] },
-        betCount: 1,
-        wonCount: 1,
-        lostCount: 1,
-        pendingCount: 1
-      }},
-      { $sort: { roundDate: -1, marketName: 1 } }
-    ]);
+    const report = await getAgentReportRows({
+      roundDate,
+      startDate,
+      endDate,
+      marketId
+    });
 
     res.json(report);
   } catch (error) {

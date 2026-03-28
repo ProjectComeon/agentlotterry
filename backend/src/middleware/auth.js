@@ -20,6 +20,11 @@ const auth = async (req, res, next) => {
       return res.status(403).json({ message: 'Account is deactivated.' });
     }
 
+    User.updateOne(
+      { _id: user._id },
+      { $set: { lastActiveAt: new Date(), status: 'active' } }
+    ).catch(() => {});
+
     req.user = user;
     next();
   } catch (error) {
