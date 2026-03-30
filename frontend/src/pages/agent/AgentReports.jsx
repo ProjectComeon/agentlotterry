@@ -12,6 +12,12 @@ const tabs = [
   { id: 'pending', label: 'Pending Items' },
   { id: 'winners', label: 'Winner Report' }
 ];
+const sortOptions = [
+  { id: 'default', label: 'default order' },
+  { id: 'value_desc', label: 'highest value first' },
+  { id: 'payout_desc', label: 'highest payout first' },
+  { id: 'volume_desc', label: 'most rows first' }
+];
 
 const money = (value) => Number(value || 0).toLocaleString('th-TH');
 const labelOrDash = (value) => value || '-';
@@ -57,6 +63,7 @@ const AgentReports = () => {
   const [report, setReport] = useState(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('sales');
+  const [sortBy, setSortBy] = useState('default');
   const [draftFilters, setDraftFilters] = useState({
     roundDate: '',
     marketId: '',
@@ -153,13 +160,48 @@ const AgentReports = () => {
     { key: 'payRate', label: 'Rate', render: (row) => `x${row.payRate}` }
   ]), []);
 
+  const sortRows = (rows = []) => {
+    if (sortBy === 'default') return rows;
+
+    const sorted = [...rows];
+    const getMetric = (row) => {
+      if (sortBy === 'value_desc') {
+        return Number(
+          row.totalSales ??
+          row.pendingStake ??
+          row.totalAmount ??
+          row.resolvedSales ??
+          row.amount ??
+          0
+        );
+      }
+
+      if (sortBy === 'payout_desc') {
+        return Number(
+          row.totalPayout ??
+          row.pendingPotentialPayout ??
+          row.totalPotentialPayout ??
+          row.resolvedPayout ??
+          row.potentialPayout ??
+          row.wonAmount ??
+          0
+        );
+      }
+
+      return Number(row.memberCount ?? row.itemCount ?? row.totalCustomers ?? 0);
+    };
+
+    sorted.sort((left, right) => getMetric(right) - getMetric(left));
+    return sorted;
+  };
+
   const tabContent = {
-    sales: renderTable({ columns: salesColumns, rows: report?.salesSummary || [] }),
-    projected: renderTable({ columns: projectedColumns, rows: report?.projectedRows || [] }),
-    exposure: renderTable({ columns: exposureColumns, rows: report?.exposureRows || [] }),
-    profit: renderTable({ columns: profitColumns, rows: report?.profitLossRows || [] }),
-    pending: renderTable({ columns: pendingColumns, rows: report?.pendingRows || [] }),
-    winners: renderTable({ columns: winnerColumns, rows: report?.winnerRows || [] })
+    sales: renderTable({ columns: salesColumns, rows: sortRows(report?.salesSummary || []) }),
+    projected: renderTable({ columns: projectedColumns, rows: sortRows(report?.projectedRows || []) }),
+    exposure: renderTable({ columns: exposureColumns, rows: sortRows(report?.exposureRows || []) }),
+    profit: renderTable({ columns: profitColumns, rows: sortRows(report?.profitLossRows || []) }),
+    pending: renderTable({ columns: pendingColumns, rows: sortRows(report?.pendingRows || []) }),
+    winners: renderTable({ columns: winnerColumns, rows: sortRows(report?.winnerRows || []) })
   };
 
   const overviewCards = [
@@ -234,6 +276,12 @@ const AgentReports = () => {
           <label>
             <span>End date</span>
             <input type="date" value={draftFilters.endDate} onChange={(event) => setDraftFilters((current) => ({ ...current, endDate: event.target.value }))} />
+          </label>
+          <label>
+            <span>Sort rows</span>
+            <select value={sortBy} onChange={(event) => setSortBy(event.target.value)}>
+              {sortOptions.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}
+            </select>
           </label>
         </div>
 
@@ -417,7 +465,7 @@ const AgentReports = () => {
 
         .report-filter-grid {
           display: grid;
-          grid-template-columns: repeat(4, minmax(0, 1fr));
+          grid-template-columns: repeat(5, minmax(0, 1fr));
           gap: 12px;
         }
 
@@ -435,7 +483,7 @@ const AgentReports = () => {
           font-weight: 700;
         }
 
-        .report-filter-grid input {
+        .report-filter-grid input, .report-filter-grid select {
           width: 100%;
           min-height: 52px;
           padding: 14px 16px;
@@ -446,7 +494,7 @@ const AgentReports = () => {
           transition: border-color 0.2s ease, box-shadow 0.2s ease;
         }
 
-        .report-filter-grid input:focus {
+        .report-filter-grid input:focus, .report-filter-grid select:focus {
           outline: none;
           border-color: rgba(52, 211, 153, 0.42);
           box-shadow: 0 0 0 4px rgba(16, 185, 129, 0.08);

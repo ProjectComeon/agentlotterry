@@ -1,8 +1,15 @@
-import { useState, useEffect } from 'react';
-import { getAdminCustomers, getAgents, createAdminCustomer, updateAdminCustomer, deleteAdminCustomer } from '../../services/api';
-import Modal from '../../components/Modal';
+import { useEffect, useMemo, useState } from 'react';
 import toast from 'react-hot-toast';
-import { FiPlus, FiEdit2, FiTrash2, FiSearch, FiFilter } from 'react-icons/fi';
+import { FiEdit2, FiPlus, FiSearch, FiTrash2, FiUserCheck, FiUsers } from 'react-icons/fi';
+import Modal from '../../components/Modal';
+import PageSkeleton from '../../components/PageSkeleton';
+import {
+  createAdminCustomer,
+  deleteAdminCustomer,
+  getAdminCustomers,
+  getAgents,
+  updateAdminCustomer
+} from '../../services/api';
 
 const CustomerManagement = () => {
   const [customers, setCustomers] = useState([]);
@@ -14,53 +21,62 @@ const CustomerManagement = () => {
   const [editCustomer, setEditCustomer] = useState(null);
   const [form, setForm] = useState({ username: '', password: '', name: '', phone: '', agentId: '' });
 
-  useEffect(() => { loadData(); }, [filterAgent]);
+  useEffect(() => {
+    loadData();
+  }, [filterAgent]);
 
   const loadData = async () => {
     try {
-      const [custRes, agentRes] = await Promise.all([
+      const [customerRes, agentRes] = await Promise.all([
         getAdminCustomers(filterAgent),
         getAgents()
       ]);
-      setCustomers(custRes.data);
-      setAgents(agentRes.data);
-    } catch (err) { console.error(err); }
-    finally { setLoading(false); }
+      setCustomers(customerRes.data || []);
+      setAgents(agentRes.data || []);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
+  const handleSubmit = async (event) => {
+    event.preventDefault();
     try {
       if (editCustomer) {
         const updateData = { name: form.name, phone: form.phone, agentId: form.agentId };
         if (form.password) updateData.password = form.password;
         await updateAdminCustomer(editCustomer._id, updateData);
-        toast.success('อัปเดตลูกค้าสำเร็จ');
+        toast.success('Member updated');
       } else {
         await createAdminCustomer(form);
-        toast.success('สร้างลูกค้าสำเร็จ');
+        toast.success('Member created');
       }
       closeModal();
-      loadData();
+      await loadData();
     } catch (err) {
-      toast.error(err.response?.data?.message || 'เกิดข้อผิดพลาด');
+      toast.error(err.response?.data?.message || 'Something went wrong');
     }
   };
 
   const handleDelete = async (customer) => {
-    if (!confirm(`ต้องการปิดการใช้งาน "${customer.name}" ?`)) return;
+    if (!window.confirm(`Deactivate member "${customer.name}"?`)) return;
     try {
       await deleteAdminCustomer(customer._id);
-      toast.success('ปิดการใช้งานสำเร็จ');
-      loadData();
-    } catch (err) { toast.error('เกิดข้อผิดพลาด'); }
+      toast.success('Member deactivated');
+      await loadData();
+    } catch (err) {
+      toast.error('Something went wrong');
+    }
   };
 
   const openEdit = (customer) => {
     setEditCustomer(customer);
-    setForm({ 
-      username: customer.username, password: '', 
-      name: customer.name, phone: customer.phone,
+    setForm({
+      username: customer.username,
+      password: '',
+      name: customer.name,
+      phone: customer.phone || '',
       agentId: customer.agentId?._id || customer.agentId || ''
     });
     setShowModal(true);
@@ -72,34 +88,92 @@ const CustomerManagement = () => {
     setForm({ username: '', password: '', name: '', phone: '', agentId: '' });
   };
 
-  const filtered = customers.filter(c =>
-    c.name.toLowerCase().includes(search.toLowerCase()) ||
-    c.username.toLowerCase().includes(search.toLowerCase())
-  );
+  const filteredCustomers = useMemo(() => {
+    const keyword = search.trim().toLowerCase();
+    if (!keyword) return customers;
+    return customers.filter((customer) =>
+      customer.name?.toLowerCase().includes(keyword) ||
+      customer.username?.toLowerCase().includes(keyword) ||
+      customer.phone?.toLowerCase().includes(keyword) ||
+      customer.agentId?.name?.toLowerCase().includes(keyword)
+    );
+  }, [customers, search]);
 
-  if (loading) return <div className="loading-container"><div className="spinner"></div><span>กำลังโหลด...</span></div>;
+  const overviewCards = useMemo(() => {
+    const activeCount = customers.filter((customer) => customer.isActive).length;
+    const assignedAgentCount = new Set(customers.map((customer) => customer.agentId?._id || customer.agentId).filter(Boolean)).size;
+    const unassignedCount = customers.filter((customer) => !customer.agentId).length;
+
+    return [
+      { label: 'Total members', value: customers.length, hint: `${activeCount} active accounts` },
+      { label: 'Assigned agents', value: assignedAgentCount, hint: 'Distinct agents with linked members' },
+      { label: 'Visible rows', value: filteredCustomers.length, hint: 'After search and agent filter' },
+      { label: 'Needs assignment', value: unassignedCount, hint: 'Members without an active owner agent' }
+    ];
+  }, [customers, filteredCustomers.length]);
+
+  if (loading) {
+    return <PageSkeleton statCount={4} rows={6} sidebar={false} />;
+  }
 
   return (
-    <div className="animate-fade-in">
-      <div className="page-header">
-        <div>
-          <h1 className="page-title">👥 จัดการลูกค้า</h1>
-          <p className="page-subtitle">ลูกค้าทั้งหมด ({customers.length} คน)</p>
+    <div className="ops-page animate-fade-in">
+      <section className="ops-hero">
+        <div className="ops-hero-copy">
+          <span className="ui-eyebrow">Admin directory</span>
+          <h1 className="page-title">Member Management</h1>
+          <p className="page-subtitle">Oversee member accounts across the platform, reassign ownership, and keep account access clean before those members reach the agent layer.</p>
         </div>
-        <button className="btn btn-primary" onClick={() => setShowModal(true)}>
-          <FiPlus /> เพิ่มลูกค้า
-        </button>
-      </div>
 
-      <div className="card mb-lg">
-        <div className="flex gap-md mb-md" style={{ flexWrap: 'wrap' }}>
-          <div style={{ position: 'relative', flex: '1', minWidth: 200 }}>
-            <FiSearch style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
-            <input className="form-input" placeholder="ค้นหาลูกค้า..." value={search} onChange={(e) => setSearch(e.target.value)} style={{ paddingLeft: 40 }} />
+        <div className="ops-hero-side">
+          <span>Current filter</span>
+          <strong>{filterAgent ? 'Agent scope' : 'All agents'}</strong>
+          <small>{filteredCustomers.length} member rows visible</small>
+        </div>
+      </section>
+
+      <section className="ops-overview-grid">
+        {overviewCards.map((card) => (
+          <article key={card.label} className="ops-overview-card">
+            <span>{card.label}</span>
+            <strong>{card.value}</strong>
+            <small>{card.hint}</small>
+          </article>
+        ))}
+      </section>
+
+      <section className="card ops-section">
+        <div className="ops-table-head">
+          <div>
+            <div className="ui-eyebrow">Directory</div>
+            <h3 className="card-title">Member accounts</h3>
+            <p className="ops-table-note">Filter by owner agent, then search for individual members before editing or deactivating access.</p>
           </div>
-          <select className="form-select" value={filterAgent} onChange={(e) => setFilterAgent(e.target.value)} style={{ width: 220 }}>
-            <option value="">เจ้ามือทั้งหมด</option>
-            {agents.map(a => <option key={a._id} value={a._id}>{a.name}</option>)}
+          <div className="ops-actions">
+            <button className="btn btn-secondary" onClick={loadData}>Refresh</button>
+            <button className="btn btn-primary" onClick={() => setShowModal(true)}>
+              <FiPlus />
+              Add member
+            </button>
+          </div>
+        </div>
+
+        <div className="ops-toolbar mb-md">
+          <div className="ops-search">
+            <FiSearch />
+            <input
+              className="form-input"
+              placeholder="Search by member, username, phone, or agent"
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+            />
+          </div>
+
+          <select className="form-select" value={filterAgent} onChange={(event) => setFilterAgent(event.target.value)} style={{ width: 240 }}>
+            <option value="">All agents</option>
+            {agents.map((agent) => (
+              <option key={agent._id} value={agent._id}>{agent.name}</option>
+            ))}
           </select>
         </div>
 
@@ -107,33 +181,41 @@ const CustomerManagement = () => {
           <table className="data-table">
             <thead>
               <tr>
-                <th>ชื่อ</th>
+                <th>Member</th>
                 <th>Username</th>
-                <th>เจ้ามือ</th>
-                <th>เบอร์โทร</th>
-                <th>สถานะ</th>
-                <th>จัดการ</th>
+                <th>Owner agent</th>
+                <th>Phone</th>
+                <th>Status</th>
+                <th>Actions</th>
               </tr>
             </thead>
             <tbody>
-              {filtered.length === 0 ? (
-                <tr><td colSpan="6" className="text-center text-muted" style={{ padding: 40 }}>ไม่พบข้อมูล</td></tr>
+              {filteredCustomers.length === 0 ? (
+                <tr>
+                  <td colSpan="6" className="text-center text-muted" style={{ padding: 40 }}>No members match the current filters</td>
+                </tr>
               ) : (
-                filtered.map(c => (
-                  <tr key={c._id}>
-                    <td style={{ fontWeight: 600 }}>{c.name}</td>
-                    <td style={{ color: 'var(--text-secondary)' }}>{c.username}</td>
-                    <td><span className="badge badge-info">{c.agentId?.name || '-'}</span></td>
-                    <td>{c.phone || '-'}</td>
+                filteredCustomers.map((customer) => (
+                  <tr key={customer._id}>
+                    <td style={{ fontWeight: 700 }}>{customer.name}</td>
+                    <td>{customer.username}</td>
+                    <td>{customer.agentId?.name || '-'}</td>
+                    <td>{customer.phone || '-'}</td>
                     <td>
-                      <span className={`badge ${c.isActive ? 'badge-success' : 'badge-danger'}`}>
-                        {c.isActive ? 'ใช้งาน' : 'ปิด'}
+                      <span className={`badge ${customer.isActive ? 'badge-success' : 'badge-danger'}`}>
+                        {customer.isActive ? 'Active' : 'Inactive'}
                       </span>
                     </td>
                     <td>
-                      <div className="flex gap-sm">
-                        <button className="btn btn-secondary btn-sm" onClick={() => openEdit(c)}><FiEdit2 /></button>
-                        <button className="btn btn-danger btn-sm" onClick={() => handleDelete(c)}><FiTrash2 /></button>
+                      <div className="ops-actions">
+                        <button className="btn btn-secondary btn-sm" onClick={() => openEdit(customer)}>
+                          <FiEdit2 />
+                          Edit
+                        </button>
+                        <button className="btn btn-danger btn-sm" onClick={() => handleDelete(customer)}>
+                          <FiTrash2 />
+                          Deactivate
+                        </button>
                       </div>
                     </td>
                   </tr>
@@ -142,38 +224,111 @@ const CustomerManagement = () => {
             </tbody>
           </table>
         </div>
-      </div>
+      </section>
 
-      <Modal isOpen={showModal} onClose={closeModal} title={editCustomer ? 'แก้ไขลูกค้า' : 'เพิ่มลูกค้าใหม่'}>
+      <section className="ops-grid">
+        <section className="card ops-section">
+          <div className="ui-panel-head">
+            <div>
+              <div className="ui-eyebrow">Assignment</div>
+              <h3 className="card-title">Ownership coverage</h3>
+            </div>
+          </div>
+
+          <div className="ops-stack">
+            <div className="ops-stat-row">
+              <span><FiUsers style={{ marginRight: 8 }} />Assigned agents</span>
+              <strong>{new Set(customers.map((customer) => customer.agentId?._id || customer.agentId).filter(Boolean)).size}</strong>
+            </div>
+            <div className="ops-stat-row">
+              <span><FiUserCheck style={{ marginRight: 8 }} />Active members</span>
+              <strong>{customers.filter((customer) => customer.isActive).length}</strong>
+            </div>
+          </div>
+        </section>
+
+        <section className="card ops-section">
+          <div className="ui-panel-head">
+            <div>
+              <div className="ui-eyebrow">Admin note</div>
+              <h3 className="card-title">Profile edits</h3>
+            </div>
+          </div>
+
+          <div className="ops-stack">
+            <div className="ops-feed-row">
+              <div>
+                <strong>Ownership changes</strong>
+                <div className="ops-feed-meta">Reassigning a member here updates the admin-side owner link.</div>
+              </div>
+            </div>
+            <p className="ops-table-note">Passwords remain optional during edits so you can fix profile data without forcing a credential reset.</p>
+          </div>
+        </section>
+      </section>
+
+      <Modal isOpen={showModal} onClose={closeModal} title={editCustomer ? 'Edit member' : 'Create member'}>
         <form onSubmit={handleSubmit}>
-          {!editCustomer && (
+          {!editCustomer ? (
             <div className="form-group">
               <label className="form-label">Username *</label>
-              <input className="form-input" value={form.username} onChange={(e) => setForm({...form, username: e.target.value})} required />
+              <input
+                className="form-input"
+                value={form.username}
+                onChange={(event) => setForm({ ...form, username: event.target.value })}
+                required
+              />
             </div>
-          )}
+          ) : null}
+
           <div className="form-group">
-            <label className="form-label">{editCustomer ? 'รหัสผ่านใหม่ (เว้นว่างไม่เปลี่ยน)' : 'รหัสผ่าน *'}</label>
-            <input className="form-input" type="password" value={form.password} onChange={(e) => setForm({...form, password: e.target.value})} required={!editCustomer} />
+            <label className="form-label">{editCustomer ? 'New password (optional)' : 'Password *'}</label>
+            <input
+              className="form-input"
+              type="password"
+              value={form.password}
+              onChange={(event) => setForm({ ...form, password: event.target.value })}
+              required={!editCustomer}
+            />
           </div>
+
           <div className="form-group">
-            <label className="form-label">ชื่อ *</label>
-            <input className="form-input" value={form.name} onChange={(e) => setForm({...form, name: e.target.value})} required />
+            <label className="form-label">Display name *</label>
+            <input
+              className="form-input"
+              value={form.name}
+              onChange={(event) => setForm({ ...form, name: event.target.value })}
+              required
+            />
           </div>
+
           <div className="form-group">
-            <label className="form-label">เบอร์โทร</label>
-            <input className="form-input" value={form.phone} onChange={(e) => setForm({...form, phone: e.target.value})} />
+            <label className="form-label">Phone</label>
+            <input
+              className="form-input"
+              value={form.phone}
+              onChange={(event) => setForm({ ...form, phone: event.target.value })}
+            />
           </div>
+
           <div className="form-group">
-            <label className="form-label">เจ้ามือ *</label>
-            <select className="form-select" value={form.agentId} onChange={(e) => setForm({...form, agentId: e.target.value})} required>
-              <option value="">เลือกเจ้ามือ</option>
-              {agents.filter(a => a.isActive).map(a => <option key={a._id} value={a._id}>{a.name}</option>)}
+            <label className="form-label">Owner agent *</label>
+            <select
+              className="form-select"
+              value={form.agentId}
+              onChange={(event) => setForm({ ...form, agentId: event.target.value })}
+              required
+            >
+              <option value="">Select agent</option>
+              {agents.filter((agent) => agent.isActive).map((agent) => (
+                <option key={agent._id} value={agent._id}>{agent.name}</option>
+              ))}
             </select>
           </div>
+
           <div className="modal-footer">
-            <button type="button" className="btn btn-secondary" onClick={closeModal}>ยกเลิก</button>
-            <button type="submit" className="btn btn-primary">{editCustomer ? 'อัปเดต' : 'สร้าง'}</button>
+            <button type="button" className="btn btn-secondary" onClick={closeModal}>Cancel</button>
+            <button type="submit" className="btn btn-primary">{editCustomer ? 'Save changes' : 'Create member'}</button>
           </div>
         </form>
       </Modal>

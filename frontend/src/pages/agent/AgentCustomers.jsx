@@ -10,6 +10,13 @@ import { createInitialMemberForm, groupLotterySettingsByLeague, toggleBetType, u
 const steps = ['Account', 'Profile', 'Lotteries'];
 const statusOptions = ['', 'active', 'inactive', 'suspended'];
 const onlineOptions = ['', 'true', 'false'];
+const sortOptions = [
+  { value: 'recent', label: 'recent activity' },
+  { value: 'credit_desc', label: 'credit high to low' },
+  { value: 'sales_desc', label: 'sales high to low' },
+  { value: 'online_first', label: 'online first' },
+  { value: 'name_asc', label: 'name A-Z' }
+];
 const betTypeLabels = { '3top': '3 Top', '3tod': '3 Tod', '2top': '2 Top', '2bottom': '2 Bottom', 'run_top': 'Run Top', 'run_bottom': 'Run Bottom' };
 const toNumber = (value) => Number(value || 0);
 const formatNumber = (value) => toNumber(value).toLocaleString('th-TH');
@@ -31,6 +38,7 @@ const AgentCustomers = () => {
   const [wizardStep, setWizardStep] = useState(0);
   const [saving, setSaving] = useState(false);
   const [filters, setFilters] = useState({ search: '', status: '', online: '' });
+  const [sortBy, setSortBy] = useState('recent');
   const [form, setForm] = useState(null);
 
   const loadMembers = async (query = filters, silent = false) => {
@@ -76,6 +84,23 @@ const AgentCustomers = () => {
     totalCredit: members.reduce((sum, member) => sum + toNumber(member.creditBalance), 0),
     totalSales: members.reduce((sum, member) => sum + toNumber(member.totals?.totalAmount), 0)
   }), [members]);
+
+  const displayedMembers = useMemo(() => {
+    const sorted = [...members];
+
+    sorted.sort((left, right) => {
+      if (sortBy === 'credit_desc') return toNumber(right.creditBalance) - toNumber(left.creditBalance);
+      if (sortBy === 'sales_desc') return toNumber(right.totals?.totalAmount) - toNumber(left.totals?.totalAmount);
+      if (sortBy === 'online_first') return Number(Boolean(right.isOnline)) - Number(Boolean(left.isOnline));
+      if (sortBy === 'name_asc') return String(left.name || '').localeCompare(String(right.name || ''), 'th');
+
+      const leftTime = left.lastActiveAt ? new Date(left.lastActiveAt).getTime() : 0;
+      const rightTime = right.lastActiveAt ? new Date(right.lastActiveAt).getTime() : 0;
+      return rightTime - leftTime;
+    });
+
+    return sorted;
+  }, [members, sortBy]);
 
   const groupedLotteries = useMemo(
     () => groupLotterySettingsByLeague(form?.lotterySettings || []),
@@ -249,9 +274,9 @@ const AgentCustomers = () => {
         <div className="filter-card-head">
           <div>
             <div className="filter-title">Search and filter</div>
-            <div className="filter-subtitle">กรองสมาชิกตามสถานะ, presence และคำค้นในชื่อหรือ member code</div>
+            <div className="filter-subtitle">กรองสมาชิกตามสถานะ, presence, คำค้น และเรียงลำดับการมองเห็นได้ทันที</div>
           </div>
-          <div className="filter-count">{formatNumber(members.length)} members</div>
+          <div className="filter-count">{formatNumber(displayedMembers.length)} members</div>
         </div>
         <div className="filter-toolbar">
           <label className="search-box">
@@ -270,13 +295,19 @@ const AgentCustomers = () => {
               {onlineOptions.map((online) => <option key={online || 'all'} value={online}>{online === '' ? 'all presence' : online === 'true' ? 'online only' : 'offline only'}</option>)}
             </select>
           </label>
+          <label className="field-inline">
+            <span>Sort</span>
+            <select value={sortBy} onChange={(event) => setSortBy(event.target.value)}>
+              {sortOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+            </select>
+          </label>
         </div>
       </section>
 
       <section className="member-list">
-        {members.length === 0 ? (
+        {displayedMembers.length === 0 ? (
           <div className="empty-state"><div className="empty-state-icon"><FiUsers /></div><div className="empty-state-text">No members found.</div></div>
-        ) : members.map((member) => (
+        ) : displayedMembers.map((member) => (
           <article key={member.id} className="member-card">
             <div className="member-card-header">
               <div className="member-identity">
@@ -625,7 +656,7 @@ const AgentCustomers = () => {
 
         .filter-toolbar {
           display: grid;
-          grid-template-columns: minmax(0, 1.8fr) repeat(2, minmax(180px, 0.8fr));
+          grid-template-columns: minmax(0, 1.8fr) repeat(3, minmax(180px, 0.8fr));
           gap: 12px;
         }
 

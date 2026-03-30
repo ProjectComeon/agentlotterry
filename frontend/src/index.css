@@ -642,6 +642,214 @@ input, select, textarea {
   font-weight: 700;
 }
 
+.ops-page {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  position: relative;
+  isolation: isolate;
+}
+
+.ops-page::before {
+  content: '';
+  position: absolute;
+  inset: -56px 0 auto;
+  height: 240px;
+  background: radial-gradient(circle at top left, rgba(59, 130, 246, 0.12), transparent 62%);
+  pointer-events: none;
+  z-index: -1;
+}
+
+.ops-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(280px, 0.85fr);
+  gap: 20px;
+  padding: 28px;
+  border-radius: 24px;
+  border: 1px solid rgba(96, 165, 250, 0.18);
+  background:
+    radial-gradient(circle at top right, rgba(59, 130, 246, 0.16), transparent 40%),
+    linear-gradient(135deg, rgba(15, 23, 42, 0.96), rgba(17, 24, 39, 0.9));
+  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.34);
+}
+
+.ops-hero-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.ops-hero-copy .page-title {
+  margin: 0;
+  font-size: clamp(2rem, 4vw, 3rem);
+  line-height: 0.96;
+  letter-spacing: -0.04em;
+}
+
+.ops-hero-copy .page-subtitle {
+  margin: 0;
+  max-width: 58ch;
+}
+
+.ops-hero-side {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  justify-content: center;
+  padding: 20px;
+  border-radius: 20px;
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  background: rgba(9, 16, 30, 0.82);
+}
+
+.ops-hero-side span,
+.ops-hero-side small,
+.ops-overview-card span,
+.ops-overview-card small,
+.ops-table-note,
+.ops-feed-meta {
+  color: var(--text-muted);
+}
+
+.ops-hero-side strong {
+  font-size: clamp(2rem, 4vw, 2.8rem);
+  line-height: 0.95;
+  letter-spacing: -0.05em;
+}
+
+.ops-overview-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.ops-overview-grid.compact {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.ops-overview-card {
+  padding: 18px;
+  border-radius: 20px;
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  background: linear-gradient(180deg, rgba(20, 30, 49, 0.94), rgba(15, 23, 42, 0.9));
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ops-overview-card strong {
+  font-size: 1.45rem;
+  line-height: 1;
+  letter-spacing: -0.04em;
+}
+
+.ops-icon-badge {
+  width: 42px;
+  height: 42px;
+  border-radius: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(59, 130, 246, 0.12);
+  color: #60a5fa;
+  border: 1px solid rgba(96, 165, 250, 0.16);
+  font-size: 1.1rem;
+}
+
+.ops-section {
+  padding: 20px;
+}
+
+.ops-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+}
+
+.ops-search {
+  position: relative;
+  flex: 1;
+  min-width: 240px;
+}
+
+.ops-search svg {
+  position: absolute;
+  left: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--text-muted);
+}
+
+.ops-search .form-input {
+  padding-left: 40px;
+}
+
+.ops-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.ops-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.ops-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.ops-feed-row,
+.ops-stat-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px;
+  border-radius: 16px;
+  background: rgba(20, 30, 49, 0.94);
+  border: 1px solid rgba(148, 163, 184, 0.12);
+}
+
+.ops-feed-right {
+  text-align: right;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ops-table-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.ops-table-head h3 {
+  margin: 6px 0 0;
+}
+
+.ops-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.ops-form-grid.single {
+  grid-template-columns: 1fr;
+}
+
+.ops-empty {
+  padding: 40px 16px;
+  text-align: center;
+  color: var(--text-muted);
+}
+
 /* ============================================
    Skeleton
    ============================================ */
@@ -1248,6 +1456,13 @@ input, select, textarea {
   .market-overview-hero {
     grid-template-columns: 1fr;
   }
+
+  .ops-hero,
+  .ops-overview-grid,
+  .ops-overview-grid.compact,
+  .ops-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 @media (max-width: 768px) {
@@ -1322,6 +1537,21 @@ input, select, textarea {
 
   .bet-row-header {
     display: none;
+  }
+
+  .ops-toolbar,
+  .ops-actions,
+  .ops-table-head {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .ops-search {
+    min-width: 100%;
+  }
+
+  .ops-form-grid {
+    grid-template-columns: 1fr;
   }
 }
 
