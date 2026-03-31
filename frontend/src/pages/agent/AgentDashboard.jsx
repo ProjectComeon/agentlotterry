@@ -1,17 +1,54 @@
 import { useEffect, useMemo, useState } from 'react';
 import { FiBell, FiClock, FiDollarSign, FiTrendingUp, FiUsers, FiWifi } from 'react-icons/fi';
 import PageSkeleton from '../../components/PageSkeleton';
+import { useCatalog } from '../../context/CatalogContext';
 import { agentCopy } from '../../i18n/th/agent';
 import { getBetResultLabel, getBetTypeLabel } from '../../i18n/th/labels';
 import { getAgentDashboard } from '../../services/api';
-import { useCatalog } from '../../context/CatalogContext';
 
 const money = (value) => Number(value || 0).toLocaleString('th-TH');
+
 const formatDateTime = (value) => {
   if (!value) return agentCopy.dashboard.noRecentActivity;
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return agentCopy.dashboard.noRecentActivity;
   return date.toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'short' });
+};
+
+const groupRecentBetsBySlip = (items = []) => {
+  const grouped = new Map();
+
+  items.forEach((bet) => {
+    const key = bet.slipId || bet.slipNumber || bet._id;
+    const existing = grouped.get(key);
+
+    if (existing) {
+      existing.items.push(bet);
+      existing.totalAmount += Number(bet.amount || 0);
+      existing.totalPotentialPayout += Number(bet.potentialPayout || 0);
+      existing.result = existing.result === 'pending' || (bet.result || 'pending') === 'pending'
+        ? 'pending'
+        : existing.result === 'won' || (bet.result || 'pending') === 'won'
+          ? 'won'
+          : 'lost';
+      return;
+    }
+
+    grouped.set(key, {
+      key,
+      slipId: bet.slipId || '',
+      slipNumber: bet.slipNumber || '',
+      customer: bet.customerId,
+      marketName: bet.marketName || bet.marketId || '-',
+      roundLabel: bet.roundTitle || bet.roundDate || '-',
+      result: bet.result || 'pending',
+      totalAmount: Number(bet.amount || 0),
+      totalPotentialPayout: Number(bet.potentialPayout || 0),
+      items: [bet]
+    });
+  });
+
+  return [...grouped.values()];
 };
 
 const AgentDashboard = () => {
@@ -36,6 +73,7 @@ const AgentDashboard = () => {
 
   const stats = data?.stats || {};
   const unreadAnnouncements = announcements.filter((announcement) => !announcement.isRead).length;
+  const groupedRecentBets = useMemo(() => groupRecentBetsBySlip(data?.recentBets || []), [data?.recentBets]);
   const hasSidePanels = Boolean(data?.onlineMembers?.length || announcements.length);
 
   const statCards = useMemo(() => ([
@@ -123,29 +161,37 @@ const AgentDashboard = () => {
       </section>
 
       <section className={`dashboard-columns ${hasSidePanels ? '' : 'single'}`}>
-          <section className="card panel-card agent-dash-panel">
+        <section className="card panel-card agent-dash-panel">
           <div className="panel-head">
             <div>
               <div className="panel-eyebrow">{agentCopy.dashboard.activityEyebrow}</div>
               <h3 className="card-title">{agentCopy.dashboard.activityTitle}</h3>
             </div>
-            <span className="panel-count">{agentCopy.dashboard.items(data?.recentBets?.length || 0)}</span>
+            <span className="panel-count">{agentCopy.dashboard.items(groupedRecentBets.length || 0)}</span>
           </div>
 
           <div className="recent-list">
-            {data?.recentBets?.length ? data.recentBets.map((bet) => (
-              <article key={bet._id} className={`recent-row recent-${bet.result || 'pending'}`}>
+            {groupedRecentBets.length ? groupedRecentBets.map((bet) => (
+              <article key={bet.key} className={`recent-row recent-${bet.result}`}>
                 <div className="recent-main">
                   <div className="recent-topline">
-                    <strong>{bet.number}</strong>
-                    <span className={`result-pill result-${bet.result || 'pending'}`}>{getBetResultLabel(bet.result || 'pending')}</span>
+                    <strong>{bet.items.map((item) => item.number).join('  ')}</strong>
+                    <span className={`result-pill result-${bet.result}`}>{getBetResultLabel(bet.result)}</span>
                   </div>
-                  <div className="recent-meta">{bet.customerId?.name || agentCopy.dashboard.unknownMember} • {getBetTypeLabel(bet.betType)}</div>
-                  <div className="recent-meta">{bet.marketName || bet.marketId} • {bet.roundTitle || bet.roundDate}</div>
+                  <div className="recent-meta">
+                    {bet.customer?.name || agentCopy.dashboard.unknownMember}
+                    {' • '}
+                    {bet.items
+                      .map((item) => getBetTypeLabel(item.betType))
+                      .filter((value, index, array) => array.indexOf(value) === index)
+                      .join(', ')}
+                  </div>
+                  <div className="recent-meta">{bet.marketName} • {bet.roundLabel}</div>
+                  <div className="recent-meta recent-slip-ref">โพย {bet.slipNumber || bet.slipId || '-'}</div>
                 </div>
                 <div className="recent-right">
-                  <strong>{money(bet.amount)} บาท</strong>
-                  <span>{agentCopy.dashboard.potentialPayout(money(bet.potentialPayout))}</span>
+                  <strong>{money(bet.totalAmount)} บาท</strong>
+                  <span>{agentCopy.dashboard.potentialPayout(money(bet.totalPotentialPayout))}</span>
                 </div>
               </article>
             )) : (
@@ -157,7 +203,7 @@ const AgentDashboard = () => {
         {hasSidePanels ? (
           <div className="dashboard-side-stack">
             {data?.onlineMembers?.length ? (
-                <section className="card panel-card compact-panel agent-dash-panel">
+              <section className="card panel-card compact-panel agent-dash-panel">
                 <div className="panel-head">
                   <div>
                     <div className="panel-eyebrow">{agentCopy.dashboard.presenceEyebrow}</div>
@@ -186,7 +232,7 @@ const AgentDashboard = () => {
             ) : null}
 
             {announcements.length ? (
-                <section className="card panel-card compact-panel agent-dash-panel">
+              <section className="card panel-card compact-panel agent-dash-panel">
                 <div className="panel-head">
                   <div>
                     <div className="panel-eyebrow">{agentCopy.dashboard.broadcastEyebrow}</div>
@@ -224,7 +270,9 @@ const AgentDashboard = () => {
       </section>
 
       <style>{`
-        .agent-dash-page, .recent-list, .dashboard-side-stack {
+        .agent-dash-page,
+        .recent-list,
+        .dashboard-side-stack {
           display: flex;
           flex-direction: column;
           gap: 16px;
@@ -268,7 +316,8 @@ const AgentDashboard = () => {
           justify-content: space-between;
         }
 
-        .section-eyebrow, .panel-eyebrow {
+        .section-eyebrow,
+        .panel-eyebrow {
           font-size: 0.78rem;
           letter-spacing: 0.16em;
           text-transform: uppercase;
@@ -295,7 +344,10 @@ const AgentDashboard = () => {
           align-content: stretch;
         }
 
-        .net-result-panel, .hero-mini-card, .dash-card, .recent-row {
+        .net-result-panel,
+        .hero-mini-card,
+        .dash-card,
+        .recent-row {
           border-radius: 18px;
           border: 1px solid var(--border);
         }
@@ -319,7 +371,13 @@ const AgentDashboard = () => {
           box-shadow: inset 0 0 0 1px rgba(220, 38, 38, 0.05);
         }
 
-        .net-result-panel span, .net-result-panel small, .dash-card span, .dash-card small, .recent-meta, .hero-mini-card span, .hero-mini-card small {
+        .net-result-panel span,
+        .net-result-panel small,
+        .dash-card span,
+        .dash-card small,
+        .recent-meta,
+        .hero-mini-card span,
+        .hero-mini-card small {
           color: var(--text-muted);
         }
 
@@ -352,78 +410,59 @@ const AgentDashboard = () => {
           color: var(--text-primary);
         }
 
-        .hero-mini-icon, .dash-card-icon {
+        .hero-mini-icon,
+        .dash-card-icon {
           width: 42px;
           height: 42px;
           border-radius: 14px;
           display: inline-flex;
           align-items: center;
           justify-content: center;
-          background: rgba(220, 38, 38, 0.08);
           color: var(--primary);
-          border: 1px solid rgba(220, 38, 38, 0.14);
+          background: rgba(220, 38, 38, 0.08);
+          border: 1px solid rgba(220, 38, 38, 0.12);
         }
 
-        .dash-grid {
-          display: grid;
-          grid-template-columns: repeat(3, minmax(0, 1fr));
-          gap: 12px;
-        }
-
-        .agent-dash-overview .dash-card,
-        .agent-dash-panel {
-          min-height: 100%;
+        .dash-grid.agent-dash-overview {
+          grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+          gap: 14px;
         }
 
         .dash-card {
-          background: linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(255, 247, 247, 0.98));
-          padding: 16px;
+          padding: 18px;
           display: flex;
           flex-direction: column;
-          gap: 10px;
-          min-height: 148px;
+          gap: 8px;
+          background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(255, 247, 247, 0.96));
           box-shadow: var(--shadow-sm);
         }
 
         .dash-card strong {
-          font-size: 1.45rem;
-          line-height: 1;
+          font-size: 1.5rem;
           letter-spacing: -0.04em;
-        }
-
-        .dash-card span {
-          font-size: 0.9rem;
-          color: var(--text-secondary);
         }
 
         .dashboard-columns {
           display: grid;
-          grid-template-columns: minmax(0, 1.2fr) minmax(320px, 0.8fr);
+          grid-template-columns: minmax(0, 1.2fr) minmax(280px, 0.8fr);
           gap: 16px;
-          align-items: start;
         }
 
         .dashboard-columns.single {
-          grid-template-columns: 1fr;
+          grid-template-columns: minmax(0, 1fr);
         }
 
-        .panel-card {
+        .panel-card.agent-dash-panel {
           padding: 18px;
-          background: linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(255, 249, 249, 0.98));
-          box-shadow: 0 18px 32px rgba(127, 29, 29, 0.08);
+          box-shadow: 0 14px 32px rgba(127, 29, 29, 0.08);
         }
 
         .panel-head {
           display: flex;
-          justify-content: space-between;
           align-items: flex-start;
+          justify-content: space-between;
           gap: 12px;
-          margin-bottom: 16px;
-        }
-
-        .panel-head .card-title {
-          margin: 6px 0 0;
-          font-size: 1.15rem;
+          margin-bottom: 14px;
         }
 
         .panel-count {
@@ -433,9 +472,9 @@ const AgentDashboard = () => {
           padding: 8px 12px;
           border-radius: 999px;
           background: rgba(220, 38, 38, 0.08);
-          border: 1px solid rgba(220, 38, 38, 0.14);
+          border: 1px solid rgba(220, 38, 38, 0.12);
           color: var(--primary);
-          font-size: 0.78rem;
+          font-size: 0.82rem;
           font-weight: 700;
           white-space: nowrap;
         }
@@ -455,6 +494,18 @@ const AgentDashboard = () => {
           letter-spacing: -0.03em;
         }
 
+        .recent-pending {
+          border-left: 3px solid var(--warning);
+        }
+
+        .recent-won {
+          border-left: 3px solid var(--success);
+        }
+
+        .recent-lost {
+          border-left: 3px solid var(--danger);
+        }
+
         .recent-main {
           min-width: 0;
           display: flex;
@@ -469,41 +520,50 @@ const AgentDashboard = () => {
           flex-wrap: wrap;
         }
 
-        .recent-meta {
-          font-size: 0.84rem;
+        .recent-topline strong {
+          font-size: 1.1rem;
         }
 
-        .recent-pending { border-left-color: var(--warning); }
-        .recent-won { border-left-color: var(--success); }
-        .recent-lost { border-left-color: var(--danger); }
+        .recent-meta {
+          font-size: 0.84rem;
+          line-height: 1.4;
+        }
+
+        .recent-slip-ref {
+          font-size: 0.76rem;
+        }
 
         .recent-right {
-          min-width: 132px;
-          text-align: right;
+          min-width: 150px;
           display: flex;
           flex-direction: column;
           gap: 6px;
-          color: var(--text-secondary);
-          font-size: 0.84rem;
+          align-items: flex-end;
+          text-align: right;
+        }
+
+        .recent-right strong {
+          font-size: 1.05rem;
         }
 
         .result-pill {
           display: inline-flex;
           align-items: center;
           justify-content: center;
-          padding: 5px 10px;
+          padding: 6px 10px;
           border-radius: 999px;
           font-size: 0.72rem;
           font-weight: 700;
+          white-space: nowrap;
         }
 
         .result-pending {
-          background: rgba(245, 158, 11, 0.12);
+          background: rgba(245, 158, 11, 0.14);
           color: #b45309;
         }
 
         .result-won {
-          background: rgba(16, 185, 129, 0.12);
+          background: rgba(16, 185, 129, 0.14);
           color: #047857;
         }
 
@@ -512,44 +572,30 @@ const AgentDashboard = () => {
           color: var(--danger);
         }
 
-        @media (max-width: 1100px) {
-          .dash-grid {
-            grid-template-columns: repeat(2, minmax(0, 1fr));
-          }
-
-          .dashboard-columns, .agent-dash-hero {
+        @media (max-width: 1080px) {
+          .agent-dash-hero,
+          .dashboard-columns {
             grid-template-columns: 1fr;
           }
         }
 
-        @media (max-width: 760px) {
-          .dash-grid, .hero-insight-grid {
+        @media (max-width: 720px) {
+          .hero-insight-grid,
+          .dash-grid.agent-dash-overview {
             grid-template-columns: 1fr;
           }
 
-          .agent-dash-hero {
-            padding: 22px;
-          }
-
+          .recent-row,
           .panel-head {
             flex-direction: column;
-            align-items: stretch;
-          }
-
-          .recent-row {
-            flex-direction: column;
             align-items: flex-start;
-            padding: 13px 14px;
           }
 
           .recent-right {
             min-width: 0;
-            text-align: left;
             width: 100%;
-          }
-
-          .panel-count {
-            align-self: flex-start;
+            text-align: left;
+            align-items: flex-start;
           }
         }
       `}</style>
