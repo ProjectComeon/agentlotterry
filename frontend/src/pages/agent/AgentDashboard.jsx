@@ -310,9 +310,15 @@ const AgentDashboard = () => {
                 <div className="ui-eyebrow">รายละเอียดโพย</div>
                 <h3 className="modal-title">โพย {selectedSlip.slipNumber || selectedSlip.slipId || '-'}</h3>
               </div>
-              <button type="button" className="modal-close" onClick={() => setSelectedSlip(null)}>
-                <FiX />
-              </button>
+              <div className="recent-slip-modal-actions">
+                <button type="button" className="btn btn-secondary btn-sm" onClick={handleCopySlipImage} disabled={copyingSlipImage}>
+                  <FiCopy />
+                  {copyingSlipImage ? 'กำลังคัดลอกโพยเป็นรูป...' : 'คัดลอกโพยเป็นรูป'}
+                </button>
+                <button type="button" className="modal-close" onClick={() => setSelectedSlip(null)}>
+                  <FiX />
+                </button>
+              </div>
             </div>
 
             <div className="recent-slip-meta-grid">
@@ -689,8 +695,14 @@ const AgentDashboard = () => {
         }
 
         .recent-slip-footer {
-          margin-top: 16px;
-          padding-top: 14px;
+          display: none;
+        }
+
+        .recent-slip-modal-actions {
+          display: inline-flex;
+          align-items: center;
+          gap: 10px;
+          margin-left: auto;
         }
 
         .recent-slip-item {
@@ -788,6 +800,11 @@ const AgentDashboard = () => {
 
           .recent-slip-meta-grid {
             grid-template-columns: 1fr;
+          }
+
+          .recent-slip-modal-actions {
+            width: 100%;
+            justify-content: space-between;
           }
 
           .recent-slip-item {

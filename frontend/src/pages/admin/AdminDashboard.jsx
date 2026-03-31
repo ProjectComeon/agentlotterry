@@ -233,9 +233,15 @@ const AdminDashboard = () => {
                 <div className="ui-eyebrow">รายละเอียดโพย</div>
                 <h3 className="modal-title">โพย {selectedSlip.slipNumber || selectedSlip.slipId || '-'}</h3>
               </div>
-              <button type="button" className="modal-close" onClick={() => setSelectedSlip(null)}>
-                <FiX />
-              </button>
+              <div className="admin-slip-modal-actions">
+                <button type="button" className="btn btn-secondary btn-sm" onClick={handleCopySlipImage} disabled={copyingSlipImage}>
+                  <FiCopy />
+                  {copyingSlipImage ? 'กำลังคัดลอกโพยเป็นรูป...' : 'คัดลอกโพยเป็นรูป'}
+                </button>
+                <button type="button" className="modal-close" onClick={() => setSelectedSlip(null)}>
+                  <FiX />
+                </button>
+              </div>
             </div>
 
             <div className="admin-slip-meta-grid">
@@ -416,8 +422,14 @@ const AdminDashboard = () => {
         }
 
         .admin-slip-footer {
-          margin-top: 16px;
-          padding-top: 14px;
+          display: none;
+        }
+
+        .admin-slip-modal-actions {
+          display: inline-flex;
+          align-items: center;
+          gap: 10px;
+          margin-left: auto;
         }
 
         .admin-slip-item {
@@ -495,6 +507,11 @@ const AdminDashboard = () => {
 
           .admin-slip-meta-grid {
             grid-template-columns: 1fr;
+          }
+
+          .admin-slip-modal-actions {
+            width: 100%;
+            justify-content: space-between;
           }
 
           .admin-slip-item {

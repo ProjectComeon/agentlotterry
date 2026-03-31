@@ -4,6 +4,7 @@ import {
   FiActivity,
   FiCalendar,
   FiClock,
+  FiCopy,
   FiDollarSign,
   FiLayers,
   FiRefreshCw,
@@ -13,6 +14,7 @@ import PageSkeleton from '../../components/PageSkeleton';
 import { agentCopy } from '../../i18n/th/agent';
 import { getBetResultLabel, getBetTypeLabel } from '../../i18n/th/labels';
 import { cancelAgentBettingSlip, getAgentBets } from '../../services/api';
+import { copySavedSlipImage } from '../../utils/slipImage';
 
 const money = (value) => Number(value || 0).toLocaleString('th-TH');
 
@@ -44,6 +46,11 @@ const ui = {
   itemCount: (value) => `${value} รายการ`,
   cancelAction: 'ยกเลิกโพย',
   cancelling: 'กำลังยกเลิก...',
+  copyImageAction: 'คัดลอกโพยเป็นรูป',
+  copyingImageAction: 'กำลังคัดลอก...',
+  copyImageSuccess: 'คัดลอกโพยเป็นรูปแล้ว',
+  createImageSuccess: 'สร้างไฟล์รูปโพยแล้ว',
+  copyImageError: 'คัดลอกโพยเป็นรูปไม่สำเร็จ',
   openFootnote: 'โพยนี้ยังเปิดอยู่และยกเลิกได้',
   closedFootnote: 'โพยนี้ปิดการยกเลิกแล้ว',
 };
@@ -96,6 +103,7 @@ const AgentBets = () => {
   const [loading, setLoading] = useState(true);
   const [roundDate, setRoundDate] = useState('');
   const [cancellingSlipId, setCancellingSlipId] = useState('');
+  const [copyingSlipId, setCopyingSlipId] = useState('');
 
   useEffect(() => {
     load();
@@ -128,6 +136,29 @@ const AgentBets = () => {
       toast.error(error.response?.data?.message || ui.cancelError);
     } finally {
       setCancellingSlipId('');
+    }
+  };
+
+  const handleCopySlipImage = async (group) => {
+    if (!group) return;
+    const copyKey = group.slipId || group.key;
+    setCopyingSlipId(copyKey);
+
+    try {
+      const result = await copySavedSlipImage({
+        slip: {
+          ...group,
+          resultLabel: getBetResultLabel(group.result)
+        },
+        actorLabel: agentCopy.dashboard?.heroTitle || ui.title,
+        resolveBetTypeLabel: getBetTypeLabel
+      });
+      toast.success(result.mode === 'clipboard' ? ui.copyImageSuccess : ui.createImageSuccess);
+    } catch (error) {
+      console.error(error);
+      toast.error(error.message || ui.copyImageError);
+    } finally {
+      setCopyingSlipId('');
     }
   };
 
@@ -288,17 +319,29 @@ const AgentBets = () => {
                 {group.canCancel ? ui.openFootnote : ui.closedFootnote}
               </div>
 
-              {group.canCancel ? (
+              <div className="ag-bet-card-actions">
                 <button
                   type="button"
-                  className="btn btn-danger btn-sm"
-                  onClick={() => handleCancelSlip(group.slipId)}
-                  disabled={cancellingSlipId === group.slipId}
+                  className="btn btn-secondary btn-sm"
+                  onClick={() => handleCopySlipImage(group)}
+                  disabled={copyingSlipId === (group.slipId || group.key)}
                 >
-                  {cancellingSlipId === group.slipId ? <FiRefreshCw className="spin-animation" /> : <FiRotateCcw />}
-                  {cancellingSlipId === group.slipId ? ui.cancelling : ui.cancelAction}
+                  <FiCopy />
+                  {copyingSlipId === (group.slipId || group.key) ? ui.copyingImageAction : ui.copyImageAction}
                 </button>
-              ) : null}
+
+                {group.canCancel ? (
+                  <button
+                    type="button"
+                    className="btn btn-danger btn-sm"
+                    onClick={() => handleCancelSlip(group.slipId)}
+                    disabled={cancellingSlipId === group.slipId}
+                  >
+                    {cancellingSlipId === group.slipId ? <FiRefreshCw className="spin-animation" /> : <FiRotateCcw />}
+                    {cancellingSlipId === group.slipId ? ui.cancelling : ui.cancelAction}
+                  </button>
+                ) : null}
+              </div>
             </div>
           </article>
         ))}
@@ -558,6 +601,13 @@ const AgentBets = () => {
           align-items: center;
         }
 
+        .ag-bet-card-actions {
+          display: inline-flex;
+          flex-wrap: wrap;
+          justify-content: flex-end;
+          gap: 10px;
+        }
+
         @media (max-width: 920px) {
           .ag-bets-toolbar,
           .ag-bet-card-top,
@@ -568,6 +618,10 @@ const AgentBets = () => {
 
           .ag-bet-card-top-right {
             align-items: flex-start;
+          }
+
+          .ag-bet-card-actions {
+            justify-content: flex-start;
           }
 
           .ag-bets-hero .ops-hero-side {
