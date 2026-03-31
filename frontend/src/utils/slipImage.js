@@ -299,3 +299,162 @@ export const copySlipPreviewImage = async (options) => {
   downloadBlob(blob, fileName);
   return { mode: 'download', fileName };
 };
+
+const renderSavedSlipImage = ({
+  slip,
+  actorLabel,
+  resolveBetTypeLabel
+}) => {
+  const createdAtLabel = new Date(
+    slip?.createdAt || slip?.items?.[0]?.createdAt || Date.now()
+  ).toLocaleString('th-TH', {
+    dateStyle: 'medium',
+    timeStyle: 'short'
+  });
+
+  const itemRows = (slip?.items || []).map((item) => ({
+    number: item.number || '-',
+    betType: resolveBetTypeLabel(item.betType),
+    amount: `${money(item.amount)} บาท`,
+    rate: `x${item.payRate || 0}`,
+    payout: `${money(item.potentialPayout)} บาท`
+  }));
+
+  const headerMeta = [
+    ['สมาชิก', slip?.customer?.name || '-'],
+    ['ผู้ดูรายการ', actorLabel || '-'],
+    ['ตลาด', slip?.marketName || '-'],
+    ['งวด', slip?.roundLabel || '-'],
+    ['เลขอ้างอิง', slip?.slipNumber || slip?.slipId || '-'],
+    ['สร้างภาพเมื่อ', createdAtLabel]
+  ];
+
+  const summaryCards = [
+    ['จำนวนรายการ', `${itemRows.length || 0}`],
+    ['ยอดรวม', `${money(slip?.totalAmount)} บาท`],
+    ['จ่ายสูงสุด', `${money(slip?.totalPotentialPayout)} บาท`],
+    ['สถานะโพย', slip?.resultLabel || '-']
+  ];
+
+  const rowCount = itemRows.length || 1;
+  const canvasHeight = 420 + headerMeta.length * 48 + 140 + rowCount * ROW_HEIGHT + 40;
+  const canvas = document.createElement('canvas');
+  const ratio = window.devicePixelRatio > 1 ? 2 : 1;
+  canvas.width = CANVAS_WIDTH * ratio;
+  canvas.height = canvasHeight * ratio;
+  canvas.style.width = `${CANVAS_WIDTH}px`;
+  canvas.style.height = `${canvasHeight}px`;
+
+  const ctx = canvas.getContext('2d');
+  ctx.scale(ratio, ratio);
+  ctx.imageSmoothingEnabled = true;
+
+  const gradient = ctx.createLinearGradient(0, 0, CANVAS_WIDTH, 260);
+  gradient.addColorStop(0, BRAND_RED);
+  gradient.addColorStop(1, BRAND_DARK);
+
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(0, 0, CANVAS_WIDTH, canvasHeight);
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, CANVAS_WIDTH, 190);
+
+  ctx.fillStyle = '#ffffff';
+  ctx.font = '700 22px sans-serif';
+  ctx.fillText('Agent Lottery', PADDING, 62);
+  ctx.font = '800 42px sans-serif';
+  ctx.fillText('สำเนาโพย', PADDING, 116);
+  ctx.font = '500 18px sans-serif';
+  ctx.fillText('คัดลอกจากรายการโพยล่าสุดในแดชบอร์ด', PADDING, 152);
+
+  let y = 220;
+  drawRoundedRect(ctx, PADDING, y, CANVAS_WIDTH - (PADDING * 2), 48 + (headerMeta.length * 38), 24, '#ffffff', BORDER);
+  y += 34;
+
+  headerMeta.forEach(([label, value]) => {
+    ctx.fillStyle = TEXT_MUTED;
+    ctx.font = '700 14px sans-serif';
+    ctx.fillText(label, PADDING + 20, y);
+    ctx.fillStyle = TEXT_DARK;
+    ctx.font = '600 18px sans-serif';
+    ctx.fillText(value || '-', PADDING + 160, y);
+    y += 38;
+  });
+
+  y += 12;
+  const cardWidth = (CANVAS_WIDTH - (PADDING * 2) - 36) / 4;
+  summaryCards.forEach(([label, value], index) => {
+    const x = PADDING + (index * (cardWidth + 12));
+    drawRoundedRect(ctx, x, y, cardWidth, 96, 22, PANEL, '#fecaca');
+    ctx.fillStyle = TEXT_MUTED;
+    ctx.font = '700 14px sans-serif';
+    ctx.fillText(label, x + 18, y + 32);
+    ctx.fillStyle = TEXT_DARK;
+    ctx.font = '800 24px sans-serif';
+    const wrapped = wrapText(ctx, value, cardWidth - 36);
+    wrapped.slice(0, 2).forEach((line, lineIndex) => {
+      ctx.fillText(line, x + 18, y + 62 + (lineIndex * 24));
+    });
+  });
+
+  y += 126;
+  drawRoundedRect(ctx, PADDING, y, CANVAS_WIDTH - (PADDING * 2), 56, 18, '#fff5f5', '#fecaca');
+  ctx.fillStyle = BRAND_DARK;
+  ctx.font = '700 16px sans-serif';
+  ctx.fillText('เลข', PADDING + 18, y + 34);
+  ctx.fillText('ประเภท', PADDING + 170, y + 34);
+  ctx.fillText('ยอด', PADDING + 440, y + 34);
+  ctx.fillText('เรท', PADDING + 600, y + 34);
+  ctx.fillText('จ่ายสูงสุด', PADDING + 720, y + 34);
+
+  y += 68;
+  if (!itemRows.length) {
+    drawRoundedRect(ctx, PADDING, y, CANVAS_WIDTH - (PADDING * 2), 72, 18, '#ffffff', BORDER);
+    ctx.fillStyle = TEXT_MUTED;
+    ctx.font = '600 18px sans-serif';
+    ctx.fillText('ยังไม่มีรายการในโพยนี้', PADDING + 24, y + 42);
+    y += 86;
+  } else {
+    itemRows.forEach((row, index) => {
+      const fill = index % 2 === 0 ? '#ffffff' : '#fffafa';
+      drawRoundedRect(ctx, PADDING, y, CANVAS_WIDTH - (PADDING * 2), ROW_HEIGHT, 16, fill, BORDER);
+      ctx.fillStyle = TEXT_DARK;
+      ctx.font = '700 20px sans-serif';
+      ctx.fillText(row.number, PADDING + 18, y + 34);
+      ctx.font = '600 16px sans-serif';
+      ctx.fillText(row.betType, PADDING + 170, y + 34);
+      ctx.fillText(row.amount, PADDING + 440, y + 34);
+      ctx.fillText(row.rate, PADDING + 600, y + 34);
+      ctx.fillStyle = TEXT_MUTED;
+      ctx.fillText(row.payout, PADDING + 720, y + 34);
+      y += ROW_HEIGHT + 8;
+    });
+  }
+
+  return new Promise((resolve, reject) => {
+    canvas.toBlob((blob) => {
+      if (!blob) {
+        reject(new Error('ไม่สามารถสร้างรูปโพยได้'));
+        return;
+      }
+      resolve(blob);
+    }, 'image/png');
+  });
+};
+
+export const copySavedSlipImage = async (options) => {
+  const blob = await renderSavedSlipImage(options);
+  const memberSlug = options?.slip?.customer?.username || options?.slip?.customer?.name || 'member';
+  const fileName = `slip-${String(memberSlug).replace(/\s+/g, '-').toLowerCase()}-${Date.now()}.png`;
+
+  if (navigator.clipboard?.write && window.ClipboardItem) {
+    await navigator.clipboard.write([
+      new window.ClipboardItem({
+        [blob.type]: blob
+      })
+    ]);
+    return { mode: 'clipboard', fileName };
+  }
+
+  downloadBlob(blob, fileName);
+  return { mode: 'download', fileName };
+};

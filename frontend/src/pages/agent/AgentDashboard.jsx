@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
-import { FiBell, FiClock, FiDollarSign, FiTrendingUp, FiUsers, FiWifi } from 'react-icons/fi';
+import toast from 'react-hot-toast';
+import { FiBell, FiClock, FiCopy, FiDollarSign, FiEye, FiTrendingUp, FiUsers, FiWifi, FiX } from 'react-icons/fi';
 import PageSkeleton from '../../components/PageSkeleton';
 import { useCatalog } from '../../context/CatalogContext';
 import { agentCopy } from '../../i18n/th/agent';
 import { getBetResultLabel, getBetTypeLabel } from '../../i18n/th/labels';
 import { getAgentDashboard } from '../../services/api';
+import { copySavedSlipImage } from '../../utils/slipImage';
 
 const money = (value) => Number(value || 0).toLocaleString('th-TH');
 
@@ -55,6 +57,8 @@ const AgentDashboard = () => {
   const { announcements, markAnnouncementRead } = useCatalog();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [selectedSlip, setSelectedSlip] = useState(null);
+  const [copyingSlipImage, setCopyingSlipImage] = useState(false);
 
   useEffect(() => {
     const load = async () => {
@@ -114,6 +118,31 @@ const AgentDashboard = () => {
       hint: agentCopy.dashboard.statCards.averageStock.hint
     }
   ]), [stats]);
+
+  const handleCopySlipImage = async () => {
+    if (!selectedSlip) return;
+    setCopyingSlipImage(true);
+    try {
+      const result = await copySavedSlipImage({
+        slip: {
+          ...selectedSlip,
+          resultLabel: getBetResultLabel(selectedSlip.result)
+        },
+        actorLabel: agentCopy.dashboard.heroTitle,
+        resolveBetTypeLabel: getBetTypeLabel
+      });
+      toast.success(
+        result.mode === 'clipboard'
+          ? 'คัดลอกโพยเป็นรูปแล้ว'
+          : 'สร้างไฟล์รูปโพยแล้ว'
+      );
+    } catch (error) {
+      console.error(error);
+      toast.error(error.message || 'คัดลอกโพยเป็นรูปไม่สำเร็จ');
+    } finally {
+      setCopyingSlipImage(false);
+    }
+  };
 
   if (loading) return <PageSkeleton statCount={6} rows={6} sidebar compactSidebar />;
 
@@ -192,6 +221,10 @@ const AgentDashboard = () => {
                 <div className="recent-right">
                   <strong>{money(bet.totalAmount)} บาท</strong>
                   <span>{agentCopy.dashboard.potentialPayout(money(bet.totalPotentialPayout))}</span>
+                  <button type="button" className="btn btn-secondary btn-sm recent-view-btn" onClick={() => setSelectedSlip(bet)}>
+                    <FiEye />
+                    ดูโพย
+                  </button>
                 </div>
               </article>
             )) : (
@@ -268,6 +301,66 @@ const AgentDashboard = () => {
           </div>
         ) : null}
       </section>
+
+      {selectedSlip ? (
+        <div className="modal-overlay" onClick={() => setSelectedSlip(null)}>
+          <div className="modal recent-slip-modal" onClick={(event) => event.stopPropagation()}>
+            <div className="modal-header">
+              <div>
+                <div className="ui-eyebrow">รายละเอียดโพย</div>
+                <h3 className="modal-title">โพย {selectedSlip.slipNumber || selectedSlip.slipId || '-'}</h3>
+              </div>
+              <button type="button" className="modal-close" onClick={() => setSelectedSlip(null)}>
+                <FiX />
+              </button>
+            </div>
+
+            <div className="recent-slip-meta-grid">
+              <div className="recent-slip-meta-card">
+                <span>สมาชิก</span>
+                <strong>{selectedSlip.customer?.name || agentCopy.dashboard.unknownMember}</strong>
+              </div>
+              <div className="recent-slip-meta-card">
+                <span>ตลาด / งวด</span>
+                <strong>{selectedSlip.marketName} • {selectedSlip.roundLabel}</strong>
+              </div>
+              <div className="recent-slip-meta-card">
+                <span>ยอดแทงรวม</span>
+                <strong>{money(selectedSlip.totalAmount)} บาท</strong>
+              </div>
+              <div className="recent-slip-meta-card">
+                <span>จ่ายสูงสุด</span>
+                <strong>{money(selectedSlip.totalPotentialPayout)} บาท</strong>
+              </div>
+            </div>
+
+            <div className="recent-slip-items">
+              {selectedSlip.items.map((item) => (
+                <div key={item._id} className="recent-slip-item">
+                  <div className="recent-slip-number">{item.number}</div>
+                  <div className="recent-slip-item-body">
+                    <div className="recent-slip-item-head">
+                      <strong>{getBetTypeLabel(item.betType)}</strong>
+                      <span>x{item.payRate}</span>
+                    </div>
+                    <div className="recent-slip-item-values">
+                      <span>ยอดแทง {money(item.amount)} บาท</span>
+                      <span>จ่ายสูงสุด {money(item.potentialPayout)} บาท</span>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="modal-footer recent-slip-footer">
+              <button type="button" className="btn btn-secondary" onClick={handleCopySlipImage} disabled={copyingSlipImage}>
+                <FiCopy />
+                {copyingSlipImage ? 'กำลังคัดลอกโพยเป็นรูป...' : 'คัดลอกโพยเป็นรูป'}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       <style>{`
         .agent-dash-page,
@@ -424,22 +517,30 @@ const AgentDashboard = () => {
         }
 
         .dash-grid.agent-dash-overview {
+          display: grid;
           grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
           gap: 14px;
         }
 
         .dash-card {
-          padding: 18px;
+          padding: 14px;
           display: flex;
           flex-direction: column;
-          gap: 8px;
+          gap: 6px;
           background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(255, 247, 247, 0.96));
           box-shadow: var(--shadow-sm);
+          min-height: 132px;
         }
 
         .dash-card strong {
-          font-size: 1.5rem;
+          font-size: 1.28rem;
           letter-spacing: -0.04em;
+        }
+
+        .dash-card .dash-card-icon {
+          width: 38px;
+          height: 38px;
+          border-radius: 12px;
         }
 
         .dashboard-columns {
@@ -546,6 +647,89 @@ const AgentDashboard = () => {
           font-size: 1.05rem;
         }
 
+        .recent-view-btn {
+          align-self: flex-end;
+        }
+
+        .recent-slip-modal {
+          max-width: 760px;
+        }
+
+        .recent-slip-meta-grid {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 12px;
+          margin-bottom: 16px;
+        }
+
+        .recent-slip-meta-card,
+        .recent-slip-item {
+          border: 1px solid var(--border);
+          border-radius: 16px;
+          background: rgba(255, 251, 251, 0.92);
+        }
+
+        .recent-slip-meta-card {
+          padding: 12px 14px;
+          display: flex;
+          flex-direction: column;
+          gap: 6px;
+        }
+
+        .recent-slip-meta-card span,
+        .recent-slip-item-values span {
+          color: var(--text-muted);
+          font-size: 0.8rem;
+        }
+
+        .recent-slip-items {
+          display: flex;
+          flex-direction: column;
+          gap: 10px;
+        }
+
+        .recent-slip-footer {
+          margin-top: 16px;
+          padding-top: 14px;
+        }
+
+        .recent-slip-item {
+          padding: 12px;
+          display: grid;
+          grid-template-columns: 72px minmax(0, 1fr);
+          gap: 12px;
+        }
+
+        .recent-slip-number {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          border-radius: 14px;
+          background: rgba(220, 38, 38, 0.08);
+          color: var(--primary-dark);
+          font-size: 1.6rem;
+          font-weight: 800;
+        }
+
+        .recent-slip-item-body {
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+        }
+
+        .recent-slip-item-head {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 10px;
+        }
+
+        .recent-slip-item-values {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 8px 14px;
+        }
+
         .result-pill {
           display: inline-flex;
           align-items: center;
@@ -596,6 +780,18 @@ const AgentDashboard = () => {
             width: 100%;
             text-align: left;
             align-items: flex-start;
+          }
+
+          .recent-view-btn {
+            align-self: flex-start;
+          }
+
+          .recent-slip-meta-grid {
+            grid-template-columns: 1fr;
+          }
+
+          .recent-slip-item {
+            grid-template-columns: 1fr;
           }
         }
       `}</style>

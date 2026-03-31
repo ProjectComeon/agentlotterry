@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
-import { FiActivity, FiDollarSign, FiTrendingUp, FiUser, FiUsers } from 'react-icons/fi';
+import toast from 'react-hot-toast';
+import { FiActivity, FiCopy, FiDollarSign, FiEye, FiTrendingUp, FiUser, FiUsers, FiX } from 'react-icons/fi';
 import PageSkeleton from '../../components/PageSkeleton';
 import { adminCopy } from '../../i18n/th/admin';
 import { getBetResultLabel, getBetTypeLabel } from '../../i18n/th/labels';
 import { getAdminDashboard } from '../../services/api';
+import { copySavedSlipImage } from '../../utils/slipImage';
 
 const money = (value) => Number(value || 0).toLocaleString('th-TH');
 const copy = adminCopy.dashboard;
@@ -47,6 +49,8 @@ const groupRecentBetsBySlip = (items = []) => {
 const AdminDashboard = () => {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [selectedSlip, setSelectedSlip] = useState(null);
+  const [copyingSlipImage, setCopyingSlipImage] = useState(false);
 
   useEffect(() => {
     const loadDashboard = async () => {
@@ -95,6 +99,31 @@ const AdminDashboard = () => {
       hint: copy.statCards.netProfit.hint
     }
   ]), [copy.statCards, netProfit, stats.activeAgents, stats.activeCustomers, stats.totalAgents, stats.totalCustomers, totalAmount]);
+
+  const handleCopySlipImage = async () => {
+    if (!selectedSlip) return;
+    setCopyingSlipImage(true);
+    try {
+      const result = await copySavedSlipImage({
+        slip: {
+          ...selectedSlip,
+          resultLabel: getBetResultLabel(selectedSlip.result)
+        },
+        actorLabel: copy.heroTitle,
+        resolveBetTypeLabel: getBetTypeLabel
+      });
+      toast.success(
+        result.mode === 'clipboard'
+          ? 'คัดลอกโพยเป็นรูปแล้ว'
+          : 'สร้างไฟล์รูปโพยแล้ว'
+      );
+    } catch (error) {
+      console.error(error);
+      toast.error(error.message || 'คัดลอกโพยเป็นรูปไม่สำเร็จ');
+    } finally {
+      setCopyingSlipImage(false);
+    }
+  };
 
   if (loading) {
     return <PageSkeleton statCount={4} rows={5} sidebar compactSidebar />;
@@ -182,6 +211,10 @@ const AdminDashboard = () => {
                   <div className="ops-feed-right admin-feed-right">
                     <strong>{money(bet.totalAmount)} บาท</strong>
                     <span>จ่ายสูงสุด {money(bet.totalPotentialPayout)} บาท</span>
+                    <button type="button" className="btn btn-secondary btn-sm admin-feed-view-btn" onClick={() => setSelectedSlip(bet)}>
+                      <FiEye />
+                      ดูโพย
+                    </button>
                   </div>
                 </article>
               ))}
@@ -191,6 +224,66 @@ const AdminDashboard = () => {
           )}
         </section>
       </section>
+
+      {selectedSlip ? (
+        <div className="modal-overlay" onClick={() => setSelectedSlip(null)}>
+          <div className="modal admin-slip-modal" onClick={(event) => event.stopPropagation()}>
+            <div className="modal-header">
+              <div>
+                <div className="ui-eyebrow">รายละเอียดโพย</div>
+                <h3 className="modal-title">โพย {selectedSlip.slipNumber || selectedSlip.slipId || '-'}</h3>
+              </div>
+              <button type="button" className="modal-close" onClick={() => setSelectedSlip(null)}>
+                <FiX />
+              </button>
+            </div>
+
+            <div className="admin-slip-meta-grid">
+              <div className="admin-slip-meta-card">
+                <span>สมาชิก</span>
+                <strong>{selectedSlip.customer?.name || copy.unknownName}</strong>
+              </div>
+              <div className="admin-slip-meta-card">
+                <span>ตลาด / งวด</span>
+                <strong>{selectedSlip.marketName} • {selectedSlip.roundLabel}</strong>
+              </div>
+              <div className="admin-slip-meta-card">
+                <span>ยอดแทงรวม</span>
+                <strong>{money(selectedSlip.totalAmount)} บาท</strong>
+              </div>
+              <div className="admin-slip-meta-card">
+                <span>จ่ายสูงสุด</span>
+                <strong>{money(selectedSlip.totalPotentialPayout)} บาท</strong>
+              </div>
+            </div>
+
+            <div className="admin-slip-items">
+              {selectedSlip.items.map((item) => (
+                <div key={item._id} className="admin-slip-item">
+                  <div className="admin-slip-number">{item.number}</div>
+                  <div className="admin-slip-item-body">
+                    <div className="admin-slip-item-head">
+                      <strong>{getBetTypeLabel(item.betType)}</strong>
+                      <span>x{item.payRate}</span>
+                    </div>
+                    <div className="admin-slip-item-values">
+                      <span>ยอดแทง {money(item.amount)} บาท</span>
+                      <span>จ่ายสูงสุด {money(item.potentialPayout)} บาท</span>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="modal-footer admin-slip-footer">
+              <button type="button" className="btn btn-secondary" onClick={handleCopySlipImage} disabled={copyingSlipImage}>
+                <FiCopy />
+                {copyingSlipImage ? 'กำลังคัดลอกโพยเป็นรูป...' : 'คัดลอกโพยเป็นรูป'}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       <style>{`
         .admin-dash-page {
@@ -265,6 +358,10 @@ const AdminDashboard = () => {
           text-align: right;
         }
 
+        .admin-feed-view-btn {
+          align-self: flex-end;
+        }
+
         .admin-feed-slip-ref {
           font-size: 0.76rem;
         }
@@ -279,6 +376,85 @@ const AdminDashboard = () => {
 
         .admin-feed-lost {
           border-left: 3px solid var(--danger);
+        }
+
+        .admin-slip-modal {
+          max-width: 760px;
+        }
+
+        .admin-slip-meta-grid {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 12px;
+          margin-bottom: 16px;
+        }
+
+        .admin-slip-meta-card,
+        .admin-slip-item {
+          border: 1px solid var(--border);
+          border-radius: 16px;
+          background: rgba(255, 251, 251, 0.92);
+        }
+
+        .admin-slip-meta-card {
+          padding: 12px 14px;
+          display: flex;
+          flex-direction: column;
+          gap: 6px;
+        }
+
+        .admin-slip-meta-card span,
+        .admin-slip-item-values span {
+          color: var(--text-muted);
+          font-size: 0.8rem;
+        }
+
+        .admin-slip-items {
+          display: flex;
+          flex-direction: column;
+          gap: 10px;
+        }
+
+        .admin-slip-footer {
+          margin-top: 16px;
+          padding-top: 14px;
+        }
+
+        .admin-slip-item {
+          padding: 12px;
+          display: grid;
+          grid-template-columns: 72px minmax(0, 1fr);
+          gap: 12px;
+        }
+
+        .admin-slip-number {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          border-radius: 14px;
+          background: rgba(220, 38, 38, 0.08);
+          color: var(--primary-dark);
+          font-size: 1.6rem;
+          font-weight: 800;
+        }
+
+        .admin-slip-item-body {
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+        }
+
+        .admin-slip-item-head {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 10px;
+        }
+
+        .admin-slip-item-values {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 8px 14px;
         }
 
         @media (max-width: 920px) {
@@ -311,6 +487,18 @@ const AdminDashboard = () => {
             min-width: 0;
             width: 100%;
             text-align: left;
+          }
+
+          .admin-feed-view-btn {
+            align-self: flex-start;
+          }
+
+          .admin-slip-meta-grid {
+            grid-template-columns: 1fr;
+          }
+
+          .admin-slip-item {
+            grid-template-columns: 1fr;
           }
         }
       `}</style>
