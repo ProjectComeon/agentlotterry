@@ -227,7 +227,7 @@ const AgentDashboard = () => {
         .agent-dash-page, .recent-list, .dashboard-side-stack {
           display: flex;
           flex-direction: column;
-          gap: 18px;
+          gap: 16px;
         }
 
         .agent-dash-page {
@@ -240,7 +240,9 @@ const AgentDashboard = () => {
           position: absolute;
           inset: -48px 0 auto;
           height: 220px;
-          background: radial-gradient(circle at top left, rgba(16, 185, 129, 0.14), transparent 62%);
+          background:
+            radial-gradient(circle at top left, rgba(220, 38, 38, 0.14), transparent 62%),
+            radial-gradient(circle at top right, rgba(248, 113, 113, 0.08), transparent 30%);
           pointer-events: none;
           z-index: -1;
         }
@@ -249,12 +251,12 @@ const AgentDashboard = () => {
           display: grid;
           grid-template-columns: minmax(0, 1.2fr) minmax(280px, 0.95fr);
           gap: 20px;
-          padding: 28px;
+          padding: 24px;
           background:
-            linear-gradient(135deg, rgba(15, 23, 42, 0.96), rgba(17, 24, 39, 0.9)),
-            radial-gradient(circle at top right, rgba(16, 185, 129, 0.12), transparent 38%);
-          border-color: rgba(52, 211, 153, 0.18);
-          box-shadow: 0 24px 60px rgba(15, 23, 42, 0.34);
+            linear-gradient(135deg, rgba(255, 255, 255, 0.96), rgba(255, 243, 243, 0.98)),
+            radial-gradient(circle at top right, rgba(248, 113, 113, 0.14), transparent 36%);
+          border-color: rgba(220, 38, 38, 0.14);
+          box-shadow: 0 20px 48px rgba(127, 29, 29, 0.12);
         }
 
         .agent-dash-hero-copy {
@@ -268,7 +270,7 @@ const AgentDashboard = () => {
           font-size: 0.78rem;
           letter-spacing: 0.16em;
           text-transform: uppercase;
-          color: var(--primary-light);
+          color: var(--primary);
           font-weight: 700;
         }
 
@@ -291,8 +293,8 @@ const AgentDashboard = () => {
         }
 
         .net-result-panel, .hero-mini-card, .dash-card, .recent-row {
-          border-radius: 20px;
-          border: 1px solid rgba(148, 163, 184, 0.14);
+          border-radius: 18px;
+          border: 1px solid var(--border);
         }
 
         .net-result-panel {
@@ -301,17 +303,17 @@ const AgentDashboard = () => {
           display: flex;
           flex-direction: column;
           gap: 8px;
-          background: rgba(9, 16, 30, 0.84);
+          background: linear-gradient(135deg, rgba(220, 38, 38, 0.1), rgba(255, 250, 250, 0.96));
         }
 
         .net-result-panel.positive {
-          border-color: rgba(16, 185, 129, 0.22);
-          box-shadow: inset 0 0 0 1px rgba(16, 185, 129, 0.06);
+          border-color: rgba(16, 185, 129, 0.18);
+          box-shadow: inset 0 0 0 1px rgba(16, 185, 129, 0.05);
         }
 
         .net-result-panel.negative {
-          border-color: rgba(239, 68, 68, 0.22);
-          box-shadow: inset 0 0 0 1px rgba(239, 68, 68, 0.06);
+          border-color: rgba(220, 38, 38, 0.18);
+          box-shadow: inset 0 0 0 1px rgba(220, 38, 38, 0.05);
         }
 
         .net-result-panel span, .net-result-panel small, .dash-card span, .dash-card small, .recent-meta, .hero-mini-card span, .hero-mini-card small {
@@ -324,17 +326,27 @@ const AgentDashboard = () => {
           letter-spacing: -0.05em;
         }
 
+        .net-result-panel.positive strong {
+          color: var(--success);
+        }
+
+        .net-result-panel.negative strong {
+          color: var(--danger);
+        }
+
         .hero-mini-card {
           padding: 16px;
-          background: rgba(9, 16, 30, 0.78);
+          background: rgba(255, 252, 252, 0.96);
           display: flex;
           flex-direction: column;
           gap: 6px;
+          box-shadow: var(--shadow-sm);
         }
 
         .hero-mini-card strong {
           font-size: 1.5rem;
           letter-spacing: -0.04em;
+          color: var(--text-primary);
         }
 
         .hero-mini-icon, .dash-card-icon {
@@ -344,24 +356,25 @@ const AgentDashboard = () => {
           display: inline-flex;
           align-items: center;
           justify-content: center;
-          background: rgba(16, 185, 129, 0.12);
-          color: var(--primary-light);
-          border: 1px solid rgba(52, 211, 153, 0.16);
+          background: rgba(220, 38, 38, 0.08);
+          color: var(--primary);
+          border: 1px solid rgba(220, 38, 38, 0.14);
         }
 
         .dash-grid {
           display: grid;
-          grid-template-columns: repeat(6, minmax(0, 1fr));
+          grid-template-columns: repeat(3, minmax(0, 1fr));
           gap: 12px;
         }
 
         .dash-card {
-          background: linear-gradient(180deg, rgba(20, 30, 49, 0.94), rgba(15, 23, 42, 0.9));
-          padding: 18px;
+          background: linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(255, 247, 247, 0.98));
+          padding: 16px;
           display: flex;
           flex-direction: column;
           gap: 10px;
-          min-height: 172px;
+          min-height: 148px;
+          box-shadow: var(--shadow-sm);
         }
 
         .dash-card strong {
@@ -387,7 +400,8 @@ const AgentDashboard = () => {
         }
 
         .panel-card {
-          padding: 20px;
+          padding: 18px;
+          background: linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(255, 249, 249, 0.98));
         }
 
         .panel-head {
@@ -409,22 +423,23 @@ const AgentDashboard = () => {
           justify-content: center;
           padding: 8px 12px;
           border-radius: 999px;
-          background: rgba(16, 185, 129, 0.1);
-          border: 1px solid rgba(52, 211, 153, 0.16);
-          color: var(--primary-light);
+          background: rgba(220, 38, 38, 0.08);
+          border: 1px solid rgba(220, 38, 38, 0.14);
+          color: var(--primary);
           font-size: 0.78rem;
           font-weight: 700;
           white-space: nowrap;
         }
 
         .recent-row {
-          background: rgba(20, 30, 49, 0.94);
-          padding: 15px 16px;
+          background: rgba(255, 252, 252, 0.96);
+          padding: 14px 15px;
           display: flex;
           align-items: center;
           justify-content: space-between;
           gap: 12px;
           border-left-width: 3px;
+          box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6);
         }
 
         .recent-row strong {
@@ -475,22 +490,22 @@ const AgentDashboard = () => {
 
         .result-pending {
           background: rgba(245, 158, 11, 0.12);
-          color: #fbbf24;
+          color: #b45309;
         }
 
         .result-won {
           background: rgba(16, 185, 129, 0.12);
-          color: #34d399;
+          color: #047857;
         }
 
         .result-lost {
-          background: rgba(239, 68, 68, 0.12);
-          color: #f87171;
+          background: rgba(220, 38, 38, 0.12);
+          color: var(--danger);
         }
 
         @media (max-width: 1100px) {
           .dash-grid {
-            grid-template-columns: repeat(3, minmax(0, 1fr));
+            grid-template-columns: repeat(2, minmax(0, 1fr));
           }
 
           .dashboard-columns, .agent-dash-hero {

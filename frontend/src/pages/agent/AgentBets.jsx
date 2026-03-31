@@ -1,12 +1,37 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import toast from 'react-hot-toast';
-import { FiCalendar, FiRefreshCw, FiRotateCcw } from 'react-icons/fi';
+import { FiActivity, FiCalendar, FiClock, FiDollarSign, FiLayers, FiRefreshCw, FiRotateCcw } from 'react-icons/fi';
 import PageSkeleton from '../../components/PageSkeleton';
 import { agentCopy } from '../../i18n/th/agent';
 import { getBetResultLabel, getBetTypeLabel } from '../../i18n/th/labels';
 import { cancelAgentBettingSlip, getAgentBets } from '../../services/api';
 
 const money = (value) => Number(value || 0).toLocaleString('th-TH');
+
+const ui = {
+  eyebrow: 'พื้นที่ติดตามโพย',
+  title: 'รายการโพยที่ซื้อแทน',
+  subtitle: 'ตรวจสอบโพยที่เอเย่นต์ส่งแทนสมาชิก ดูสถานะรายการ และยกเลิกโพยที่ยังเปิดอยู่จากหน้าทำงานเดียว',
+  count: (value) => `${value} รายการ`,
+  roundLabel: 'งวดที่กำลังดู',
+  allRounds: 'ทุกงวด',
+  stakeLabel: 'ยอดแทงรวม',
+  pendingLabel: 'รายการรอผล',
+  wonLabel: 'ยอดถูกแล้ว',
+  cancellableLabel: 'โพยที่ยกเลิกได้',
+  filterTitle: 'กรองตามงวด',
+  filterHint: 'เลือกงวดที่ต้องการตรวจสอบก่อนดูโพยรายรายการ',
+  clearFilter: 'ล้างงวด',
+  loadError: 'โหลดรายการโพยไม่สำเร็จ',
+  cancelSuccess: 'ยกเลิกโพยสำเร็จ',
+  cancelError: 'ยกเลิกโพยไม่สำเร็จ',
+  slipLabel: 'เลขอ้างอิง',
+  stake: 'ยอดแทง',
+  won: 'ยอดถูก',
+  placedFor: 'ซื้อแทน',
+  cancelAction: 'ยกเลิกโพย',
+  cancelling: 'กำลังยกเลิก...',
+};
 
 const AgentBets = () => {
   const [bets, setBets] = useState([]);
@@ -24,9 +49,9 @@ const AgentBets = () => {
       if (roundDate) params.roundDate = roundDate;
       const res = await getAgentBets(params);
       setBets(res.data || []);
-    } catch (err) {
-      console.error(err);
-      toast.error('โหลดรายการโพยไม่สำเร็จ');
+    } catch (error) {
+      console.error(error);
+      toast.error(ui.loadError);
     } finally {
       setLoading(false);
     }
@@ -35,269 +60,394 @@ const AgentBets = () => {
   const handleCancelSlip = async (slipId) => {
     if (!slipId) return;
     setCancellingSlipId(slipId);
+
     try {
       await cancelAgentBettingSlip(slipId);
-      toast.success('ยกเลิกโพยสำเร็จ');
+      toast.success(ui.cancelSuccess);
       await load();
     } catch (error) {
       console.error(error);
-      toast.error(error.response?.data?.message || 'ยกเลิกโพยไม่สำเร็จ');
+      toast.error(error.response?.data?.message || ui.cancelError);
     } finally {
       setCancellingSlipId('');
     }
   };
 
-  if (loading) return <PageSkeleton statCount={3} rows={5} sidebar={false} />;
+  const summary = useMemo(() => ({
+    totalStake: bets.reduce((sum, bet) => sum + Number(bet.amount || 0), 0),
+    pendingItems: bets.filter((bet) => (bet.result || 'pending') === 'pending').length,
+    totalWon: bets.reduce((sum, bet) => sum + Number(bet.wonAmount || 0), 0),
+    cancellableItems: bets.filter((bet) => (bet.result || 'pending') === 'pending' && bet.slipId).length,
+  }), [bets]);
+
+  if (loading) return <PageSkeleton statCount={4} rows={5} sidebar={false} />;
 
   return (
-    <div className="ag-bets animate-fade-in">
-      <div className="ag-bets-header">
-        <div>
-          <h1 className="ag-bets-title">โพยลูกค้า</h1>
-          <p className="ag-bets-subtitle">ดูรายการซื้อที่เอเย่นต์ทำแทนสมาชิก และยกเลิกโพยที่ยังเปิดอยู่ได้จากหน้านี้</p>
+    <div className="ops-page ag-bets-page animate-fade-in">
+      <section className="ops-hero ag-bets-hero">
+        <div className="ops-hero-copy">
+          <span className="ui-eyebrow">{ui.eyebrow}</span>
+          <h1 className="page-title">{ui.title}</h1>
+          <p className="page-subtitle">{ui.subtitle}</p>
         </div>
-        <span className="ag-bets-count">{bets.length} รายการ</span>
-      </div>
 
-      <div className="ag-bets-filter">
-        <FiCalendar />
-        <input
-          type="text"
-          placeholder={agentCopy.bets.filterPlaceholder}
-          value={roundDate}
-          onChange={(e) => setRoundDate(e.target.value)}
-        />
-      </div>
+        <div className="ops-hero-side">
+          <span>{ui.roundLabel}</span>
+          <strong>{roundDate || ui.allRounds}</strong>
+          <small>{ui.count(bets.length)}</small>
+        </div>
+      </section>
 
-      <div className="ag-bets-list">
-        {bets.length === 0 ? (
-          <div className="empty-state">
-            <div className="empty-state-text">{agentCopy.bets.empty}</div>
+      <section className="ops-overview-grid">
+        <article className="ops-overview-card">
+          <span className="ops-icon-badge"><FiDollarSign /></span>
+          <span>{ui.stakeLabel}</span>
+          <strong>{money(summary.totalStake)}</strong>
+          <small>{ui.count(bets.length)}</small>
+        </article>
+
+        <article className="ops-overview-card">
+          <span className="ops-icon-badge"><FiClock /></span>
+          <span>{ui.pendingLabel}</span>
+          <strong>{money(summary.pendingItems)}</strong>
+          <small>ยังไม่ประกาศผล</small>
+        </article>
+
+        <article className="ops-overview-card">
+          <span className="ops-icon-badge"><FiActivity /></span>
+          <span>{ui.wonLabel}</span>
+          <strong>{money(summary.totalWon)}</strong>
+          <small>รวมยอดที่ถูกรางวัลแล้ว</small>
+        </article>
+
+        <article className="ops-overview-card">
+          <span className="ops-icon-badge"><FiLayers /></span>
+          <span>{ui.cancellableLabel}</span>
+          <strong>{money(summary.cancellableItems)}</strong>
+          <small>ยกเลิกได้เฉพาะโพยที่ยังรอผล</small>
+        </article>
+      </section>
+
+      <section className="card ops-section">
+        <div className="ops-toolbar ag-bets-toolbar">
+          <div>
+            <div className="ui-eyebrow">{ui.filterTitle}</div>
+            <div className="ops-table-note">{ui.filterHint}</div>
           </div>
-        ) : bets.map((b) => {
-          const canCancel = (b.result || 'pending') === 'pending' && !!b.slipId;
+
+          <div className="ag-bets-toolbar-controls">
+            <label className="ag-bets-date-field">
+              <FiCalendar />
+              <input
+                type="date"
+                className="form-input"
+                value={roundDate}
+                onChange={(event) => setRoundDate(event.target.value)}
+              />
+            </label>
+
+            {roundDate ? (
+              <button type="button" className="btn btn-secondary" onClick={() => setRoundDate('')}>
+                <FiRotateCcw />
+                {ui.clearFilter}
+              </button>
+            ) : null}
+          </div>
+        </div>
+      </section>
+
+      <section className="ag-bets-list">
+        {bets.length === 0 ? (
+          <div className="card ops-section">
+            <div className="empty-state">
+              <div className="empty-state-text">{agentCopy.bets.empty}</div>
+            </div>
+          </div>
+        ) : bets.map((bet) => {
+          const canCancel = (bet.result || 'pending') === 'pending' && !!bet.slipId;
+
           return (
-            <div key={b._id} className={`ag-bet-card ag-bet-card-${b.result || 'pending'}`}>
+            <article key={bet._id} className={`ag-bet-card ag-bet-card-${bet.result || 'pending'}`}>
               <div className="ag-bet-card-top">
-                <div>
-                  <span className="ag-bet-card-customer">{b.customerId?.name || agentCopy.bets.unknownMember}</span>
-                  <div className="ag-bet-card-slip">{b.slipNumber || b.slipId || '-'}</div>
+                <div className="ag-bet-card-heading">
+                  <div className="ag-bet-card-kicker">{ui.placedFor}</div>
+                  <strong>{bet.customerId?.name || agentCopy.bets.unknownMember}</strong>
+                  <div className="ag-bet-card-slip">{ui.slipLabel}: {bet.slipNumber || bet.slipId || '-'}</div>
                 </div>
-                <span className={`ag-bet-badge ag-bet-badge-${b.result || 'pending'}`}>
-                  {getBetResultLabel(b.result || 'pending')}
+
+                <span className={`ag-bet-badge ag-bet-badge-${bet.result || 'pending'}`}>
+                  {getBetResultLabel(bet.result || 'pending')}
                 </span>
               </div>
 
-              <div className="ag-bet-card-body">
-                <span className="ag-bet-card-number">{b.number}</span>
-                <div className="ag-bet-card-details">
-                  <span className="ag-bet-card-type">{getBetTypeLabel(b.betType)} x{b.payRate}</span>
-                  <span className="ag-bet-card-market">{b.marketName || agentCopy.bets.defaultMarket} • {b.roundDate}</span>
+              <div className="ag-bet-card-main">
+                <div className="ag-bet-number-pill">{bet.number}</div>
+
+                <div className="ag-bet-meta-grid">
+                  <div className="ag-bet-meta-block">
+                    <span>{getBetTypeLabel(bet.betType)}</span>
+                    <strong>x{bet.payRate}</strong>
+                  </div>
+                  <div className="ag-bet-meta-block">
+                    <span>ตลาด / งวด</span>
+                    <strong>{bet.marketName || agentCopy.bets.defaultMarket} • {bet.roundDate}</strong>
+                  </div>
+                  <div className="ag-bet-meta-block">
+                    <span>{ui.stake}</span>
+                    <strong>{money(bet.amount)} บาท</strong>
+                  </div>
+                  <div className="ag-bet-meta-block">
+                    <span>{ui.won}</span>
+                    <strong className={(bet.wonAmount || 0) > 0 ? 'ag-bet-meta-positive' : ''}>
+                      {(bet.wonAmount || 0) > 0 ? `+${money(bet.wonAmount)}` : '-'} {(bet.wonAmount || 0) > 0 ? 'บาท' : ''}
+                    </strong>
+                  </div>
                 </div>
               </div>
 
               <div className="ag-bet-card-bottom">
-                <div className="ag-bet-card-amounts">
-                  <span>แทง {money(b.amount)} บาท</span>
-                  {b.wonAmount > 0 ? <span className="ag-bet-card-won">+{money(b.wonAmount)} บาท</span> : null}
+                <div className="ag-bet-card-footnote">
+                  {canCancel ? 'โพยนี้ยังเปิดอยู่และยกเลิกได้' : 'โพยนี้ปิดการยกเลิกแล้ว'}
                 </div>
 
                 {canCancel ? (
                   <button
                     type="button"
                     className="btn btn-danger btn-sm"
-                    onClick={() => handleCancelSlip(b.slipId)}
-                    disabled={cancellingSlipId === b.slipId}
+                    onClick={() => handleCancelSlip(bet.slipId)}
+                    disabled={cancellingSlipId === bet.slipId}
                   >
-                    {cancellingSlipId === b.slipId ? <FiRefreshCw className="spin-animation" /> : <FiRotateCcw />}
-                    {cancellingSlipId === b.slipId ? 'กำลังยกเลิก...' : 'ยกเลิกโพย'}
+                    {cancellingSlipId === bet.slipId ? <FiRefreshCw className="spin-animation" /> : <FiRotateCcw />}
+                    {cancellingSlipId === bet.slipId ? ui.cancelling : ui.cancelAction}
                   </button>
                 ) : null}
               </div>
-            </div>
+            </article>
           );
         })}
-      </div>
+      </section>
 
       <style>{`
-        .ag-bets {
-          display: flex;
-          flex-direction: column;
-          gap: 14px;
-        }
-
-        .ag-bets-header {
-          display: flex;
-          align-items: flex-end;
-          justify-content: space-between;
-          gap: 12px;
-        }
-
-        .ag-bets-title {
-          font-size: 1.35rem;
-          font-weight: 800;
-          margin: 0;
-        }
-
-        .ag-bets-subtitle {
-          margin: 6px 0 0;
-          color: var(--text-secondary);
-          font-size: 0.9rem;
-          line-height: 1.6;
-        }
-
-        .ag-bets-count {
-          font-size: 0.8rem;
-          color: var(--text-muted);
-          background: var(--bg-surface);
-          padding: 6px 12px;
-          border-radius: 999px;
-          white-space: nowrap;
-        }
-
-        .ag-bets-filter {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-          padding: 12px 14px;
-          background: var(--bg-card);
-          border: 1px solid var(--border);
-          border-radius: var(--radius-md);
-          color: var(--text-muted);
-        }
-
-        .ag-bets-filter input {
-          background: none;
-          border: none;
-          color: var(--text-primary);
-          font-size: 0.88rem;
-          flex: 1;
-          min-width: 0;
-        }
-
-        .ag-bets-filter input::placeholder {
-          color: var(--text-muted);
-        }
-
+        .ag-bets-page,
         .ag-bets-list {
           display: flex;
           flex-direction: column;
+          gap: 16px;
+        }
+
+        .ag-bets-hero .ops-hero-side strong {
+          font-size: clamp(1.5rem, 3vw, 2.1rem);
+        }
+
+        .ag-bets-toolbar {
+          justify-content: space-between;
+        }
+
+        .ag-bets-toolbar-controls {
+          display: flex;
+          flex-wrap: wrap;
           gap: 10px;
+          align-items: center;
+        }
+
+        .ag-bets-date-field {
+          min-width: 220px;
+          display: inline-flex;
+          align-items: center;
+          gap: 10px;
+          padding: 0 14px;
+          border-radius: 16px;
+          border: 1px solid var(--border);
+          background: var(--bg-input);
+          color: var(--text-muted);
+        }
+
+        .ag-bets-date-field .form-input {
+          border: none;
+          background: transparent;
+          box-shadow: none;
+          min-height: 46px;
+          padding: 0;
+        }
+
+        .ag-bets-date-field .form-input:focus {
+          box-shadow: none;
         }
 
         .ag-bet-card {
-          background: var(--bg-card);
+          border-radius: 22px;
           border: 1px solid var(--border);
-          border-radius: var(--radius-md);
-          padding: 16px;
-          border-left: 3px solid var(--border);
+          background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(255, 247, 247, 0.98));
+          box-shadow: var(--shadow-sm);
+          padding: 18px;
+          display: flex;
+          flex-direction: column;
+          gap: 14px;
+          transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
         }
 
-        .ag-bet-card-pending { border-left-color: var(--warning); }
-        .ag-bet-card-won { border-left-color: var(--success); }
-        .ag-bet-card-lost { border-left-color: var(--danger); }
+        .ag-bet-card:hover {
+          transform: translateY(-2px);
+          border-color: var(--border-accent);
+          box-shadow: var(--shadow-md);
+        }
 
-        .ag-bet-card-top {
+        .ag-bet-card-pending {
+          border-left: 4px solid var(--warning);
+        }
+
+        .ag-bet-card-won {
+          border-left: 4px solid var(--success);
+        }
+
+        .ag-bet-card-lost {
+          border-left: 4px solid var(--danger);
+        }
+
+        .ag-bet-card-top,
+        .ag-bet-card-bottom {
           display: flex;
           align-items: flex-start;
           justify-content: space-between;
           gap: 12px;
-          margin-bottom: 10px;
         }
 
-        .ag-bet-card-customer {
-          font-size: 0.86rem;
-          font-weight: 700;
-          color: var(--text-primary);
+        .ag-bet-card-heading {
+          display: flex;
+          flex-direction: column;
+          gap: 6px;
         }
 
-        .ag-bet-card-slip {
-          margin-top: 4px;
-          font-size: 0.74rem;
+        .ag-bet-card-kicker,
+        .ag-bet-card-slip,
+        .ag-bet-card-footnote {
           color: var(--text-muted);
-          letter-spacing: 0.04em;
+          font-size: 0.78rem;
+        }
+
+        .ag-bet-card-heading strong {
+          font-size: 1.08rem;
+          letter-spacing: -0.02em;
         }
 
         .ag-bet-badge {
-          font-size: 0.68rem;
-          font-weight: 700;
-          padding: 4px 10px;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          padding: 6px 10px;
           border-radius: 999px;
+          font-size: 0.72rem;
+          font-weight: 700;
           white-space: nowrap;
         }
 
-        .ag-bet-badge-pending { background: rgba(245, 158, 11, 0.15); color: #fbbf24; }
-        .ag-bet-badge-won { background: rgba(16, 185, 129, 0.15); color: #34d399; }
-        .ag-bet-badge-lost { background: rgba(239, 68, 68, 0.15); color: #f87171; }
-
-        .ag-bet-card-body {
-          display: flex;
-          align-items: center;
-          gap: 12px;
-          margin-bottom: 12px;
+        .ag-bet-badge-pending {
+          background: rgba(245, 158, 11, 0.14);
+          color: #b45309;
         }
 
-        .ag-bet-card-number {
-          font-size: 1.7rem;
+        .ag-bet-badge-won {
+          background: rgba(16, 185, 129, 0.14);
+          color: #047857;
+        }
+
+        .ag-bet-badge-lost {
+          background: rgba(220, 38, 38, 0.12);
+          color: var(--danger);
+        }
+
+        .ag-bet-card-main {
+          display: grid;
+          grid-template-columns: 120px minmax(0, 1fr);
+          gap: 16px;
+          align-items: stretch;
+        }
+
+        .ag-bet-number-pill {
+          min-height: 112px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          border-radius: 20px;
+          background: linear-gradient(135deg, rgba(220, 38, 38, 0.08), rgba(254, 242, 242, 0.92));
+          border: 1px solid rgba(220, 38, 38, 0.14);
+          color: var(--primary-dark);
+          font-size: clamp(1.8rem, 3vw, 2.4rem);
           font-weight: 800;
-          color: var(--text-primary);
           letter-spacing: 0.08em;
-          min-width: 72px;
         }
 
-        .ag-bet-card-details {
-          display: flex;
-          flex-direction: column;
-          gap: 4px;
-        }
-
-        .ag-bet-card-type {
-          font-size: 0.8rem;
-          color: var(--text-secondary);
-          font-weight: 600;
-        }
-
-        .ag-bet-card-market {
-          font-size: 0.74rem;
-          color: var(--text-muted);
-        }
-
-        .ag-bet-card-bottom {
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
+        .ag-bet-meta-grid {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
           gap: 12px;
-          padding-top: 10px;
-          border-top: 1px solid var(--border-light);
         }
 
-        .ag-bet-card-amounts {
+        .ag-bet-meta-block {
           display: flex;
           flex-direction: column;
-          gap: 4px;
-          font-size: 0.82rem;
-          color: var(--text-muted);
+          gap: 6px;
+          padding: 14px;
+          border-radius: 16px;
+          border: 1px solid var(--border);
+          background: rgba(255, 252, 252, 0.9);
         }
 
-        .ag-bet-card-won {
-          font-weight: 800;
+        .ag-bet-meta-block span {
+          color: var(--text-muted);
+          font-size: 0.77rem;
+          text-transform: uppercase;
+          letter-spacing: 0.08em;
+          font-weight: 700;
+        }
+
+        .ag-bet-meta-block strong {
+          font-size: 0.98rem;
+          line-height: 1.4;
+        }
+
+        .ag-bet-meta-positive {
           color: var(--success);
         }
 
-        @media (max-width: 760px) {
-          .ag-bets-header,
+        .ag-bet-card-bottom {
+          padding-top: 12px;
+          border-top: 1px solid var(--border-light);
+          align-items: center;
+        }
+
+        @media (max-width: 920px) {
+          .ag-bets-toolbar,
           .ag-bet-card-top,
           .ag-bet-card-bottom {
             flex-direction: column;
-            align-items: flex-start;
+            align-items: stretch;
           }
 
-          .ag-bets-count {
-            align-self: flex-start;
+          .ag-bets-toolbar-controls {
+            width: 100%;
           }
 
-          .ag-bet-card-body {
-            align-items: flex-start;
+          .ag-bets-toolbar-controls > * {
+            flex: 1;
+          }
+
+          .ag-bet-card-main {
+            grid-template-columns: 1fr;
+          }
+
+          .ag-bet-number-pill {
+            min-height: 84px;
+          }
+        }
+
+        @media (max-width: 720px) {
+          .ag-bet-meta-grid {
+            grid-template-columns: 1fr;
+          }
+
+          .ag-bets-date-field {
+            width: 100%;
           }
         }
       `}</style>

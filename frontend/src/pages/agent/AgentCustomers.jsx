@@ -511,7 +511,9 @@ const AgentCustomers = () => {
           position: absolute;
           inset: -40px 0 auto;
           height: 240px;
-          background: radial-gradient(circle at top left, rgba(16, 185, 129, 0.12), transparent 58%);
+          background:
+            radial-gradient(circle at top left, rgba(220, 38, 38, 0.14), transparent 58%),
+            radial-gradient(circle at top right, rgba(248, 113, 113, 0.08), transparent 28%);
           pointer-events: none;
           z-index: -1;
         }
@@ -521,12 +523,12 @@ const AgentCustomers = () => {
           justify-content: space-between;
           align-items: flex-end;
           gap: 24px;
-          padding: 28px;
+          padding: 24px;
           background:
-            linear-gradient(135deg, rgba(15, 23, 42, 0.96), rgba(17, 24, 39, 0.88)),
-            radial-gradient(circle at top right, rgba(16, 185, 129, 0.12), transparent 36%);
-          border-color: rgba(52, 211, 153, 0.16);
-          box-shadow: 0 24px 60px rgba(15, 23, 42, 0.34);
+            linear-gradient(135deg, rgba(255, 255, 255, 0.97), rgba(255, 244, 244, 0.98)),
+            radial-gradient(circle at top right, rgba(248, 113, 113, 0.14), transparent 34%);
+          border-color: rgba(220, 38, 38, 0.14);
+          box-shadow: 0 20px 48px rgba(127, 29, 29, 0.12);
         }
 
         .members-hero-copy {
@@ -576,24 +578,25 @@ const AgentCustomers = () => {
 
         .summary-card, .member-card, .lottery-card {
           position: relative;
-          background: linear-gradient(180deg, rgba(20, 30, 49, 0.94), rgba(15, 23, 42, 0.9));
-          border: 1px solid rgba(148, 163, 184, 0.14);
+          background: linear-gradient(180deg, rgba(255, 255, 255, 0.97), rgba(255, 247, 247, 0.98));
+          border: 1px solid rgba(220, 38, 38, 0.12);
           border-radius: 22px;
           padding: 18px;
           overflow: hidden;
+          box-shadow: var(--shadow-sm);
         }
 
         .summary-card::after, .member-card::after {
           content: '';
           position: absolute;
           inset: 0;
-          background: linear-gradient(135deg, rgba(255, 255, 255, 0.03), transparent 42%);
+          background: linear-gradient(135deg, rgba(255, 255, 255, 0.45), transparent 42%);
           pointer-events: none;
         }
 
         .summary-card-highlight {
-          border-color: rgba(52, 211, 153, 0.24);
-          box-shadow: 0 16px 32px rgba(16, 185, 129, 0.08);
+          border-color: rgba(220, 38, 38, 0.18);
+          box-shadow: 0 16px 32px rgba(220, 38, 38, 0.08);
         }
 
         .summary-card-top {
@@ -610,9 +613,9 @@ const AgentCustomers = () => {
           align-items: center;
           justify-content: center;
           border-radius: 14px;
-          background: rgba(16, 185, 129, 0.12);
-          color: var(--primary-light);
-          border: 1px solid rgba(52, 211, 153, 0.16);
+          background: rgba(220, 38, 38, 0.08);
+          color: var(--primary);
+          border: 1px solid rgba(220, 38, 38, 0.14);
         }
 
         .summary-label, .member-subtitle-row, .member-metrics span, .lottery-card-header span, .lottery-group-title, .member-last-active, .member-actions-label, .filter-subtitle {
@@ -657,9 +660,9 @@ const AgentCustomers = () => {
         .filter-count {
           padding: 8px 14px;
           border-radius: 999px;
-          border: 1px solid rgba(52, 211, 153, 0.16);
-          background: rgba(16, 185, 129, 0.1);
-          color: var(--primary-light);
+          border: 1px solid rgba(220, 38, 38, 0.14);
+          background: rgba(220, 38, 38, 0.08);
+          color: var(--primary);
           font-size: 0.82rem;
           font-weight: 700;
         }
@@ -673,8 +676,8 @@ const AgentCustomers = () => {
         .search-box, .field-inline select, .wizard-grid input, .wizard-grid select, .wizard-grid textarea, .wizard-grid-textarea textarea {
           width: 100%;
           min-height: 52px;
-          background: rgba(9, 16, 30, 0.92);
-          border: 1px solid rgba(148, 163, 184, 0.16);
+          background: rgba(255, 250, 250, 0.96);
+          border: 1px solid rgba(220, 38, 38, 0.12);
           border-radius: 16px;
           color: var(--text-primary);
           transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
@@ -689,8 +692,8 @@ const AgentCustomers = () => {
         }
 
         .search-box:focus-within, .field-inline select:focus, .wizard-grid input:focus, .wizard-grid select:focus, .wizard-grid textarea:focus, .wizard-grid-textarea textarea:focus {
-          border-color: rgba(52, 211, 153, 0.42);
-          box-shadow: 0 0 0 4px rgba(16, 185, 129, 0.08);
+          border-color: rgba(220, 38, 38, 0.32);
+          box-shadow: 0 0 0 4px rgba(220, 38, 38, 0.08);
           outline: none;
         }
 
@@ -735,8 +738,8 @@ const AgentCustomers = () => {
 
         .member-card:hover {
           transform: translateY(-2px);
-          border-color: rgba(52, 211, 153, 0.22);
-          box-shadow: 0 20px 36px rgba(2, 8, 23, 0.28);
+          border-color: rgba(220, 38, 38, 0.22);
+          box-shadow: 0 20px 36px rgba(127, 29, 29, 0.12);
         }
 
         .member-card-header {
@@ -763,9 +766,9 @@ const AgentCustomers = () => {
           justify-content: center;
           font-size: 1.25rem;
           font-weight: 800;
-          color: var(--primary-light);
-          background: linear-gradient(135deg, rgba(16, 185, 129, 0.2), rgba(20, 184, 166, 0.08));
-          border: 1px solid rgba(52, 211, 153, 0.18);
+          color: var(--primary);
+          background: linear-gradient(135deg, rgba(220, 38, 38, 0.14), rgba(255, 242, 242, 0.92));
+          border: 1px solid rgba(220, 38, 38, 0.14);
         }
 
         .member-heading {
@@ -794,16 +797,16 @@ const AgentCustomers = () => {
           align-items: center;
           padding: 7px 11px;
           border-radius: 999px;
-          background: rgba(15, 23, 42, 0.72);
-          border: 1px solid rgba(148, 163, 184, 0.1);
+          background: rgba(255, 249, 249, 0.92);
+          border: 1px solid rgba(220, 38, 38, 0.1);
         }
 
         .member-credit {
           min-width: 172px;
           padding: 14px 16px;
           border-radius: 18px;
-          background: rgba(8, 15, 28, 0.8);
-          border: 1px solid rgba(52, 211, 153, 0.16);
+          background: linear-gradient(180deg, rgba(255, 249, 249, 0.98), rgba(255, 240, 240, 0.98));
+          border: 1px solid rgba(220, 38, 38, 0.14);
           text-align: right;
         }
 
@@ -828,8 +831,8 @@ const AgentCustomers = () => {
         }
 
         .member-metrics > div {
-          background: rgba(9, 16, 30, 0.86);
-          border: 1px solid rgba(148, 163, 184, 0.12);
+          background: rgba(255, 251, 251, 0.96);
+          border: 1px solid rgba(220, 38, 38, 0.1);
           border-radius: 16px;
           padding: 14px;
         }
@@ -848,7 +851,7 @@ const AgentCustomers = () => {
           gap: 16px;
           flex-wrap: wrap;
           padding-top: 16px;
-          border-top: 1px solid rgba(148, 163, 184, 0.12);
+          border-top: 1px solid rgba(220, 38, 38, 0.08);
         }
 
         .member-actions-copy {
@@ -874,25 +877,25 @@ const AgentCustomers = () => {
 
         .status-active {
           background: rgba(16, 185, 129, 0.14);
-          color: #34d399;
+          color: #047857;
         }
 
         .status-inactive {
-          background: rgba(148, 163, 184, 0.16);
-          color: #cbd5e1;
+          background: rgba(127, 80, 80, 0.12);
+          color: var(--text-secondary);
         }
 
         .status-suspended {
-          background: rgba(239, 68, 68, 0.14);
-          color: #f87171;
+          background: rgba(220, 38, 38, 0.12);
+          color: var(--danger);
         }
 
         .online-pill {
           display: inline-flex;
           align-items: center;
           gap: 6px;
-          background: rgba(56, 189, 248, 0.14);
-          color: #7dd3fc;
+          background: rgba(220, 38, 38, 0.08);
+          color: var(--primary);
         }
 
         .wizard-steps {

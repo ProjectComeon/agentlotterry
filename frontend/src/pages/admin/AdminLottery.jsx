@@ -28,6 +28,13 @@ const resultStatusLabel = (result) => {
   return copy.waitingResult;
 };
 
+const formatDateTime = (value) => {
+  if (!value) return '-';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '-';
+  return date.toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'short' });
+};
+
 const AdminLottery = () => {
   const [latest, setLatest] = useState(null);
   const [results, setResults] = useState([]);
@@ -431,6 +438,35 @@ const AdminLottery = () => {
           </div>
         </div>
 
+        {(selectedLottery || selectedRound) ? (
+          <div className="ops-selected-summary">
+            <div className="ops-stat-row">
+              <div>
+                <strong>{copy.lotteryLabel}</strong>
+                <div className="ops-feed-meta">
+                  {selectedLottery ? `${selectedLottery.leagueName} • ${selectedLottery.name}` : copy.noLotteryOptions}
+                </div>
+              </div>
+            </div>
+
+            <div className="ops-stat-row">
+              <div>
+                <strong>{copy.roundLabel}</strong>
+                <div className="ops-feed-meta">
+                  {selectedRound ? `${selectedRound.title} • ${selectedRound.label}` : copy.noRoundOptions}
+                </div>
+              </div>
+            </div>
+
+            <div className="ops-stat-row">
+              <div>
+                <strong>ปิดรับ</strong>
+                <div className="ops-feed-meta">{formatDateTime(selectedRound?.closeAt)}</div>
+              </div>
+            </div>
+          </div>
+        ) : null}
+
         <div className="ops-stack">
           {!supportedBetTypes.length ? (
             <div className="empty-state">
@@ -438,14 +474,14 @@ const AdminLottery = () => {
             </div>
           ) : (
             <>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
+              <div className="ops-chip-grid">
                 {supportedBetTypes.map((betType) => {
                   const isClosed = closedBetTypesDraft.includes(betType);
                   return (
                     <button
                       key={betType}
                       type="button"
-                      className={`btn ${isClosed ? 'btn-danger' : 'btn-secondary'} btn-sm`}
+                      className={`btn ${isClosed ? 'btn-danger' : 'btn-secondary'} btn-sm ops-chip-toggle`}
                       onClick={() => toggleClosedBetType(betType)}
                       disabled={!selectedRound}
                     >
@@ -511,12 +547,12 @@ const AdminLottery = () => {
             <tbody>
               {results.length === 0 ? (
                 <tr>
-                  <td colSpan="5" className="text-center text-muted" style={{ padding: 40 }}>{copy.noResults}</td>
+                  <td colSpan="5" className="text-center text-muted table-empty-cell">{copy.noResults}</td>
                 </tr>
               ) : (
                 results.map((result) => (
                   <tr key={result._id}>
-                    <td style={{ fontWeight: 700 }}>{result.roundDate}</td>
+                    <td className="ops-history-cell-strong">{result.roundDate}</td>
                     <td>{result.firstPrize || '-'}</td>
                     <td>{result.firstPrize?.slice(-3) || '-'}</td>
                     <td>{result.twoBottom || '-'}</td>

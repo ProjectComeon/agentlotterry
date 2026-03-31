@@ -820,39 +820,41 @@ const OperatorBetting = () => {
   if (catalogLoading && !selectedMember) return <PageSkeleton statCount={3} rows={5} sidebar compactSidebar />;
 
   return (
-    <div className="animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-      <section className="card ops-section">
-        <div className="ui-eyebrow">{copy.actorLabel}</div>
-        <h1 className="page-title">{copy.title}</h1>
-        <p className="page-subtitle">{copy.subtitle}</p>
+    <div className="ops-page operator-page animate-fade-in">
+      <section className="card ops-section ops-hero operator-hero">
+        <div className="ops-hero-copy operator-hero-copy">
+          <div className="ui-eyebrow">{copy.actorLabel}</div>
+          <h1 className="page-title">{copy.title}</h1>
+          <p className="page-subtitle">{copy.subtitle}</p>
+        </div>
       </section>
 
-      <section style={{ display: 'grid', gridTemplateColumns: 'minmax(320px, 0.42fr) minmax(0, 1fr)', gap: 16, alignItems: 'start' }}>
-        <section className="card ops-section">
+      <section className="operator-layout">
+        <section className="card ops-section operator-member-panel">
           <div className="ui-eyebrow">ขั้นตอนแรก</div>
           <h3 className="card-title">{copy.pickerTitle}</h3>
           <p className="ops-table-note">{copy.pickerNote}</p>
 
-          <div style={{ marginTop: 16 }}>
+          <div className="operator-search-block">
             <label className="form-label">ค้นหาสมาชิก</label>
-            <div className="form-input" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <div className="form-input operator-search-field">
               <FiSearch />
-              <input ref={searchInputRef} type="text" value={searchText} onChange={(event) => setSearchText(event.target.value)} placeholder={copy.searchPlaceholder} style={{ flex: 1, border: 'none', background: 'transparent', color: 'inherit', outline: 'none' }} />
+              <input ref={searchInputRef} className="operator-search-input" type="text" value={searchText} onChange={(event) => setSearchText(event.target.value)} placeholder={copy.searchPlaceholder} />
             </div>
           </div>
 
           {selectedMember ? (
-            <div className="card" style={{ marginTop: 16, padding: 16, borderColor: 'rgba(239,68,68,.22)' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                <div style={{ width: 42, height: 42, borderRadius: 14, display: 'grid', placeItems: 'center', background: 'var(--primary-subtle)', color: 'var(--primary-light)', fontWeight: 800 }}>{selectedMember.name?.charAt(0) || 'M'}</div>
-                <div style={{ flex: 1 }}>
+            <div className="card operator-selected-member">
+              <div className="operator-selected-member-head">
+                <div className="operator-selected-avatar">{selectedMember.name?.charAt(0) || 'M'}</div>
+                <div className="operator-selected-body">
                   <strong>{selectedMember.name}</strong>
                   <div className="ops-table-note" style={{ margin: '4px 0 0' }}>@{selectedMember.username}</div>
                 </div>
                 <button type="button" className="btn btn-secondary btn-sm" onClick={clearSelectedMember}><FiX /> ล้าง</button>
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 12, marginTop: 12 }}>
-                <div className="card" style={{ padding: 12 }}><strong>UID</strong><div className="ops-table-note">{selectedMember.uid}</div></div>
+              <div className="operator-selected-grid">
+                <div className="card"><strong>UID</strong><div className="ops-table-note">{selectedMember.uid}</div></div>
                 <div className="card" style={{ padding: 12 }}><strong>เครดิตคงเหลือ</strong><div className="ops-table-note">{money(selectedMember.creditBalance)} บาท</div></div>
                 <div className="card" style={{ padding: 12 }}><strong>สถานะ</strong><div className="ops-table-note">{getUserStatusLabel(selectedMember.status)}</div></div>
                 <div className="card" style={{ padding: 12 }}><strong>เบอร์โทร</strong><div className="ops-table-note">{selectedMember.phone || '-'}</div></div>
@@ -863,17 +865,17 @@ const OperatorBetting = () => {
           {searchText.trim() ? (
             <>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 16 }}>
+            <div className="operator-search-results">
               {searching ? <div className="card" style={{ padding: 14 }}>กำลังค้นหา...</div> : null}
               {!searching && !searchResults.length ? <div className="card" style={{ padding: 14 }}>ไม่พบสมาชิกตามคำค้นนี้</div> : null}
               {!searching && searchResults.map((member) => (
-                <button key={member.id} type="button" className="card" style={{ padding: 14, textAlign: 'left', display: 'flex', justifyContent: 'space-between', gap: 12 }} onClick={() => fetchMemberContext(member.id)}>
+                <button key={member.id} type="button" className="card operator-search-result" onClick={() => fetchMemberContext(member.id)}>
                   <div>
                     <strong>{member.name}</strong>
                     <div className="ops-table-note">@{member.username}</div>
                     <div className="ops-table-note">UID {member.uid}</div>
                   </div>
-                  <div style={{ textAlign: 'right' }}>
+                  <div className="operator-search-meta">
                     <strong>{money(member.creditBalance)} บาท</strong>
                     <div className="ops-table-note">{getUserStatusLabel(member.status)}</div>
                   </div>
@@ -884,8 +886,8 @@ const OperatorBetting = () => {
           ) : null}
         </section>
 
-        <section style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.08fr) minmax(340px, 0.92fr)', gap: 16, alignItems: 'start' }}>
-          <section className="card ops-section">
+        <section className="operator-workspace">
+          <section className="card ops-section operator-composer-panel">
             <div className="ui-eyebrow">หน้าส่งโพย</div>
             <h3 className="card-title">เลือกตลาดและกรอกรายการซื้อ</h3>
             <p className="ops-table-note">ทุกเรทและสิทธิ์อ้างอิงจากสมาชิกที่เลือกแบบเรียลไทม์</p>
@@ -1057,38 +1059,38 @@ const OperatorBetting = () => {
             )}
           </section>
 
-          <aside className="card ops-section" style={{ position: 'sticky', top: 88 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
+          <aside className="card ops-section operator-preview-panel">
+            <div className="ui-panel-head">
               <div><div className="ui-eyebrow">ตัวอย่างโพย</div><h3 className="card-title">รีวิวก่อนส่งรายการซื้อ</h3></div>
               <button className="btn btn-secondary btn-sm" onClick={handlePreview} disabled={previewing || !selectedMember}>{previewing ? <FiRefreshCw className="spin-animation" /> : <FiLayers />} รีวิวโพย</button>
             </div>
 
             {!preview ? (
-              <div className="empty-state" style={{ marginTop: 18 }}>
+              <div className="empty-state operator-preview-empty">
                 <div className="empty-state-icon"><FiLayers /></div>
                 <div className="empty-state-text">กรอกรายการซื้อแล้วกดรีวิวโพยเพื่อดูยอดรวม เรท และรายการที่จะส่งจริง</div>
               </div>
             ) : (
               <>
-                <div className="card" style={{ padding: 14, marginTop: 18, borderColor: 'rgba(239,68,68,.2)' }}>
+                <div className="card operator-preview-meta">
                   <div><strong>ซื้อแทน:</strong> {preview.member?.name || selectedMember?.name} <span className="ops-table-note">UID {preview.member?.uid || selectedMember?.uid}</span></div>
                   <div style={{ marginTop: 6 }}><strong>ผู้ทำรายการ:</strong> {preview.placedBy?.name || user?.name} <span className="ops-table-note">{copy.actorLabel}</span></div>
                 </div>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,minmax(0,1fr))', gap: 12, marginTop: 16 }}>
+                <div className="operator-preview-summary">
                   <div className="card" style={{ padding: 12 }}><div className="ops-table-note" style={{ margin: 0 }}>จำนวนรายการ</div><strong>{preview.summary?.itemCount || 0}</strong></div>
                   <div className="card" style={{ padding: 12 }}><div className="ops-table-note" style={{ margin: 0 }}>ยอดรวม</div><strong>{money(preview.summary?.totalAmount)} บาท</strong></div>
                   <div className="card" style={{ padding: 12 }}><div className="ops-table-note" style={{ margin: 0 }}>จ่ายสูงสุด</div><strong>{money(preview.summary?.potentialPayout)} บาท</strong></div>
                   <div className="card" style={{ padding: 12 }}><div className="ops-table-note" style={{ margin: 0 }}>สถานะงวด</div><strong>{getRoundStatusLabel(preview.roundStatus?.status)}</strong></div>
                 </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 10, maxHeight: 420, overflow: 'auto', marginTop: 16 }}>
+                <div className="operator-preview-list">
                   {(preview.items || []).slice(0, 14).map((item, index) => <div key={`${item.betType}-${item.number}-${index}`} className="card" style={{ padding: 14, display: 'flex', justifyContent: 'space-between', gap: 12 }}><div><strong>{item.number}</strong><div className="ops-table-note" style={{ marginTop: 6 }}>{getBetTypeLabel(item.betType)} • {item.sourceFlags?.fromDoubleSet ? getSourceFlagLabel('doubleSet') : item.sourceFlags?.fromReverse ? getSourceFlagLabel('reverse') : getSourceFlagLabel('manual')}</div></div><div style={{ textAlign: 'right' }}><strong>{money(item.amount)} บาท</strong><div className="ops-table-note">x{item.payRate}</div></div></div>)}
                 </div>
                 {(preview.items || []).length > 14 ? <div className="bet-note" style={{ marginTop: 14 }}><FiAlertCircle /><span>แสดงเพียง 14 รายการแรกจากทั้งหมด {preview.items.length} รายการ แต่ตอนคัดลอกโพยจะใส่ทุกรายการให้ครบ</span></div> : null}
               </>
             )}
 
-            <div className="card" style={{ marginTop: 16, padding: 14 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+            <div className="card operator-recent-panel">
+              <div className="ui-panel-head">
                 <div>
                   <div className="ui-eyebrow">รายการล่าสุด</div>
                   <h4 className="card-title" style={{ marginBottom: 0 }}>โพยล่าสุดของสมาชิกนี้</h4>
@@ -1099,15 +1101,15 @@ const OperatorBetting = () => {
               {!selectedMember ? (
                 <div className="ops-table-note" style={{ marginTop: 12 }}>เลือกสมาชิกก่อนเพื่อดูรายการล่าสุด</div>
               ) : recentItems.length ? (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 14 }}>
+                <div className="operator-recent-list">
                   {recentItems.map((item) => (
-                    <div key={item._id} className="card" style={{ padding: 12, display: 'flex', justifyContent: 'space-between', gap: 12 }}>
+                    <div key={item._id} className="card operator-recent-item">
                       <div>
                         <strong>{item.number}</strong>
                         <div className="ops-table-note" style={{ marginTop: 4 }}>{getBetTypeLabel(item.betType)} • {item.slipNumber}</div>
                         <div className="ops-table-note">{formatDateTime(item.createdAt)}</div>
                       </div>
-                      <div style={{ textAlign: 'right' }}>
+                      <div className="operator-recent-item-right">
                         <strong>{money(item.amount)} บาท</strong>
                         <div className="ops-table-note">x{item.payRate}</div>
                         <button type="button" className="btn btn-secondary btn-sm" style={{ marginTop: 8 }} onClick={() => applyRecentItem(item)}>ใช้ซ้ำ</button>
@@ -1120,7 +1122,7 @@ const OperatorBetting = () => {
               )}
             </div>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 16 }}>
+            <div className="operator-preview-actions">
               <button className="btn btn-secondary" onClick={handleCopyAsImage} disabled={previewing || copyingImage || submitting || !selectedMember}><FiCopy /> {copyingImage ? 'กำลังคัดลอกโพยเป็นรูป...' : 'คัดลอกโพยเป็นรูป'}</button>
               <button className="btn btn-primary" onClick={handleSubmitSlip} disabled={previewing || copyingImage || submitting || !selectedMember || !canSubmit}><FiSend /> {submitting ? 'กำลังส่งรายการซื้อ...' : 'ส่งรายการซื้อ'}</button>
               {!canSubmit && selectedMember ? <div className="submit-warning">งวดนี้ไม่ได้อยู่ในสถานะเปิดรับ จึงส่งรายการซื้อไม่ได้ แต่ยังคัดลอกโพยเป็นรูปได้</div> : null}
