@@ -1,37 +1,104 @@
 import { useEffect, useMemo, useState } from 'react';
-import { FiCalendar, FiDollarSign, FiFileText, FiLayers, FiRefreshCw, FiTrendingUp } from 'react-icons/fi';
+import { FiCalendar, FiDollarSign, FiFileText, FiLayers, FiRefreshCw, FiTrendingUp, FiUsers } from 'react-icons/fi';
+import toast from 'react-hot-toast';
 import PageSkeleton from '../../components/PageSkeleton';
 import { adminCopy } from '../../i18n/th/admin';
-import { getAdminReports } from '../../services/api';
+import { getAdminReports, getAgents, getCatalogLotteries, getCatalogRounds } from '../../services/api';
 
 const money = (value) => Number(value || 0).toLocaleString('th-TH');
 const copy = adminCopy.reports;
+const defaultFilters = {
+  agentId: '',
+  marketId: '',
+  roundDate: '',
+  startDate: '',
+  endDate: ''
+};
 
 const AdminReports = () => {
   const [reports, setReports] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [roundDate, setRoundDate] = useState('');
+  const [agentOptions, setAgentOptions] = useState([]);
+  const [marketOptions, setMarketOptions] = useState([]);
+  const [roundOptions, setRoundOptions] = useState([]);
+  const [roundsLoading, setRoundsLoading] = useState(false);
+  const [draftFilters, setDraftFilters] = useState(defaultFilters);
+  const [filters, setFilters] = useState(defaultFilters);
+
+  const selectedMarket = useMemo(
+    () => marketOptions.find((option) => option.code === draftFilters.marketId) || null,
+    [draftFilters.marketId, marketOptions]
+  );
+
+  const loadReports = async (nextFilters = filters) => {
+    setLoading(true);
+    try {
+      const params = Object.fromEntries(
+        Object.entries(nextFilters).filter(([, value]) => value !== '' && value !== null && value !== undefined)
+      );
+      const res = await getAdminReports(params);
+      setReports(res.data || []);
+    } catch (error) {
+      console.error(error);
+      toast.error('โหลดรายงานแอดมินไม่สำเร็จ');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    const loadReports = async () => {
+    const bootstrap = async () => {
       try {
-        const params = {};
-        if (roundDate) params.roundDate = roundDate;
-        const res = await getAdminReports(params);
-        setReports(res.data || []);
+        const [agentsRes, marketsRes] = await Promise.all([
+          getAgents(),
+          getCatalogLotteries()
+        ]);
+        setAgentOptions(agentsRes.data || []);
+        setMarketOptions(marketsRes.data || []);
       } catch (error) {
         console.error(error);
-      } finally {
-        setLoading(false);
+        toast.error('โหลดตัวกรองรายงานไม่สำเร็จ');
       }
     };
 
-    loadReports();
-  }, [roundDate]);
+    bootstrap();
+  }, []);
+
+  useEffect(() => {
+    loadReports(filters);
+  }, [filters.agentId, filters.marketId, filters.roundDate, filters.startDate, filters.endDate]);
+
+  useEffect(() => {
+    const loadRounds = async () => {
+      if (!selectedMarket?.id) {
+        setRoundOptions([]);
+        return;
+      }
+
+      setRoundsLoading(true);
+      try {
+        const res = await getCatalogRounds(selectedMarket.id);
+        const nextRounds = res.data || [];
+        setRoundOptions(nextRounds);
+
+        if (draftFilters.roundDate && !nextRounds.some((round) => round.code === draftFilters.roundDate)) {
+          setDraftFilters((current) => ({ ...current, roundDate: '' }));
+        }
+      } catch (error) {
+        console.error(error);
+        toast.error('โหลดงวดของตลาดไม่สำเร็จ');
+      } finally {
+        setRoundsLoading(false);
+      }
+    };
+
+    loadRounds();
+  }, [selectedMarket?.id]);
 
   const totalAmount = reports.reduce((sum, report) => sum + (report.totalAmount || 0), 0);
   const totalWon = reports.reduce((sum, report) => sum + (report.totalWon || 0), 0);
   const totalBets = reports.reduce((sum, report) => sum + (report.betCount || 0), 0);
+  const totalAgents = new Set(reports.map((report) => report.agentName).filter(Boolean)).size;
   const netProfit = totalAmount - totalWon;
 
   const overviewCards = useMemo(() => ([
@@ -52,11 +119,17 @@ const AdminReports = () => {
       label: copy.overviewCards.netProfit.label,
       value: `${money(netProfit)} บาท`,
       hint: copy.overviewCards.netProfit.hint
+    },
+    {
+      icon: FiUsers,
+      label: 'เจ้ามือในรายงาน',
+      value: money(totalAgents),
+      hint: 'จำนวนเจ้ามือที่อยู่ในผลลัพธ์หลังกรอง'
     }
-  ]), [netProfit, totalAmount, totalBets]);
+  ]), [netProfit, totalAgents, totalAmount, totalBets]);
 
-  if (loading) {
-    return <PageSkeleton statCount={3} rows={6} sidebar={false} />;
+  if (loading && !reports.length) {
+    return <PageSkeleton statCount={4} rows={6} sidebar={false} />;
   }
 
   return (
@@ -75,7 +148,7 @@ const AdminReports = () => {
         </div>
       </section>
 
-      <section className="ops-overview-grid compact admin-report-overview">
+      <section className="ops-overview-grid compact admin-report-overview admin-report-overview-wide">
         {overviewCards.map((card) => (
           <article key={card.label} className="ops-overview-card">
             <div className="ops-icon-badge"><card.icon /></div>
@@ -90,27 +163,115 @@ const AdminReports = () => {
         <div className="ops-toolbar admin-report-toolbar">
           <div>
             <div className="ui-eyebrow">{copy.filterEyebrow}</div>
-            <h3 className="card-title">{copy.filterTitle}</h3>
+            <h3 className="card-title">ตัวกรองรายงาน</h3>
+            <p className="ops-table-note">กรองตามเจ้ามือ ตลาด งวด และช่วงวันที่ก่อนสรุปผล</p>
           </div>
-
           <div className="admin-report-toolbar-controls">
-            <label className="admin-report-date-field">
+            <button type="button" className="btn btn-secondary" onClick={() => loadReports(filters)} disabled={loading}>
+              <FiRefreshCw className={loading ? 'spin-animation' : ''} />
+              {adminCopy.common.refresh}
+            </button>
+          </div>
+        </div>
+
+        <div className="admin-report-filter-grid">
+          <label>
+            <span>เจ้ามือ</span>
+            <select
+              className="form-input"
+              value={draftFilters.agentId}
+              onChange={(event) => setDraftFilters((current) => ({ ...current, agentId: event.target.value }))}
+            >
+              <option value="">ทุกเจ้ามือ</option>
+              {agentOptions.map((agent) => (
+                <option key={agent._id} value={agent._id}>
+                  {agent.name || agent.username}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label>
+            <span>ตลาด</span>
+            <select
+              className="form-input"
+              value={draftFilters.marketId}
+              onChange={(event) => setDraftFilters((current) => ({
+                ...current,
+                marketId: event.target.value,
+                roundDate: ''
+              }))}
+            >
+              <option value="">ทุกตลาด</option>
+              {marketOptions.map((market) => (
+                <option key={market.id} value={market.code}>
+                  {market.name}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label>
+            <span>{copy.roundDate}</span>
+            <select
+              className="form-input"
+              value={draftFilters.roundDate}
+              onChange={(event) => setDraftFilters((current) => ({ ...current, roundDate: event.target.value }))}
+              disabled={!draftFilters.marketId || roundsLoading}
+            >
+              <option value="">
+                {!draftFilters.marketId ? 'เลือกตลาดก่อน' : roundsLoading ? 'กำลังโหลดงวด...' : 'ทุกงวด'}
+              </option>
+              {roundOptions.map((round) => (
+                <option key={round.id} value={round.code}>
+                  {`${round.title} • ${round.statusLabel}`}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label>
+            <span>วันที่เริ่มต้น</span>
+            <div className="admin-report-date-field">
               <FiCalendar />
               <input
                 type="date"
                 className="form-input"
-                value={roundDate}
-                onChange={(event) => setRoundDate(event.target.value)}
+                value={draftFilters.startDate}
+                onChange={(event) => setDraftFilters((current) => ({ ...current, startDate: event.target.value }))}
               />
-            </label>
+            </div>
+          </label>
 
-            {roundDate ? (
-              <button type="button" className="btn btn-secondary" onClick={() => setRoundDate('')}>
-                <FiRefreshCw />
-                ล้างงวด
-              </button>
-            ) : null}
-          </div>
+          <label>
+            <span>วันที่สิ้นสุด</span>
+            <div className="admin-report-date-field">
+              <FiCalendar />
+              <input
+                type="date"
+                className="form-input"
+                value={draftFilters.endDate}
+                onChange={(event) => setDraftFilters((current) => ({ ...current, endDate: event.target.value }))}
+              />
+            </div>
+          </label>
+        </div>
+
+        <div className="admin-report-filter-actions">
+          <button
+            type="button"
+            className="btn btn-secondary"
+            onClick={() => {
+              setDraftFilters(defaultFilters);
+              setFilters(defaultFilters);
+              setRoundOptions([]);
+            }}
+          >
+            ล้างตัวกรอง
+          </button>
+          <button type="button" className="btn btn-primary" onClick={() => setFilters({ ...draftFilters })}>
+            ใช้ตัวกรอง
+          </button>
         </div>
       </section>
 
@@ -179,6 +340,10 @@ const AdminReports = () => {
           grid-template-columns: repeat(3, minmax(0, 1fr));
         }
 
+        .admin-report-overview-wide {
+          grid-template-columns: repeat(4, minmax(0, 1fr));
+        }
+
         .admin-report-overview .ops-overview-card {
           min-height: 100%;
         }
@@ -197,6 +362,8 @@ const AdminReports = () => {
 
         .admin-report-toolbar {
           justify-content: space-between;
+          align-items: flex-start;
+          gap: 12px;
         }
 
         .admin-report-toolbar-controls {
@@ -206,8 +373,28 @@ const AdminReports = () => {
           flex-wrap: wrap;
         }
 
+        .admin-report-filter-grid {
+          display: grid;
+          grid-template-columns: repeat(5, minmax(0, 1fr));
+          gap: 12px;
+        }
+
+        .admin-report-filter-grid label {
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+        }
+
+        .admin-report-filter-grid label span {
+          font-size: 0.78rem;
+          color: var(--text-secondary);
+          text-transform: uppercase;
+          letter-spacing: 0.08em;
+          font-weight: 700;
+        }
+
         .admin-report-date-field {
-          min-width: 220px;
+          width: 100%;
           display: inline-flex;
           align-items: center;
           gap: 10px;
@@ -224,6 +411,13 @@ const AdminReports = () => {
           box-shadow: none;
           min-height: 46px;
           padding: 0;
+        }
+
+        .admin-report-filter-actions {
+          display: flex;
+          gap: 12px;
+          flex-wrap: wrap;
+          margin-top: 14px;
         }
 
         .admin-report-title {
@@ -264,8 +458,16 @@ const AdminReports = () => {
           justify-content: center;
         }
 
+        @media (max-width: 1100px) {
+          .admin-report-overview-wide,
+          .admin-report-filter-grid {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+          }
+        }
+
         @media (max-width: 760px) {
-          .admin-report-overview {
+          .admin-report-overview-wide,
+          .admin-report-filter-grid {
             grid-template-columns: 1fr;
           }
 
@@ -275,16 +477,13 @@ const AdminReports = () => {
             align-items: stretch;
           }
 
-          .admin-report-date-field {
-            width: 100%;
-          }
-
           .admin-report-hero .ops-hero-side {
             width: 100%;
             min-width: 0;
           }
 
-          .admin-report-toolbar-controls .btn {
+          .admin-report-toolbar-controls .btn,
+          .admin-report-filter-actions .btn {
             width: 100%;
             justify-content: center;
           }

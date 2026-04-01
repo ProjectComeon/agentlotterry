@@ -4,7 +4,7 @@ import toast from 'react-hot-toast';
 import PageSkeleton from '../../components/PageSkeleton';
 import { agentCopy } from '../../i18n/th/agent';
 import { getBetTypeLabel } from '../../i18n/th/labels';
-import { getAgentReports } from '../../services/api';
+import { getAgentReports, getCatalogLotteries, getCatalogRounds } from '../../services/api';
 
 const copy = agentCopy.reports;
 const tabs = [
@@ -24,6 +24,12 @@ const sortOptions = [
 
 const money = (value) => Number(value || 0).toLocaleString('th-TH');
 const labelOrDash = (value) => value || '-';
+const defaultFilters = {
+  roundDate: '',
+  marketId: '',
+  startDate: '',
+  endDate: ''
+};
 
 const renderTable = ({ columns, rows }) => {
   if (!rows?.length) {
@@ -59,18 +65,16 @@ const AgentReports = () => {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('sales');
   const [sortBy, setSortBy] = useState('default');
-  const [draftFilters, setDraftFilters] = useState({
-    roundDate: '',
-    marketId: '',
-    startDate: '',
-    endDate: ''
-  });
-  const [filters, setFilters] = useState({
-    roundDate: '',
-    marketId: '',
-    startDate: '',
-    endDate: ''
-  });
+  const [marketOptions, setMarketOptions] = useState([]);
+  const [roundOptions, setRoundOptions] = useState([]);
+  const [roundsLoading, setRoundsLoading] = useState(false);
+  const [draftFilters, setDraftFilters] = useState(defaultFilters);
+  const [filters, setFilters] = useState(defaultFilters);
+
+  const selectedMarket = useMemo(
+    () => marketOptions.find((option) => option.code === draftFilters.marketId) || null,
+    [draftFilters.marketId, marketOptions]
+  );
 
   const load = async (nextFilters = filters) => {
     setLoading(true);
@@ -86,8 +90,49 @@ const AgentReports = () => {
   };
 
   useEffect(() => {
+    const loadMarkets = async () => {
+      try {
+        const res = await getCatalogLotteries();
+        setMarketOptions(res.data || []);
+      } catch (error) {
+        console.error(error);
+        toast.error('โหลดรายการตลาดไม่สำเร็จ');
+      }
+    };
+
+    loadMarkets();
+  }, []);
+
+  useEffect(() => {
     load(filters);
   }, [filters.roundDate, filters.marketId, filters.startDate, filters.endDate]);
+
+  useEffect(() => {
+    const loadRounds = async () => {
+      if (!selectedMarket?.id) {
+        setRoundOptions([]);
+        return;
+      }
+
+      setRoundsLoading(true);
+      try {
+        const res = await getCatalogRounds(selectedMarket.id);
+        const nextRounds = res.data || [];
+        setRoundOptions(nextRounds);
+
+        if (draftFilters.roundDate && !nextRounds.some((round) => round.code === draftFilters.roundDate)) {
+          setDraftFilters((current) => ({ ...current, roundDate: '' }));
+        }
+      } catch (error) {
+        console.error(error);
+        toast.error('โหลดงวดของตลาดไม่สำเร็จ');
+      } finally {
+        setRoundsLoading(false);
+      }
+    };
+
+    loadRounds();
+  }, [selectedMarket?.id]);
 
   const overview = report?.overview || {};
 
@@ -257,21 +302,60 @@ const AgentReports = () => {
 
         <div className="report-filter-grid">
           <label>
-            <span>{copy.roundDate}</span>
-            <input value={draftFilters.roundDate} onChange={(event) => setDraftFilters((current) => ({ ...current, roundDate: event.target.value }))} placeholder="เช่น 2026-03-16" />
-          </label>
-          <label>
             <span>{copy.marketId}</span>
-            <input value={draftFilters.marketId} onChange={(event) => setDraftFilters((current) => ({ ...current, marketId: event.target.value }))} placeholder="เช่น thai_government" />
+            <select
+              value={draftFilters.marketId}
+              onChange={(event) => setDraftFilters((current) => ({
+                ...current,
+                marketId: event.target.value,
+                roundDate: ''
+              }))}
+            >
+              <option value="">ทุกตลาด</option>
+              {marketOptions.map((market) => (
+                <option key={market.id} value={market.code}>
+                  {market.name}
+                </option>
+              ))}
+            </select>
           </label>
+
+          <label>
+            <span>{copy.roundDate}</span>
+            <select
+              value={draftFilters.roundDate}
+              onChange={(event) => setDraftFilters((current) => ({ ...current, roundDate: event.target.value }))}
+              disabled={!draftFilters.marketId || roundsLoading}
+            >
+              <option value="">
+                {!draftFilters.marketId ? 'เลือกตลาดก่อน' : roundsLoading ? 'กำลังโหลดงวด...' : 'ทุกงวด'}
+              </option>
+              {roundOptions.map((round) => (
+                <option key={round.id} value={round.code}>
+                  {`${round.title} • ${round.statusLabel}`}
+                </option>
+              ))}
+            </select>
+          </label>
+
           <label>
             <span>{copy.startDate}</span>
-            <input type="date" value={draftFilters.startDate} onChange={(event) => setDraftFilters((current) => ({ ...current, startDate: event.target.value }))} />
+            <input
+              type="date"
+              value={draftFilters.startDate}
+              onChange={(event) => setDraftFilters((current) => ({ ...current, startDate: event.target.value }))}
+            />
           </label>
+
           <label>
             <span>{copy.endDate}</span>
-            <input type="date" value={draftFilters.endDate} onChange={(event) => setDraftFilters((current) => ({ ...current, endDate: event.target.value }))} />
+            <input
+              type="date"
+              value={draftFilters.endDate}
+              onChange={(event) => setDraftFilters((current) => ({ ...current, endDate: event.target.value }))}
+            />
           </label>
+
           <label>
             <span>{copy.sortLabel}</span>
             <select value={sortBy} onChange={(event) => setSortBy(event.target.value)}>
@@ -281,8 +365,18 @@ const AgentReports = () => {
         </div>
 
         <div className="report-filter-actions">
-          <button className="btn btn-secondary" onClick={() => setDraftFilters({ roundDate: '', marketId: '', startDate: '', endDate: '' })}>{copy.clearFilters}</button>
-          <button className="btn btn-primary" onClick={() => setFilters({ ...draftFilters })}>{copy.applyFilters}</button>
+          <button
+            className="btn btn-secondary"
+            onClick={() => {
+              setDraftFilters(defaultFilters);
+              setRoundOptions([]);
+            }}
+          >
+            {copy.clearFilters}
+          </button>
+          <button className="btn btn-primary" onClick={() => setFilters({ ...draftFilters })}>
+            {copy.applyFilters}
+          </button>
         </div>
       </section>
 
@@ -545,7 +639,7 @@ const AgentReports = () => {
         }
 
         @media (max-width: 1100px) {
-          .report-hero-card, .report-overview-grid {
+          .report-overview-grid {
             grid-template-columns: repeat(3, minmax(0, 1fr));
           }
 

@@ -424,12 +424,13 @@ router.delete('/customers/:id', async (req, res) => {
 // GET /api/admin/reports
 router.get('/reports', async (req, res) => {
   try {
-    const { roundDate, startDate, endDate, marketId } = req.query;
+    const { roundDate, startDate, endDate, marketId, agentId } = req.query;
     const report = await getAgentReportRows({
       roundDate,
       startDate,
       endDate,
-      marketId
+      marketId,
+      agentId
     });
 
     res.json(report);
