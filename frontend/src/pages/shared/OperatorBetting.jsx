@@ -35,6 +35,7 @@ import {
   searchAdminBettingMembers,
   searchAgentBettingMembers
 } from '../../services/api';
+import { buildSlipDisplayGroups } from '../../utils/slipGrouping';
 import { copySlipPreviewImage } from '../../utils/slipImage';
 
 const quickAmountOptions = ['10', '20', '50', '100'];
@@ -341,6 +342,16 @@ const OperatorBetting = () => {
   );
   const gridDraftSummary = useMemo(() => getGridDraftSummary(gridRows), [gridRows]);
   const recentSlipGroups = useMemo(() => groupRecentItemsBySlip(recentItems), [recentItems]);
+  const gridDraftGroups = useMemo(() => {
+    if (mode !== 'grid') return [];
+
+    try {
+      return buildSlipDisplayGroups(buildGridItems({ rows: gridRows, digitMode }));
+    } catch {
+      return [];
+    }
+  }, [digitMode, gridRows, mode]);
+  const previewGroups = useMemo(() => buildSlipDisplayGroups(preview?.items || []), [preview]);
 
   const supportedGridColumns = useMemo(() => {
     const supported = new Set(selectedLottery?.supportedBetTypes || []);
@@ -1069,6 +1080,37 @@ const OperatorBetting = () => {
                       <button type="button" className="btn btn-secondary btn-sm" onClick={() => setGridRows((current) => [...current, buildEmptyGridRow()])}><FiPlus /> เพิ่มแถว</button>
                       <button type="button" className="btn btn-secondary btn-sm" onClick={clearComposer}><FiRotateCcw /> ล้างทั้งหมด</button>
                     </div>
+                    {gridDraftGroups.length ? (
+                      <div className="card operator-slip-draft-panel">
+                        <div className="operator-slip-draft-head">
+                          <div>
+                            <div className="ui-eyebrow">โพยที่กำลังคีย์</div>
+                            <h4 className="card-title" style={{ marginBottom: 0 }}>รวมเลขตามชุดเดิมพันและยอดซื้อ</h4>
+                          </div>
+                          <div className="ops-table-note">
+                            {selectedLottery?.name || '-'} • {selectedRound?.title || '-'}
+                          </div>
+                        </div>
+                        <div className="operator-slip-group-list">
+                          {gridDraftGroups.map((group) => (
+                            <div key={group.key} className="card operator-slip-group-card">
+                              <div className="operator-slip-group-side">
+                                <div className="operator-slip-family">{group.familyLabel}</div>
+                                <div className="operator-slip-combo">{group.comboLabel}</div>
+                                <div className="operator-slip-amount">{group.amountLabel}</div>
+                              </div>
+                              <div className="operator-slip-group-body">
+                                <div className="operator-slip-group-head">
+                                  <span className="ops-table-note">{group.itemCount} รายการ</span>
+                                  <strong>{money(group.totalAmount)} บาท</strong>
+                                </div>
+                                <div className="operator-slip-numbers">{group.numbersText}</div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ) : null}
                   </>
                 )}
 
@@ -1105,10 +1147,25 @@ const OperatorBetting = () => {
                   <div className="card" style={{ padding: 12 }}><div className="ops-table-note" style={{ margin: 0 }}>จ่ายสูงสุด</div><strong>{money(preview.summary?.potentialPayout)} บาท</strong></div>
                   <div className="card" style={{ padding: 12 }}><div className="ops-table-note" style={{ margin: 0 }}>สถานะงวด</div><strong>{getRoundStatusLabel(preview.roundStatus?.status)}</strong></div>
                 </div>
-                <div className="operator-preview-list">
-                  {(preview.items || []).slice(0, 14).map((item, index) => <div key={`${item.betType}-${item.number}-${index}`} className="card" style={{ padding: 14, display: 'flex', justifyContent: 'space-between', gap: 12 }}><div><strong>{item.number}</strong><div className="ops-table-note" style={{ marginTop: 6 }}>{getBetTypeLabel(item.betType)} • {item.sourceFlags?.fromDoubleSet ? getSourceFlagLabel('doubleSet') : item.sourceFlags?.fromReverse ? getSourceFlagLabel('reverse') : getSourceFlagLabel('manual')}</div></div><div style={{ textAlign: 'right' }}><strong>{money(item.amount)} บาท</strong><div className="ops-table-note">x{item.payRate}</div></div></div>)}
+                <div className="operator-preview-list operator-slip-group-list">
+                  {previewGroups.map((group) => (
+                    <div key={group.key} className="card operator-slip-group-card operator-slip-group-card-compact">
+                      <div className="operator-slip-group-side">
+                        <div className="operator-slip-family">{group.familyLabel}</div>
+                        <div className="operator-slip-combo">{group.comboLabel}</div>
+                        <div className="operator-slip-amount">{group.amountLabel}</div>
+                      </div>
+                      <div className="operator-slip-group-body">
+                        <div className="operator-slip-group-head">
+                          <span className="ops-table-note">{group.itemCount} รายการ</span>
+                          <strong>{money(group.totalAmount)} บาท</strong>
+                        </div>
+                        <div className="operator-slip-numbers">{group.numbersText}</div>
+                        <div className="ops-table-note">จ่ายสูงสุด {money(group.potentialPayout)} บาท</div>
+                      </div>
+                    </div>
+                  ))}
                 </div>
-                {(preview.items || []).length > 14 ? <div className="bet-note" style={{ marginTop: 14 }}><FiAlertCircle /><span>แสดงเพียง 14 รายการแรกจากทั้งหมด {preview.items.length} รายการ แต่ตอนคัดลอกโพยจะใส่ทุกรายการให้ครบ</span></div> : null}
               </>
             )}
 

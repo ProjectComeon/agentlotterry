@@ -1069,6 +1069,99 @@ input, select, textarea {
   box-shadow: none;
 }
 
+.operator-slip-draft-panel {
+  margin-top: 16px;
+  padding: 14px;
+  box-shadow: none;
+}
+
+.operator-slip-draft-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.operator-slip-group-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.operator-slip-group-card {
+  display: grid;
+  grid-template-columns: 132px minmax(0, 1fr);
+  gap: 12px;
+  padding: 12px;
+  box-shadow: none;
+}
+
+.operator-slip-group-card-compact {
+  padding: 10px;
+}
+
+.operator-slip-group-side {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-height: 96px;
+  padding: 10px 12px;
+  border-radius: 18px;
+  border: 1px solid rgba(220, 38, 38, 0.14);
+  background: rgba(255, 245, 245, 0.96);
+  text-align: center;
+}
+
+.operator-slip-family {
+  font-size: 1rem;
+  font-weight: 800;
+  color: var(--primary);
+  line-height: 1.1;
+}
+
+.operator-slip-combo,
+.operator-slip-amount {
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: var(--text-secondary);
+  line-height: 1.2;
+}
+
+.operator-slip-amount {
+  color: var(--primary);
+}
+
+.operator-slip-group-body {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  justify-content: center;
+}
+
+.operator-slip-group-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.operator-slip-numbers {
+  padding: 12px 14px;
+  border-radius: 16px;
+  border: 1px solid rgba(220, 38, 38, 0.12);
+  background: rgba(255, 253, 253, 0.96);
+  font-size: 1.02rem;
+  font-weight: 700;
+  line-height: 1.6;
+  word-break: break-word;
+}
+
 .operator-draft-summary {
   margin-top: 16px;
   padding: 14px;
@@ -1253,6 +1346,14 @@ input, select, textarea {
 
   .operator-grid-row {
     grid-template-columns: 1fr;
+  }
+
+  .operator-slip-group-card {
+    grid-template-columns: 1fr;
+  }
+
+  .operator-slip-group-side {
+    min-height: 0;
   }
 
   .operator-search-result,
