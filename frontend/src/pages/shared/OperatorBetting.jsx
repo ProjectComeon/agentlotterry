@@ -92,7 +92,7 @@ const formatDateTime = (value) =>
     : '-';
 const flattenLotteries = (catalog) => (catalog?.leagues || []).flatMap((league) => (league.lotteries || []).map((lottery) => ({ ...lottery, leagueName: league.name })));
 const buildEmptyGridRow = () => ({ id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, number: '', amounts: { top: '', bottom: '', tod: '' } });
-const buildInitialGridRows = () => Array.from({ length: 6 }, buildEmptyGridRow);
+const buildInitialGridRows = () => Array.from({ length: 2 }, buildEmptyGridRow);
 
 const getFastDraftSummary = ({ rawInput, activeBetType, includeDoubleSet, reverse }) => {
   const lineCount = String(rawInput || '')
@@ -1262,7 +1262,7 @@ const OperatorBetting = () => {
                             onChange={(event) => updateGridAmount(row.id, 'tod', event.target.value)}
                             onKeyDown={(event) => handleGridKeyDown(row.id, 'tod', event)}
                           />
-                          <button type="button" className="btn btn-danger btn-sm" onClick={() => removeGridRow(row.id)}>
+                          <button type="button" className="btn btn-danger btn-sm operator-grid-delete" onClick={() => removeGridRow(row.id)}>
                             <FiTrash2 />
                           </button>
                         </div>

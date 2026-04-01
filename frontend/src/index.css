@@ -1064,9 +1064,19 @@ input, select, textarea {
 .operator-grid-row {
   padding: 12px;
   display: grid;
-  grid-template-columns: minmax(140px, 1.1fr) repeat(3, minmax(90px, 1fr)) 52px;
+  grid-template-columns: minmax(140px, 1.1fr) repeat(3, minmax(90px, 1fr)) 44px;
   gap: 10px;
   box-shadow: none;
+  align-items: center;
+}
+
+.operator-grid-delete {
+  width: 44px;
+  min-width: 44px;
+  height: 44px;
+  padding: 0;
+  justify-self: end;
+  justify-content: center;
 }
 
 .operator-slip-draft-panel {
