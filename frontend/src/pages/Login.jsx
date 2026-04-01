@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { login as loginApi } from '../services/api';
 import toast from 'react-hot-toast';
 import { FiEye, FiEyeOff, FiLock, FiUser } from 'react-icons/fi';
+import { getAppRouteForRole } from '../utils/roleRoutes';
 
 const Login = () => {
   const [username, setUsername] = useState('');
@@ -25,7 +26,7 @@ const Login = () => {
       const res = await loginApi({ username, password });
       loginUser(res.data.token, res.data.user);
       toast.success(`ยินดีต้อนรับ ${res.data.user.name}`);
-      navigate(`/${res.data.user.role}`);
+      navigate(getAppRouteForRole(res.data?.user?.role), { replace: true });
     } catch (err) {
       toast.error(err.response?.data?.message || 'เข้าสู่ระบบไม่สำเร็จ');
     } finally {

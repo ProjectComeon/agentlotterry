@@ -17,32 +17,51 @@ const writeStoredSelection = (selection) => {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(selection));
 };
 
+const emptySelection = {
+  leagueId: null,
+  lotteryId: null,
+  roundId: null,
+  rateProfileId: null
+};
+
+const normalizeOverviewPayload = (payload) => ({
+  ...(payload || {}),
+  leagues: Array.isArray(payload?.leagues)
+    ? payload.leagues.map((league) => ({
+        ...league,
+        lotteries: Array.isArray(league?.lotteries) ? league.lotteries : []
+      }))
+    : [],
+  announcements: Array.isArray(payload?.announcements) ? payload.announcements : [],
+  recentResults: Array.isArray(payload?.recentResults) ? payload.recentResults : [],
+  selectionDefaults: payload?.selectionDefaults && typeof payload.selectionDefaults === 'object'
+    ? payload.selectionDefaults
+    : {}
+});
+
 export const CatalogProvider = ({ children }) => {
   const { user } = useAuth();
   const [overview, setOverview] = useState(null);
   const [loading, setLoading] = useState(false);
-  const [selection, setSelection] = useState({
-    leagueId: null,
-    lotteryId: null,
-    roundId: null,
-    rateProfileId: null
-  });
+  const [selection, setSelection] = useState(emptySelection);
 
   const loadOverview = async () => {
     if (!user) {
       setOverview(null);
-      setSelection({ leagueId: null, lotteryId: null, roundId: null, rateProfileId: null });
+      setSelection(emptySelection);
       return;
     }
 
     setLoading(true);
     try {
       const res = await getCatalogOverview();
-      const payload = res.data;
+      const payload = normalizeOverviewPayload(res.data);
       setOverview(payload);
 
       const stored = readStoredSelection();
-      const flatLotteries = payload.leagues.flatMap((league) => league.lotteries.map((lottery) => ({ ...lottery, leagueId: league.id })));
+      const flatLotteries = payload.leagues.flatMap((league) =>
+        (league.lotteries || []).map((lottery) => ({ ...lottery, leagueId: league.id }))
+      );
       const fallback = payload.selectionDefaults || {};
       const selectedLottery = flatLotteries.find((lottery) => lottery.id === stored?.lotteryId) ||
         flatLotteries.find((lottery) => lottery.id === fallback.lotteryId) ||
@@ -60,6 +79,8 @@ export const CatalogProvider = ({ children }) => {
       writeStoredSelection(nextSelection);
     } catch (error) {
       console.error('Catalog load error:', error);
+      setOverview(normalizeOverviewPayload(null));
+      setSelection(emptySelection);
     } finally {
       setLoading(false);
     }

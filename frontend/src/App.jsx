@@ -5,6 +5,7 @@ import { CatalogProvider } from './context/CatalogContext';
 import Navbar from './components/Navbar';
 import BottomNav from './components/BottomNav';
 import ProtectedRoute from './components/ProtectedRoute';
+import { getAppRouteForRole } from './utils/roleRoutes';
 
 // Pages
 import Login from './pages/Login';
@@ -41,7 +42,7 @@ const HomeRedirect = () => {
   const { user, loading } = useAuth();
   if (loading) return <div className="loading-container"><div className="spinner"></div></div>;
   if (!user) return <Navigate to="/login" />;
-  return <Navigate to={`/${user.role}`} />;
+  return <Navigate to={getAppRouteForRole(user.role)} replace />;
 };
 
 function App() {

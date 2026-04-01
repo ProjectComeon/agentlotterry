@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useEffect } from 'react';
 import { getMe, sendPresenceHeartbeat } from '../services/api';
+import { getValidAppRole } from '../utils/roleRoutes';
 
 const AuthContext = createContext(null);
 
@@ -8,6 +9,11 @@ export const useAuth = () => useContext(AuthContext);
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
+
+  const normalizeUser = (userData) => {
+    const role = getValidAppRole(userData?.role);
+    return role ? { ...userData, role } : null;
+  };
 
   useEffect(() => {
     checkAuth();
@@ -46,12 +52,14 @@ export const AuthProvider = ({ children }) => {
 
     try {
       const res = await getMe();
-      if (res.data?.role === 'customer') {
+      const normalizedUser = normalizeUser(res.data);
+      if (!normalizedUser) {
         localStorage.removeItem('token');
         localStorage.removeItem('user');
         setUser(null);
       } else {
-        setUser(res.data);
+        localStorage.setItem('user', JSON.stringify(normalizedUser));
+        setUser(normalizedUser);
       }
     } catch {
       localStorage.removeItem('token');
@@ -62,7 +70,8 @@ export const AuthProvider = ({ children }) => {
   };
 
   const loginUser = (token, userData) => {
-    if (userData?.role === 'customer') {
+    const normalizedUser = normalizeUser(userData);
+    if (!normalizedUser) {
       localStorage.removeItem('token');
       localStorage.removeItem('user');
       setUser(null);
@@ -70,8 +79,8 @@ export const AuthProvider = ({ children }) => {
     }
 
     localStorage.setItem('token', token);
-    localStorage.setItem('user', JSON.stringify(userData));
-    setUser(userData);
+    localStorage.setItem('user', JSON.stringify(normalizedUser));
+    setUser(normalizedUser);
   };
 
   const logout = () => {
