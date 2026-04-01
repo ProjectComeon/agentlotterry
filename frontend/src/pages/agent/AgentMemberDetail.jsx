@@ -11,7 +11,7 @@ import { createMemberFormFromDetail, groupLotterySettingsByLeague, toggleBetType
 
 const tabs = ['ข้อมูลทั่วไป', 'สิทธิ์หวย', 'กระเป๋า'];
 const statusOptions = ['active', 'inactive', 'suspended'];
-const betTypeKeys = ['3top', '3tod', '2top', '2bottom', 'run_top', 'run_bottom'];
+const betTypeKeys = ['3top', '3bottom', '3tod', '2top', '2bottom', '2tod', 'run_top', 'run_bottom'];
 const toNumber = (value) => Number(value || 0);
 const money = (value) => toNumber(value).toLocaleString('th-TH');
 const formatDateTime = (value) => {
@@ -219,7 +219,7 @@ const AgentMemberDetail = () => {
         <article className="detail-summary-card"><span>หวยที่เปิดให้เล่น</span><strong>{money(member.configSummary?.enabledLotteryCount)}</strong><small>ตลาดที่สมาชิกเข้าถึงได้</small></article>
       </section>
 
-      <section className="card">
+      <section className="detail-tab-shell">
         <div className="tab-row">
           {tabs.map((item) => <button key={item} className={`tab-chip ${tab === item ? 'active' : ''}`} onClick={() => setTab(item)}>{item}</button>)}
         </div>
@@ -373,32 +373,38 @@ const AgentMemberDetail = () => {
       <style>{`
         .agent-member-detail,.detail-stack{display:flex;flex-direction:column;gap:18px}
         .agent-member-detail{position:relative;isolation:isolate}
-        .agent-member-detail::before{content:'';position:absolute;inset:-48px 0 auto;height:220px;background:radial-gradient(circle at top left,rgba(16,185,129,.14),transparent 62%);pointer-events:none;z-index:-1}
-        .member-hero{display:flex;justify-content:space-between;align-items:flex-end;gap:24px;padding:28px;background:linear-gradient(135deg,rgba(15,23,42,.96),rgba(17,24,39,.9)),radial-gradient(circle at top right,rgba(16,185,129,.12),transparent 38%);border-color:rgba(52,211,153,.18);box-shadow:0 24px 60px rgba(15,23,42,.34)}
+        .agent-member-detail::before{content:'';position:absolute;inset:-48px 0 auto;height:220px;background:radial-gradient(circle at top left,rgba(220,38,38,.12),transparent 62%);pointer-events:none;z-index:-1}
+        .member-hero{display:flex;justify-content:space-between;align-items:flex-end;gap:24px;padding:24px;background:
+          radial-gradient(circle at top right,rgba(220,38,38,.08),transparent 34%),
+          linear-gradient(180deg,rgba(255,255,255,.98),rgba(255,248,248,.98));
+          border:1px solid rgba(220,38,38,.16);box-shadow:0 18px 40px rgba(127,29,29,.08)}
         .member-hero-copy,.detail-actions,.tab-row,.inline-actions,.lottery-panel-head,.lottery-toolbar,.member-hero-topline{display:flex;gap:10px;flex-wrap:wrap}
         .member-hero-copy{flex-direction:column;min-width:0}
-        .member-hero .page-title{margin:0;font-size:clamp(2rem,4vw,3rem);line-height:.96;letter-spacing:-.04em}
-        .member-hero .page-subtitle{margin:0;max-width:56ch}
+        .member-hero .page-title{margin:0;font-size:clamp(2.15rem,4vw,3.1rem);line-height:.94;letter-spacing:-.04em;color:var(--text-primary)}
+        .member-hero .page-subtitle{margin:0;max-width:56ch;color:var(--text-secondary)}
         .member-back-link,.member-online,.member-meta-row span{display:inline-flex;align-items:center;gap:6px}
-        .member-online{padding:6px 12px;border-radius:999px;background:rgba(56,189,248,.14);color:#7dd3fc;font-size:.82rem;font-weight:700}
+        .member-back-link{color:var(--text-secondary)}
+        .member-online{padding:6px 12px;border-radius:999px;background:rgba(16,185,129,.12);color:var(--success);font-size:.82rem;font-weight:700}
         .member-meta-row{display:flex;gap:10px;flex-wrap:wrap}
-        .member-meta-row span{padding:8px 12px;border-radius:999px;background:rgba(9,16,30,.78);border:1px solid rgba(148,163,184,.14);color:var(--text-secondary);font-size:.82rem}
+        .member-meta-row span{padding:8px 12px;border-radius:999px;background:rgba(255,255,255,.88);border:1px solid rgba(220,38,38,.12);color:var(--text-secondary);font-size:.82rem}
         .detail-summary-grid,.detail-grid,.wallet-grid{display:grid;gap:12px}
         .detail-summary-grid{grid-template-columns:repeat(4,minmax(0,1fr))}
-        .detail-summary-card,.lottery-panel,.wallet-row{border-radius:20px;border:1px solid rgba(148,163,184,.14);background:linear-gradient(180deg,rgba(20,30,49,.94),rgba(15,23,42,.9))}
-        .detail-summary-card{padding:18px;display:flex;flex-direction:column;gap:8px}
-        .detail-summary-card span,.detail-summary-card small,.detail-footnote,.panel-eyebrow,.lottery-panel-head span,.wallet-meta,.wallet-note-text,.wallet-right span{color:var(--text-muted)}
-        .detail-summary-card strong{font-size:1.45rem;line-height:1;letter-spacing:-.04em}
-        .detail-panel,.card>.tab-row{padding:20px}
+        .detail-summary-card,.lottery-panel,.wallet-row{border-radius:18px;border:1px solid rgba(220,38,38,.12);background:linear-gradient(180deg,rgba(255,255,255,.98),rgba(255,248,248,.96))}
+        .detail-summary-card{padding:16px;display:flex;flex-direction:column;gap:8px;min-height:126px}
+        .detail-summary-card span,.detail-summary-card small,.detail-footnote,.panel-eyebrow,.lottery-panel-head span,.wallet-meta,.wallet-note-text,.wallet-right span{color:var(--text-secondary)}
+        .detail-summary-card strong{font-size:1.7rem;line-height:1;letter-spacing:-.04em;color:var(--text-primary)}
+        .detail-panel{padding:20px}
+        .detail-tab-shell{padding:0;background:transparent;border:none;box-shadow:none}
         .panel-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:16px}
         .panel-head .card-title{margin:6px 0 0;font-size:1.15rem}
-        .tab-chip,.bet-chip{padding:8px 12px;border-radius:999px;border:1px solid rgba(148,163,184,.16);background:rgba(9,16,30,.76);color:var(--text-secondary);font-size:.8rem;font-weight:700}
-        .tab-chip.active,.bet-chip.active{border-color:rgba(52,211,153,.2);background:rgba(16,185,129,.12);color:var(--primary-light)}
+        .tab-row{padding:8px;border-radius:18px;background:rgba(255,255,255,.72);border:1px solid rgba(220,38,38,.1);box-shadow:var(--shadow-sm)}
+        .tab-chip,.bet-chip{padding:8px 14px;border-radius:999px;border:1px solid rgba(220,38,38,.12);background:rgba(255,255,255,.9);color:var(--text-secondary);font-size:.8rem;font-weight:700}
+        .tab-chip.active,.bet-chip.active{border-color:rgba(220,38,38,.26);background:rgba(220,38,38,.1);color:var(--primary-dark)}
         .detail-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
         .detail-grid label,.textarea-block{display:flex;flex-direction:column;gap:8px}
         .detail-grid label span,.textarea-block span{font-size:.78rem;color:var(--text-secondary);text-transform:uppercase;letter-spacing:.08em;font-weight:700}
-        .detail-grid input,.detail-grid select,.detail-grid textarea,.textarea-block textarea{width:100%;min-height:52px;padding:14px 16px;border-radius:16px;border:1px solid rgba(148,163,184,.16);background:rgba(9,16,30,.92);color:var(--text-primary)}
-        .detail-grid input:focus,.detail-grid select:focus,.detail-grid textarea:focus,.textarea-block textarea:focus{outline:none;border-color:rgba(52,211,153,.42);box-shadow:0 0 0 4px rgba(16,185,129,.08)}
+        .detail-grid input,.detail-grid select,.detail-grid textarea,.textarea-block textarea{width:100%;min-height:52px;padding:14px 16px;border-radius:16px;border:1px solid rgba(220,38,38,.12);background:rgba(255,255,255,.96);color:var(--text-primary)}
+        .detail-grid input:focus,.detail-grid select:focus,.detail-grid textarea:focus,.textarea-block textarea:focus{outline:none;border-color:rgba(220,38,38,.32);box-shadow:0 0 0 4px rgba(220,38,38,.08)}
         .detail-grid .full{grid-column:1/-1}
         .lottery-panel{padding:18px}
         .lottery-panel.muted{opacity:.72}
