@@ -286,6 +286,155 @@ const buildGridItems = ({ rows, digitMode }) => {
   return items;
 };
 
+const fastDigitLengths = {
+  '3top': 3,
+  '3bottom': 3,
+  '3tod': 3,
+  '2top': 2,
+  '2bottom': 2,
+  '2tod': 2,
+  'run_top': 1,
+  'run_bottom': 1
+};
+
+const parseFastDraftLine = (line) => {
+  const match = String(line || '').trim().match(/^(\d+)(?:\s*(?:[=/:,\-]|\s)\s*(\d+(?:\.\d+)?))?$/);
+  if (!match) return null;
+
+  return {
+    number: match[1],
+    amount: match[2] ? Number(match[2]) : null
+  };
+};
+
+const buildDraftDoubleSet = (digits) => {
+  if (digits === 1) {
+    return Array.from({ length: 10 }, (_, index) => String(index));
+  }
+
+  if (digits === 2) {
+    return Array.from({ length: 10 }, (_, index) => `${index}${index}`);
+  }
+
+  const numbers = new Set();
+  for (let repeatedDigit = 0; repeatedDigit <= 9; repeatedDigit += 1) {
+    for (let oddDigit = 0; oddDigit <= 9; oddDigit += 1) {
+      if (oddDigit === repeatedDigit) continue;
+      numbers.add(`${repeatedDigit}${repeatedDigit}${oddDigit}`);
+      numbers.add(`${repeatedDigit}${oddDigit}${repeatedDigit}`);
+      numbers.add(`${oddDigit}${repeatedDigit}${repeatedDigit}`);
+    }
+  }
+
+  return [...numbers].sort();
+};
+
+const buildDraftPermutations = (digits) => {
+  const values = new Set();
+
+  const walk = (prefix, remaining) => {
+    if (!remaining.length) {
+      values.add(prefix);
+      return;
+    }
+
+    [...remaining].forEach((digit, index) => {
+      walk(prefix + digit, `${remaining.slice(0, index)}${remaining.slice(index + 1)}`);
+    });
+  };
+
+  walk('', String(digits || ''));
+  return [...values];
+};
+
+const expandFastDraftNumbers = (number, betType, reverse) => {
+  if (!reverse) return [number];
+
+  if (betType === '2top' || betType === '2bottom' || betType === '2tod') {
+    return [...new Set([number, number.split('').reverse().join('')])];
+  }
+
+  if (betType === '3top' || betType === '3bottom' || betType === '3tod') {
+    return buildDraftPermutations(number);
+  }
+
+  return [number];
+};
+
+const combineFastDraftItems = (items) => {
+  const grouped = new Map();
+
+  items.forEach((item) => {
+    const key = `${item.betType}:${item.number}`;
+    const current = grouped.get(key);
+    if (current) {
+      current.amount += item.amount;
+      current.potentialPayout = current.amount * current.payRate;
+      return;
+    }
+
+    grouped.set(key, {
+      ...item,
+      potentialPayout: item.amount * item.payRate
+    });
+  });
+
+  return [...grouped.values()];
+};
+
+const buildFastDraftItems = ({
+  betType,
+  defaultAmount,
+  rawInput,
+  reverse,
+  includeDoubleSet,
+  payRate
+}) => {
+  if (!betType || !payRate) return [];
+
+  const digits = fastDigitLengths[betType] || 0;
+  if (!digits) return [];
+
+  const fallbackAmount = Number(defaultAmount || 0);
+  const lines = String(rawInput || '')
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  const items = [];
+
+  lines.forEach((line) => {
+    const parsed = parseFastDraftLine(line);
+    if (!parsed) return;
+
+    const number = normalizeDigits(parsed.number);
+    const amount = parsed.amount ?? fallbackAmount;
+    if (!number || number.length !== digits || amount <= 0) return;
+
+    expandFastDraftNumbers(number, betType, reverse).forEach((expandedNumber) => {
+      items.push({
+        betType,
+        number: expandedNumber,
+        amount,
+        payRate
+      });
+    });
+  });
+
+  if (includeDoubleSet && fallbackAmount > 0) {
+    buildDraftDoubleSet(digits).forEach((number) => {
+      items.push({
+        betType,
+        number,
+        amount: fallbackAmount,
+        payRate
+      });
+    });
+  }
+
+  return combineFastDraftItems(items);
+};
+
 const OperatorBetting = () => {
   const { user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -342,6 +491,20 @@ const OperatorBetting = () => {
   );
   const gridDraftSummary = useMemo(() => getGridDraftSummary(gridRows), [gridRows]);
   const recentSlipGroups = useMemo(() => groupRecentItemsBySlip(recentItems), [recentItems]);
+  const fastDraftGroups = useMemo(() => {
+    if (mode !== 'fast') return [];
+
+    return buildSlipDisplayGroups(
+      buildFastDraftItems({
+        betType: activeBetType,
+        defaultAmount,
+        rawInput,
+        reverse,
+        includeDoubleSet,
+        payRate: Number(selectedRateProfile?.rates?.[activeBetType] || 0)
+      })
+    );
+  }, [activeBetType, defaultAmount, includeDoubleSet, mode, rawInput, reverse, selectedRateProfile]);
   const gridDraftGroups = useMemo(() => {
     if (mode !== 'grid') return [];
 
@@ -1008,6 +1171,37 @@ const OperatorBetting = () => {
                       <button type="button" className="btn btn-secondary btn-sm" onClick={() => applyRunHelper('run_bottom')} disabled={!selectedLottery?.supportedBetTypes?.includes('run_bottom') || roundClosedBetTypes.includes('run_bottom')}>วินล่าง</button>
                     </div>
                     <div style={{ marginTop: 16 }}><label className="form-label">แทงเร็ว</label><textarea ref={fastInputRef} className="form-input" rows="14" placeholder={'พิมพ์ 1 บรรทัดต่อ 1 รายการ\n123 10\n456=20\n789'} value={rawInput} onChange={(event) => setRawInput(event.target.value)} /></div>
+                    {fastDraftGroups.length ? (
+                      <div className="card operator-slip-draft-panel">
+                        <div className="operator-slip-draft-head">
+                          <div>
+                            <div className="ui-eyebrow">โพยที่กำลังคีย์</div>
+                            <h4 className="card-title" style={{ marginBottom: 0 }}>รวมเลขตามชุดเดิมพันและยอดซื้อ</h4>
+                          </div>
+                          <div className="ops-table-note">
+                            {selectedLottery?.name || '-'} • {selectedRound?.title || '-'}
+                          </div>
+                        </div>
+                        <div className="operator-slip-group-list">
+                          {fastDraftGroups.map((group) => (
+                            <div key={group.key} className="card operator-slip-group-card">
+                              <div className="operator-slip-group-side">
+                                <div className="operator-slip-family">{group.familyLabel}</div>
+                                <div className="operator-slip-combo">{group.comboLabel}</div>
+                                <div className="operator-slip-amount">{group.amountLabel}</div>
+                              </div>
+                              <div className="operator-slip-group-body">
+                                <div className="operator-slip-group-head">
+                                  <span className="ops-table-note">{group.itemCount} รายการ</span>
+                                  <strong>{money(group.totalAmount)} บาท</strong>
+                                </div>
+                                <div className="operator-slip-numbers">{group.numbersText}</div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ) : null}
                   </>
                 ) : (
                   <>
