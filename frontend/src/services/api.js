@@ -52,6 +52,9 @@ export const parseAdminBettingSlip = (data) => api.post('/admin/betting/slips/pa
 export const createAdminBettingSlip = (data) => api.post('/admin/betting/slips', data);
 export const cancelAdminBettingSlip = (slipId) => api.post(`/admin/betting/slips/${slipId}/cancel`);
 export const getAdminRecentBettingItems = (params) => api.get('/admin/betting/items/recent', { params });
+export const getAdminBettingDraft = (params) => api.get('/admin/betting/draft', { params });
+export const saveAdminBettingDraft = (data) => api.put('/admin/betting/draft', data);
+export const clearAdminBettingDraft = (data) => api.delete('/admin/betting/draft', { data });
 
 // Agent
 export const getAgentDashboard = () => api.get('/agent/dashboard');
@@ -72,6 +75,9 @@ export const parseAgentBettingSlip = (data) => api.post('/agent/betting/slips/pa
 export const createAgentBettingSlip = (data) => api.post('/agent/betting/slips', data);
 export const cancelAgentBettingSlip = (slipId) => api.post(`/agent/betting/slips/${slipId}/cancel`);
 export const getAgentRecentBettingItems = (params) => api.get('/agent/betting/items/recent', { params });
+export const getAgentBettingDraft = (params) => api.get('/agent/betting/draft', { params });
+export const saveAgentBettingDraft = (data) => api.put('/agent/betting/draft', data);
+export const clearAgentBettingDraft = (data) => api.delete('/agent/betting/draft', { data });
 
 // Wallet
 export const getWalletSummary = (params) => api.get('/wallet/summary', { params });

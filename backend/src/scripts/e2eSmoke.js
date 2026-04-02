@@ -9,6 +9,7 @@ const path = require('path');
 const AuditLog = require('../models/AuditLog');
 const BetItem = require('../models/BetItem');
 const BetSlip = require('../models/BetSlip');
+const BettingDraftSession = require('../models/BettingDraftSession');
 const CreditLedgerEntry = require('../models/CreditLedgerEntry');
 const DrawRound = require('../models/DrawRound');
 const User = require('../models/User');
@@ -118,6 +119,7 @@ const cleanupSmokeArtifacts = async (created = {}) => {
   if (created.memberId) {
     await BetItem.deleteMany({ customerId: created.memberId });
     await BetSlip.deleteMany({ customerId: created.memberId });
+    await BettingDraftSession.deleteMany({ customerId: created.memberId });
     await UserLotteryConfig.deleteMany({ userId: created.memberId });
     await User.deleteOne({ _id: created.memberId });
   }
@@ -394,6 +396,133 @@ const main = async () => {
     summary.checks.push('operator-rounds');
 
     const selectedRateProfileId = visibleLotteries[0].defaultRateProfileId;
+
+    const agentDraftPayload = {
+      customerId: memberId,
+      lotteryId: visibleLotteries[0].id,
+      roundId: selectedRound.id,
+      rateProfileId: selectedRateProfileId,
+      composer: {
+        mode: 'grid',
+        digitMode: '2',
+        gridRows: [
+          {
+            id: 'draft-row-1',
+            number: '45',
+            amounts: { top: '10', bottom: '10', tod: '' }
+          }
+        ],
+        gridBulkAmounts: { top: '10', bottom: '10', tod: '' },
+        memo: 'agent draft composer'
+      },
+      savedEntries: [
+        {
+          id: 'draft-entry-1',
+          memo: 'saved draft entry',
+          source: {
+            mode: 'fast',
+            fastFamily: '2',
+            fastAmounts: { top: '5', bottom: '5', tod: '' },
+            rawInput: '12 21',
+            reverse: false,
+            includeDoubleSet: false,
+            memo: 'saved source'
+          },
+          items: [
+            { betType: '2top', number: '12', amount: 5, sourceFlags: {} },
+            { betType: '2bottom', number: '12', amount: 5, sourceFlags: {} }
+          ]
+        }
+      ]
+    };
+
+    const saveAgentDraftResponse = await agentClient.put('/agent/betting/draft', agentDraftPayload);
+    expectStatus(saveAgentDraftResponse, 200, 'Save agent betting draft');
+    assert(saveAgentDraftResponse.data.savedEntries?.length === 1, 'Agent draft save did not persist saved entries');
+    summary.checks.push('agent-save-betting-draft');
+
+    const loadAgentDraftResponse = await agentClient.get('/agent/betting/draft', {
+      params: {
+        customerId: memberId,
+        lotteryId: visibleLotteries[0].id,
+        roundId: selectedRound.id,
+        rateProfileId: selectedRateProfileId
+      }
+    });
+    expectStatus(loadAgentDraftResponse, 200, 'Load agent betting draft');
+    assert(loadAgentDraftResponse.data.composer?.mode === 'grid', 'Agent draft composer mode was not restored');
+    assert(loadAgentDraftResponse.data.composer?.gridRows?.[0]?.number === '45', 'Agent draft grid row was not restored');
+    assert(loadAgentDraftResponse.data.savedEntries?.length === 1, 'Agent draft entries were not restored');
+    summary.checks.push('agent-load-betting-draft');
+
+    const clearAgentDraftResponse = await agentClient.delete('/agent/betting/draft', {
+      data: {
+        customerId: memberId,
+        lotteryId: visibleLotteries[0].id,
+        roundId: selectedRound.id,
+        rateProfileId: selectedRateProfileId
+      }
+    });
+    expectStatus(clearAgentDraftResponse, 200, 'Clear agent betting draft');
+    summary.checks.push('agent-clear-betting-draft');
+
+    const loadClearedAgentDraftResponse = await agentClient.get('/agent/betting/draft', {
+      params: {
+        customerId: memberId,
+        lotteryId: visibleLotteries[0].id,
+        roundId: selectedRound.id,
+        rateProfileId: selectedRateProfileId
+      }
+    });
+    expectStatus(loadClearedAgentDraftResponse, 200, 'Load cleared agent betting draft');
+    assert(!loadClearedAgentDraftResponse.data.composer, 'Agent draft composer should be cleared');
+    assert((loadClearedAgentDraftResponse.data.savedEntries || []).length === 0, 'Agent draft entries should be cleared');
+    summary.checks.push('agent-verify-cleared-betting-draft');
+
+    const adminDraftPayload = {
+      customerId: memberId,
+      lotteryId: visibleLotteries[0].id,
+      roundId: selectedRound.id,
+      rateProfileId: selectedRateProfileId,
+      composer: {
+        mode: 'fast',
+        fastFamily: '2',
+        fastAmounts: { top: '10', bottom: '10', tod: '' },
+        rawInput: '33 44',
+        reverse: false,
+        includeDoubleSet: false,
+        memo: 'admin draft composer'
+      },
+      savedEntries: []
+    };
+
+    const saveAdminDraftResponse = await adminClient.put('/admin/betting/draft', adminDraftPayload);
+    expectStatus(saveAdminDraftResponse, 200, 'Save admin betting draft');
+    assert(saveAdminDraftResponse.data.composer?.mode === 'fast', 'Admin draft save did not persist composer');
+    summary.checks.push('admin-save-betting-draft');
+
+    const loadAdminDraftResponse = await adminClient.get('/admin/betting/draft', {
+      params: {
+        customerId: memberId,
+        lotteryId: visibleLotteries[0].id,
+        roundId: selectedRound.id,
+        rateProfileId: selectedRateProfileId
+      }
+    });
+    expectStatus(loadAdminDraftResponse, 200, 'Load admin betting draft');
+    assert(loadAdminDraftResponse.data.composer?.rawInput === '33 44', 'Admin draft composer raw input was not restored');
+    summary.checks.push('admin-load-betting-draft');
+
+    const clearAdminDraftResponse = await adminClient.delete('/admin/betting/draft', {
+      data: {
+        customerId: memberId,
+        lotteryId: visibleLotteries[0].id,
+        roundId: selectedRound.id,
+        rateProfileId: selectedRateProfileId
+      }
+    });
+    expectStatus(clearAdminDraftResponse, 200, 'Clear admin betting draft');
+    summary.checks.push('admin-clear-betting-draft');
 
     lockedRoundId = selectedRound.id;
     originalClosedBetTypes = selectedRound.closedBetTypes || [];

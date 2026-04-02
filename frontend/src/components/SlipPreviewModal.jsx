@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import { FiCopy, FiX } from 'react-icons/fi';
+import { operatorBettingCopy } from '../i18n/th/operatorBetting';
 import { buildSlipDisplayGroups } from '../utils/slipGrouping';
 
 const money = (value) => Number(value || 0).toLocaleString('th-TH');
@@ -13,6 +14,7 @@ const SlipPreviewModal = ({
   unknownMember = '-'
 }) => {
   const groups = useMemo(() => buildSlipDisplayGroups(slip?.items || []), [slip]);
+  const copy = operatorBettingCopy.previewModal;
 
   if (!slip) return null;
 
@@ -26,8 +28,8 @@ const SlipPreviewModal = ({
       >
         <div className="modal-header">
           <div>
-            <div className="ui-eyebrow">สรุปโพยดิจิทัล</div>
-            <h3 className="modal-title">โพย {slip.slipNumber || slip.slipId || '-'}</h3>
+            <div className="ui-eyebrow">{copy.eyebrow}</div>
+            <h3 className="modal-title">{copy.titlePrefix} {slip.slipNumber || slip.slipId || '-'}</h3>
           </div>
           <div className="operator-preview-modal-actions">
             <button
@@ -37,13 +39,13 @@ const SlipPreviewModal = ({
               disabled={copyingImage}
             >
               <FiCopy />
-              {copyingImage ? 'กำลังคัดลอกโพยเป็นรูป...' : 'คัดลอกโพยเป็นรูป'}
+              {copyingImage ? copy.copyImageLoading : copy.copyImage}
             </button>
             <button
               type="button"
               className="modal-close"
               onClick={onClose}
-              aria-label="ปิดหน้าต่าง"
+              aria-label={copy.closeAriaLabel}
             >
               <FiX />
             </button>
@@ -52,35 +54,35 @@ const SlipPreviewModal = ({
 
         <div className="card operator-preview-meta">
           <div>
-            <strong>สมาชิก:</strong> {slip.customer?.name || unknownMember}
+            <strong>{copy.memberLabel}:</strong> {slip.customer?.name || unknownMember}
             <span className="ops-table-note">
               {slip.customer?.username ? `@${slip.customer.username}` : ''}
             </span>
           </div>
           <div className="operator-preview-meta-row">
-            <strong>ผู้ทำรายการ:</strong> {slip.placedBy?.name || actorLabel}
+            <strong>{copy.actorLabel}:</strong> {slip.placedBy?.name || actorLabel}
             <span className="ops-table-note">{slip.placedBy?.roleLabel || actorLabel}</span>
           </div>
           <div className="operator-preview-meta-row">
-            <strong>ตลาด / งวด:</strong> {slip.marketName || '-'} • {slip.roundLabel || '-'}
+            <strong>{copy.marketRoundLabel}:</strong> {slip.marketName || '-'} • {slip.roundLabel || '-'}
           </div>
         </div>
 
         <div className="operator-preview-summary">
           <div className="card">
-            <div className="ops-table-note" style={{ margin: 0 }}>จำนวนรายการ</div>
+            <div className="ops-table-note" style={{ margin: 0 }}>{copy.itemCountLabel}</div>
             <strong>{slip.items?.length || 0}</strong>
           </div>
           <div className="card">
-            <div className="ops-table-note" style={{ margin: 0 }}>ยอดรวม</div>
+            <div className="ops-table-note" style={{ margin: 0 }}>{copy.totalAmountLabel}</div>
             <strong>{money(slip.totalAmount)} บาท</strong>
           </div>
           <div className="card">
-            <div className="ops-table-note" style={{ margin: 0 }}>จ่ายสูงสุด</div>
+            <div className="ops-table-note" style={{ margin: 0 }}>{copy.maxPayoutLabel}</div>
             <strong>{money(slip.totalPotentialPayout)} บาท</strong>
           </div>
           <div className="card">
-            <div className="ops-table-note" style={{ margin: 0 }}>สถานะโพย</div>
+            <div className="ops-table-note" style={{ margin: 0 }}>{copy.slipStatusLabel}</div>
             <strong>{slip.resultLabel || '-'}</strong>
           </div>
         </div>
@@ -107,7 +109,7 @@ const SlipPreviewModal = ({
 
         {slip.memo ? (
           <div className="card operator-preview-note">
-            <div className="ops-table-note" style={{ margin: 0 }}>บันทึกช่วยจำ</div>
+            <div className="ops-table-note" style={{ margin: 0 }}>{copy.memoLabel}</div>
             <strong>{slip.memo}</strong>
           </div>
         ) : null}

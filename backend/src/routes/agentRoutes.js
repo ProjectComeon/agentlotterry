@@ -29,6 +29,11 @@ const {
   searchMembersForBetting,
   getMemberForBettingActor
 } = require('../services/memberManagementService');
+const {
+  getDraftSession,
+  saveDraftSession,
+  clearDraftSession
+} = require('../services/bettingDraftService');
 
 const router = express.Router();
 
@@ -241,6 +246,59 @@ router.get('/betting/items/recent', async (req, res) => {
     res.json(items);
   } catch (error) {
     res.status(500).json({ message: error.message || 'Failed to load recent betting items' });
+  }
+});
+
+// GET /api/agent/betting/draft
+router.get('/betting/draft', async (req, res) => {
+  try {
+    const draft = await getDraftSession({
+      actorUser: req.user,
+      customerId: req.query.customerId,
+      lotteryId: req.query.lotteryId,
+      roundId: req.query.roundId,
+      rateProfileId: req.query.rateProfileId || ''
+    });
+
+    res.json(draft);
+  } catch (error) {
+    res.status(400).json({ message: error.message || 'Failed to load betting draft' });
+  }
+});
+
+// PUT /api/agent/betting/draft
+router.put('/betting/draft', async (req, res) => {
+  try {
+    const draft = await saveDraftSession({
+      actorUser: req.user,
+      customerId: req.body.customerId,
+      lotteryId: req.body.lotteryId,
+      roundId: req.body.roundId,
+      rateProfileId: req.body.rateProfileId || '',
+      composer: req.body.composer || null,
+      savedEntries: req.body.savedEntries || []
+    });
+
+    res.json(draft);
+  } catch (error) {
+    res.status(400).json({ message: error.message || 'Failed to save betting draft' });
+  }
+});
+
+// DELETE /api/agent/betting/draft
+router.delete('/betting/draft', async (req, res) => {
+  try {
+    const draft = await clearDraftSession({
+      actorUser: req.user,
+      customerId: req.body.customerId,
+      lotteryId: req.body.lotteryId,
+      roundId: req.body.roundId,
+      rateProfileId: req.body.rateProfileId || ''
+    });
+
+    res.json(draft);
+  } catch (error) {
+    res.status(400).json({ message: error.message || 'Failed to clear betting draft' });
   }
 });
 

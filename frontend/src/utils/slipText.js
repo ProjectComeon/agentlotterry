@@ -1,4 +1,5 @@
 import { buildSlipDisplayGroups } from './slipGrouping';
+import { operatorBettingCopy } from '../i18n/th/operatorBetting';
 
 const money = (value) => Number(value || 0).toLocaleString('th-TH');
 
@@ -28,35 +29,36 @@ export const buildPreviewSlipText = ({
   const memberUsername = preview?.member?.username || selectedMember?.username || '-';
   const roundStatus = resolveRoundStatusLabel?.(preview?.roundStatus?.status) || preview?.roundStatus?.label || '-';
   const groups = buildSlipDisplayGroups(preview?.items || []);
+  const copy = operatorBettingCopy.previewText;
 
   const lines = [
-    'สรุปโพยก่อนบันทึก',
-    `สมาชิก: ${memberName} (@${memberUsername})`,
-    `ผู้ทำรายการ: ${operatorName || '-'}${actorLabel ? ` • ${actorLabel}` : ''}`,
-    `ตลาด: ${selectedLottery?.name || preview?.lottery?.name || '-'}`,
-    `งวด: ${selectedRound?.title || preview?.round?.title || '-'}`,
-    `เรท: ${selectedRateProfile?.name || preview?.rateProfile?.name || 'เรทมาตรฐาน'}`,
-    `สถานะงวด: ${roundStatus}`,
-    `จำนวนรายการ: ${preview?.summary?.itemCount || 0}`,
-    `ยอดรวม: ${money(preview?.summary?.totalAmount)} บาท`,
-    `จ่ายสูงสุด: ${money(preview?.summary?.potentialPayout)} บาท`,
+    copy.heading,
+    `${copy.memberLabel}: ${memberName} (@${memberUsername})`,
+    `${copy.actorLabel}: ${operatorName || '-'}${actorLabel ? ` • ${actorLabel}` : ''}`,
+    `${copy.marketLabel}: ${selectedLottery?.name || preview?.lottery?.name || '-'}`,
+    `${copy.roundLabel}: ${selectedRound?.title || preview?.round?.title || '-'}`,
+    `${copy.rateLabel}: ${selectedRateProfile?.name || preview?.rateProfile?.name || copy.defaultRateName}`,
+    `${copy.roundStatusLabel}: ${roundStatus}`,
+    `${copy.itemCountLabel}: ${preview?.summary?.itemCount || 0}`,
+    `${copy.totalAmountLabel}: ${money(preview?.summary?.totalAmount)} บาท`,
+    `${copy.maxPayoutLabel}: ${money(preview?.summary?.potentialPayout)} บาท`,
     ''
   ];
 
   if (groups.length) {
     groups.forEach((group, index) => {
       lines.push(`${index + 1}. ${group.familyLabel} ${group.comboLabel} ${group.amountLabel}`);
-      lines.push(`เลข: ${group.numbersText}`);
-      lines.push(`รวม ${group.itemCount} รายการ • ${money(group.totalAmount)} บาท • จ่ายสูงสุด ${money(group.potentialPayout)} บาท`);
+      lines.push(`${copy.numbersLabel}: ${group.numbersText}`);
+      lines.push(copy.groupSummary(group.itemCount, group.totalAmount, group.potentialPayout));
       lines.push('');
     });
   } else {
-    lines.push('ยังไม่มีรายการในโพย');
+    lines.push(copy.emptyItems);
     lines.push('');
   }
 
   if (preview?.memo) {
-    lines.push(`บันทึกช่วยจำ: ${preview.memo}`);
+    lines.push(`${copy.memoLabel}: ${preview.memo}`);
   }
 
   return lines.join('\n').trim();
