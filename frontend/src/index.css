@@ -1140,14 +1140,14 @@ input, select, textarea {
 
 .operator-slip-group-card {
   display: grid;
-  grid-template-columns: 132px minmax(0, 1fr);
-  gap: 12px;
-  padding: 12px;
+  grid-template-columns: 168px minmax(0, 1fr);
+  gap: 14px;
+  padding: 14px;
   box-shadow: none;
 }
 
 .operator-slip-group-card-compact {
-  padding: 10px;
+  padding: 14px;
 }
 
 .operator-slip-group-side {
@@ -1187,8 +1187,8 @@ input, select, textarea {
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  justify-content: center;
+  gap: 12px;
+  justify-content: flex-start;
 }
 
 .operator-slip-group-head {
@@ -1200,14 +1200,15 @@ input, select, textarea {
 }
 
 .operator-slip-numbers {
-  padding: 12px 14px;
+  padding: 14px 16px;
   border-radius: 16px;
   border: 1px solid rgba(220, 38, 38, 0.12);
   background: rgba(255, 253, 253, 0.96);
-  font-size: 1.02rem;
+  font-size: 1.08rem;
   font-weight: 700;
-  line-height: 1.6;
+  line-height: 1.75;
   word-break: break-word;
+  min-height: 80px;
 }
 
 .operator-draft-summary {
@@ -1373,8 +1374,8 @@ input, select, textarea {
 }
 
 .operator-preview-dialog {
-  width: min(920px, calc(100vw - 32px));
-  max-height: min(88vh, 920px);
+  width: min(1120px, calc(100vw - 40px));
+  max-height: min(90vh, 980px);
   overflow: auto;
 }
 
@@ -1418,6 +1419,10 @@ input, select, textarea {
 
   .operator-slip-group-side {
     min-height: 0;
+  }
+
+  .operator-preview-dialog {
+    width: min(calc(100vw - 20px), 100%);
   }
 
   .operator-search-result,
