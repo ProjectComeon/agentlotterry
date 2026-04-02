@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import {
@@ -86,6 +86,7 @@ const fastFamilyOptions = [
     ]
   }
 ];
+
 
 const roleConfig = {
   agent: {
@@ -694,7 +695,7 @@ const OperatorBetting = () => {
       setSearchParams({ memberId });
     } catch (error) {
       console.error(error);
-      toast.error(error.response?.data?.message || '�หล�สิ���ิ�Rการแ��!�อ�!สมา�`ิก�ม��สำ๬ร�!��');
+      toast.error(error.response?.data?.message || 'โหลดสิทธิ์การแทงของสมาชิกไม่สำเร็จ');
     } finally {
       if (!silent) setCatalogLoading(false);
     }
@@ -718,7 +719,7 @@ const OperatorBetting = () => {
     } catch (error) {
       console.error(error);
       setRecentItems([]);
-      toast.error(error.response?.data?.message || '�หล�รายการ��~ยล��าสุ��ม��สำ๬ร�!��');
+      toast.error(error.response?.data?.message || 'โหลดรายการโพยล่าสุดไม่สำเร็จ');
     } finally {
       setRecentLoading(false);
     }
@@ -846,7 +847,7 @@ const OperatorBetting = () => {
       return response.data;
     } catch (error) {
       console.error(error);
-      toast.error(error.response?.data?.message || 'แยกรายการ��~ย�ม��สำ๬ร�!��');
+      toast.error(error.response?.data?.message || 'แยกรายการโพยไม่สำเร็จ');
       return null;
     } finally {
       setPreviewing(false);
@@ -872,7 +873,7 @@ const OperatorBetting = () => {
       await fetchMemberContext(selectedMember.id, { silent: true });
     } catch (error) {
       console.error(error);
-      toast.error(error.response?.data?.message || '�aั�"�ึก��~ย�ม��สำ๬ร�!��');
+      toast.error(error.response?.data?.message || 'บันทึกโพยไม่สำเร็จ');
     } finally {
       setSubmitting(false);
     }
@@ -966,7 +967,7 @@ const OperatorBetting = () => {
         resolveBetTypeLabel: getBetTypeLabel,
         resolveSourceLabel: getSourceFlagLabel
       });
-      toast.success(result.mode === 'clipboard' ? '�ั�ลอก��~ย๬�:�!�"รู�:ภา�~แล�0ว' : 'อุ�:กร��R�"ี�0ยั�!�ั�ลอกรู�:�"ร�! �  �ม�����0 ระ�a�a��ึ�!�าว�"�R�หล�รู�:��~ย๒ห�0แ��"');
+      toast.success(result.mode === 'clipboard' ? 'คัดลอกโพยเป็นรูปภาพแล้ว' : 'อุปกรณ์นี้ยังคัดลอกรูปตรง ๆ ไม่ได้ ระบบจึงดาวน์โหลดรูปโพยให้แทน');
     } catch (error) {
       console.error(error);
       toast.error(error.message || 'คัดลอกโพยเป็นรูปภาพไม่สำเร็จ');
@@ -1230,7 +1231,7 @@ const OperatorBetting = () => {
         setSearchResults(response.data || []);
       } catch (error) {
         console.error(error);
-        toast.error(error.response?.data?.message || '��0�"หาสมา�`ิก�ม��สำ๬ร�!��');
+        toast.error(error.response?.data?.message || 'ค้นหาสมาชิกไม่สำเร็จ');
       } finally {
         setSearching(false);
       }
@@ -1390,9 +1391,9 @@ const OperatorBetting = () => {
               </div>
               <div className="operator-selected-grid">
                 <div className="card" style={{ padding: 12 }}><strong>เครดิตคงเหลือ</strong><div className="ops-table-note">{money(selectedMember.creditBalance)} บาท</div></div>
-                <div className="card" style={{ padding: 12 }}><strong>ยอ��ายสะสม</strong><div className="ops-table-note">{money(selectedMember.totals?.totalAmount)} �aา�</div></div>
-                <div className="card" style={{ padding: 12 }}><strong>ยอ��ูกสะสม</strong><div className="ops-table-note">{money(selectedMember.totals?.totalWon)} �aา�</div></div>
-                <div className="card" style={{ padding: 12 }}><strong>���0๬สียสุ���ิ</strong><div className="ops-table-note">{money(selectedMember.totals?.netProfit)} �aา�</div></div>
+                <div className="card" style={{ padding: 12 }}><strong>ยอดขายสะสม</strong><div className="ops-table-note">{money(selectedMember.totals?.totalAmount)} บาท</div></div>
+                <div className="card" style={{ padding: 12 }}><strong>ยอดถูกสะสม</strong><div className="ops-table-note">{money(selectedMember.totals?.totalWon)} บาท</div></div>
+                <div className="card" style={{ padding: 12 }}><strong>ได้เสียสุทธิ</strong><div className="ops-table-note">{money(selectedMember.totals?.netProfit)} บาท</div></div>
               </div>
             </div>
           ) : null}
@@ -1401,7 +1402,7 @@ const OperatorBetting = () => {
             <>
 
             <div className="operator-search-results">
-              {searching ? <div className="card" style={{ padding: 14 }}>กำลั�!��0�"หา...</div> : null}
+              {searching ? <div className="card" style={{ padding: 14 }}>กำลังค้นหา...</div> : null}
               {!searching && searchResults.map((member) => (
                 <button key={member.id} type="button" className="card operator-search-result" onClick={() => fetchMemberContext(member.id)}>
                   <div>
@@ -1410,7 +1411,7 @@ const OperatorBetting = () => {
                     <div className="ops-table-note">{member.phone || getUserStatusLabel(member.status)}</div>
                   </div>
                   <div className="operator-search-meta">
-                    <strong>{money(member.totals?.netProfit)} �aา�</strong>
+                    <strong>{money(member.totals?.netProfit)} บาท</strong>
                     <div className="ops-table-note">เครดิต {money(member.creditBalance)} บาท</div>
                   </div>
                 </button>
@@ -1449,13 +1450,13 @@ const OperatorBetting = () => {
                   <span className="ui-pill"><FiLayers /> {selectedLottery?.name || '-'}</span>
                   <span className="ui-pill"><FiClock /> {selectedRound?.title || '-'}</span>
                   <span className="ui-pill">{getRoundStatusLabel(selectedRound?.status)}</span>
-                  <span className="ui-pill">�:ิ�รั�a {formatDateTime(selectedRound?.closeAt)}</span>
-                  <span className="ui-pill">{selectedRateProfile?.name || '๬ร�มา�"รฐา�"'}</span>
+                  <span className="ui-pill">ปิดรับ {formatDateTime(selectedRound?.closeAt)}</span>
+                  <span className="ui-pill">{selectedRateProfile?.name || 'เรทมาตรฐาน'}</span>
                 </div>
 
                 <button type="button" className="btn btn-secondary btn-sm operator-rate-toggle" onClick={() => setShowRates((value) => !value)}>
                   {showRates ? <FiChevronUp /> : <FiChevronDown />}
-                  {showRates ? '�9��อ�"๬ร�' : '�ู๬ร�'}
+                  {showRates ? 'ซ่อนเรท' : 'ดูเรท'}
                 </button>
 
                 {showRates ? (
@@ -1465,32 +1466,32 @@ const OperatorBetting = () => {
                     </div>
 
                     <div className="operator-rate-grid">
-                      {(selectedLottery?.supportedBetTypes || []).map((betType) => <div key={betType} className="card" style={{ padding: 12, borderColor: roundClosedBetTypes.includes(betType) ? 'var(--border-accent)' : undefined }}><div className="ops-table-note" style={{ margin: 0 }}>{getBetTypeLabel(betType)}</div><strong style={{ display: 'block', marginTop: 8 }}>x{selectedRateProfile?.rates?.[betType] || 0}</strong><small className="ops-table-note" style={{ marginTop: 6, display: 'block', color: roundClosedBetTypes.includes(betType) ? 'var(--primary-light)' : undefined }}>{roundClosedBetTypes.includes(betType) ? '�:ิ�รั�a๒�"�!ว��"ี�0' : '๬�:ิ�รั�a'}</small></div>)}
+                      {(selectedLottery?.supportedBetTypes || []).map((betType) => <div key={betType} className="card" style={{ padding: 12, borderColor: roundClosedBetTypes.includes(betType) ? 'var(--border-accent)' : undefined }}><div className="ops-table-note" style={{ margin: 0 }}>{getBetTypeLabel(betType)}</div><strong style={{ display: 'block', marginTop: 8 }}>x{selectedRateProfile?.rates?.[betType] || 0}</strong><small className="ops-table-note" style={{ marginTop: 6, display: 'block', color: roundClosedBetTypes.includes(betType) ? 'var(--primary-light)' : undefined }}>{roundClosedBetTypes.includes(betType) ? 'ปิดรับในงวดนี้' : 'เปิดรับ'}</small></div>)}
                     </div>
                   </>
                 ) : null}
 
-                {roundClosedBetTypes.length ? <div className="bet-note warning" style={{ marginTop: 16 }}><FiAlertCircle /><span>รายการ�:ิ�รั�a�!ว��"ี�0: {roundClosedBetTypes.map((betType) => getBetTypeLabel(betType)).join(', ')}</span></div> : null}
+                {roundClosedBetTypes.length ? <div className="bet-note warning" style={{ marginTop: 16 }}><FiAlertCircle /><span>รายการปิดรับงวดนี้: {roundClosedBetTypes.map((betType) => getBetTypeLabel(betType)).join(', ')}</span></div> : null}
 
                 <div className="operator-mode-row">
-                  <button type="button" className={`btn ${mode === 'fast' ? 'btn-primary' : 'btn-secondary'} btn-sm`} onClick={() => setMode('fast')}>แ��!๬ร�!ว</button>
-                  <button type="button" className={`btn ${mode === 'grid' ? 'btn-primary' : 'btn-secondary'} btn-sm`} onClick={() => setMode('grid')}>2 �"ัว / 3 �"ัว</button>
+                  <button type="button" className={`btn ${mode === 'fast' ? 'btn-primary' : 'btn-secondary'} btn-sm`} onClick={() => setMode('fast')}>แทงเร็ว</button>
+                  <button type="button" className={`btn ${mode === 'grid' ? 'btn-primary' : 'btn-secondary'} btn-sm`} onClick={() => setMode('grid')}>2 ตัว / 3 ตัว</button>
                 </div>
 
                 <div className="card operator-draft-summary">
                   <div>
                     <div className="ops-table-note" style={{ margin: 0 }}>โหมดปัจจุบัน</div>
-                    <strong>{mode === 'fast' ? 'แ��!๬ร�!ว' : `กรอก�"ารา�! ${digitMode} �"ัว`}</strong>
+                    <strong>{mode === 'fast' ? 'แทงเร็ว' : `กรอกตาราง ${digitMode} ตัว`}</strong>
                   </div>
                   <div>
                     <div className="ops-table-note" style={{ margin: 0 }}>รายการก่อนรีวิว</div>
-                    <strong>{mode === 'fast' ? `${fastDraftSummary.lineCount} �aรร�ั�` : `${gridDraftSummary.filledRows} แ�ว`}</strong>
+                    <strong>{mode === 'fast' ? `${fastDraftSummary.lineCount} บรรทัด` : `${gridDraftSummary.filledRows} แถว`}</strong>
                   </div>
                   <div>
                     <div className="ops-table-note" style={{ margin: 0 }}>ตัวช่วยที่เปิด</div>
                     <strong>
                       {mode === 'fast'
-                        ? [fastDraftSummary.reverseEnabled ? 'กลั�a๬ล�' : null, fastDraftSummary.helperCount ? `๬ล�๬�aิ�0ล ${fastDraftSummary.helperCount}` : null].filter(Boolean).join(' ⬢ ') || '�ม��มี'
+                        ? [fastDraftSummary.reverseEnabled ? 'กลับเลข' : null, fastDraftSummary.helperCount ? `เลขเบิ้ล ${fastDraftSummary.helperCount}` : null].filter(Boolean).join(' • ') || 'ไม่มี'
                         : `${gridDraftSummary.amountCells} ช่องยอด`}
                     </strong>
                   </div>
@@ -1563,7 +1564,7 @@ const OperatorBetting = () => {
                         <FiShuffle /> กลับเลข
                       </button>
                       <button type="button" className={`btn ${includeDoubleSet ? 'btn-primary' : 'btn-secondary'} btn-sm`} onClick={() => setIncludeDoubleSet((value) => !value)}>
-                        <FiStar /> {includeDoubleSet ? '๬ล�๬�aิ�0ล' : '�`ุ��:ก�"ิ'}
+                        <FiStar /> {includeDoubleSet ? 'เลขเบิ้ล' : 'ชุดปกติ'}
                       </button>
                       <button type="button" className="btn btn-secondary btn-sm" onClick={clearComposer}>
                         <FiRotateCcw /> ล้างทั้งหมด
@@ -1599,7 +1600,7 @@ const OperatorBetting = () => {
                             <h4 className="card-title" style={{ marginBottom: 0 }}>รวมเลขตามชุดเดิมพันและยอดซื้อ</h4>
                           </div>
                           <div className="ops-table-note">
-                            {selectedLottery?.name || '-'} ⬢ {selectedRound?.title || '-'}
+                            {selectedLottery?.name || '-'} • {selectedRound?.title || '-'}
                           </div>
                         </div>
                         <div className="operator-slip-group-list">
@@ -1643,7 +1644,7 @@ const OperatorBetting = () => {
                             className="form-input"
                             type="text"
                             inputMode="numeric"
-                            placeholder={digitMode === '3' ? '๬�`���" 123' : '๬�`���" 12'}
+                            placeholder={digitMode === '3' ? 'เช่น 123' : 'เช่น 12'}
                             value={row.number}
                             onChange={(event) => updateGridRow(row.id, { number: event.target.value })}
                             onKeyDown={(event) => handleGridKeyDown(row.id, 'number', event)}
@@ -1689,8 +1690,8 @@ const OperatorBetting = () => {
                       ))}
                     </div>
                     <div className="operator-helper-row compact">
-                      <button type="button" className="btn btn-secondary btn-sm" onClick={() => applyRunHelper('run_top')} disabled={!selectedLottery?.supportedBetTypes?.includes('run_top') || roundClosedBetTypes.includes('run_top')}><FiStar /> วิ�"�a�"</button>
-                      <button type="button" className="btn btn-secondary btn-sm" onClick={() => applyRunHelper('run_bottom')} disabled={!selectedLottery?.supportedBetTypes?.includes('run_bottom') || roundClosedBetTypes.includes('run_bottom')}><FiStar /> วิ�"ล��า�!</button>
+                      <button type="button" className="btn btn-secondary btn-sm" onClick={() => applyRunHelper('run_top')} disabled={!selectedLottery?.supportedBetTypes?.includes('run_top') || roundClosedBetTypes.includes('run_top')}><FiStar /> วินบน</button>
+                      <button type="button" className="btn btn-secondary btn-sm" onClick={() => applyRunHelper('run_bottom')} disabled={!selectedLottery?.supportedBetTypes?.includes('run_bottom') || roundClosedBetTypes.includes('run_bottom')}><FiStar /> วินล่าง</button>
                       <button type="button" className="btn btn-secondary btn-sm" onClick={() => setGridRows((current) => [...current, buildEmptyGridRow()])}><FiPlus /> เพิ่มแถว</button>
                       <button type="button" className="btn btn-secondary btn-sm" onClick={clearComposer}><FiRotateCcw /> ล้างทั้งหมด</button>
                     </div>
@@ -1702,7 +1703,7 @@ const OperatorBetting = () => {
                             <h4 className="card-title" style={{ marginBottom: 0 }}>รวมเลขตามชุดเดิมพันและยอดซื้อ</h4>
                           </div>
                           <div className="ops-table-note">
-                            {selectedLottery?.name || '-'} ⬢ {selectedRound?.title || '-'}
+                            {selectedLottery?.name || '-'} • {selectedRound?.title || '-'}
                           </div>
                         </div>
                         <div className="operator-slip-group-list">
@@ -1748,7 +1749,7 @@ const OperatorBetting = () => {
                                 {entry.groups.map((group) => `${group.familyLabel} ${group.comboLabel} ${group.amountLabel}`).join(' • ')}
                               </div>
                             ) : null}
-                            {entry.memo ? <div className="ops-table-note">�aั�"�ึก: {entry.memo}</div> : null}
+                            {entry.memo ? <div className="ops-table-note">บันทึก: {entry.memo}</div> : null}
                           </div>
                           <div className="operator-saved-draft-actions">
                             <button type="button" className="btn btn-secondary btn-sm" onClick={() => handleEditSavedDraftEntry(entry.id)}>
@@ -1771,7 +1772,7 @@ const OperatorBetting = () => {
                         <div className="ui-eyebrow">โพยที่กำลังคีย์</div>
                         <h4 className="card-title" style={{ marginBottom: 0 }}>รวมเลขทั้งหมดในโพยรอบนี้</h4>
                       </div>
-                      <div className="ops-table-note">{selectedLottery?.name || '-'} ⬢ {selectedRound?.title || '-'}</div>
+                      <div className="ops-table-note">{selectedLottery?.name || '-'} • {selectedRound?.title || '-'}</div>
                     </div>
                     <div className="operator-slip-group-list">
                       {combinedDraftGroups.map((group) => (
@@ -1800,7 +1801,7 @@ const OperatorBetting = () => {
                     <FiFileText /> บันทึกไว้
                   </button>
                   <button type="button" className="btn btn-primary btn-sm" onClick={handleOpenPreviewDialog} disabled={previewing || !selectedMember || !hasPendingSlip}>
-                    {previewing ? <FiRefreshCw className="spin-animation" /> : <FiCheckCircle />} สรุ�:��~ย
+                    {previewing ? <FiRefreshCw className="spin-animation" /> : <FiCheckCircle />} สรุปโพย
                   </button>
                 </div>
                 <div className="bet-note" style={{ marginTop: 16 }}><FiAlertCircle /><span>ระบบจะตรวจสิทธิ์ของสมาชิก เรท ลิมิต และเลขที่ปิดรับก่อนสร้างโพยทุกครั้ง</span></div>
@@ -1811,7 +1812,7 @@ const OperatorBetting = () => {
           <aside className="card ops-section operator-preview-panel">
               <div className="ui-panel-head">
                 <div><div className="ui-eyebrow">ตัวอย่างโพย</div><h3 className="card-title">รีวิวก่อนบันทึกรายการซื้อ</h3></div>
-              <button className="btn btn-secondary btn-sm" onClick={handleOpenPreviewDialog} disabled={previewing || !selectedMember || !hasPendingSlip}>{previewing ? <FiRefreshCw className="spin-animation" /> : <FiCheckCircle />} ๬�:ิ�ห�"�0าสรุ�:��~ย</button>
+              <button className="btn btn-secondary btn-sm" onClick={handleOpenPreviewDialog} disabled={previewing || !selectedMember || !hasPendingSlip}>{previewing ? <FiRefreshCw className="spin-animation" /> : <FiCheckCircle />} เปิดหน้าสรุปโพย</button>
               </div>
 
             {!preview ? (
@@ -1823,18 +1824,18 @@ const OperatorBetting = () => {
               <>
                 <div className="card operator-preview-meta">
                   <div>
-                    <strong>�9ื�0อแ��":</strong> {preview.member?.name || selectedMember?.name}
+                    <strong>ซื้อแทน:</strong> {preview.member?.name || selectedMember?.name}
                     <span className="ops-table-note">
-                      @{preview.member?.username || selectedMember?.username || '-'} ⬢ ���0๬สีย {money(preview.member?.totals?.netProfit || selectedMember?.totals?.netProfit)} �aา�
+                      @{preview.member?.username || selectedMember?.username || '-'} • ได้เสีย {money(preview.member?.totals?.netProfit || selectedMember?.totals?.netProfit)} บาท
                     </span>
                   </div>
-                  <div style={{ marginTop: 6 }}><strong>�Sู�0�ำรายการ:</strong> {preview.placedBy?.name || user?.name} <span className="ops-table-note">{copy.actorLabel}</span></div>
+                  <div style={{ marginTop: 6 }}><strong>ผู้ทำรายการ:</strong> {preview.placedBy?.name || user?.name} <span className="ops-table-note">{copy.actorLabel}</span></div>
                 </div>
                 <div className="operator-preview-summary">
-                  <div className="card" style={{ padding: 12 }}><div className="ops-table-note" style={{ margin: 0 }}>��ำ�"ว�"รายการ</div><strong>{preview.summary?.itemCount || 0}</strong></div>
-                  <div className="card" style={{ padding: 12 }}><div className="ops-table-note" style={{ margin: 0 }}>ยอ�รวม</div><strong>{money(preview.summary?.totalAmount)} �aา�</strong></div>
-                  <div className="card" style={{ padding: 12 }}><div className="ops-table-note" style={{ margin: 0 }}>����ายสู�!สุ�</div><strong>{money(preview.summary?.potentialPayout)} �aา�</strong></div>
-                  <div className="card" style={{ padding: 12 }}><div className="ops-table-note" style={{ margin: 0 }}>ส�า�"ะ�!ว�</div><strong>{getRoundStatusLabel(preview.roundStatus?.status)}</strong></div>
+                  <div className="card" style={{ padding: 12 }}><div className="ops-table-note" style={{ margin: 0 }}>จำนวนรายการ</div><strong>{preview.summary?.itemCount || 0}</strong></div>
+                  <div className="card" style={{ padding: 12 }}><div className="ops-table-note" style={{ margin: 0 }}>ยอดรวม</div><strong>{money(preview.summary?.totalAmount)} บาท</strong></div>
+                  <div className="card" style={{ padding: 12 }}><div className="ops-table-note" style={{ margin: 0 }}>จ่ายสูงสุด</div><strong>{money(preview.summary?.potentialPayout)} บาท</strong></div>
+                  <div className="card" style={{ padding: 12 }}><div className="ops-table-note" style={{ margin: 0 }}>สถานะงวด</div><strong>{getRoundStatusLabel(preview.roundStatus?.status)}</strong></div>
                 </div>
                 <div className="operator-preview-list operator-slip-group-list">
                   {previewGroups.map((group) => (
@@ -1892,8 +1893,8 @@ const OperatorBetting = () => {
             </div>
 
             <div className="operator-preview-actions">
-              <button className="btn btn-primary" onClick={handleOpenPreviewDialog} disabled={previewing || !selectedMember || !hasPendingSlip}><FiCheckCircle /> {previewing ? 'กำลั�!๬�"รียมสรุ�:��~ย...' : 'รีวิวและ�aั�"�ึก��~ย'}</button>
-              {!canSubmit && selectedMember ? <div className="submit-warning">�!ว��"ี�0�ม�����0อยู��๒�"ส�า�"ะ๬�:ิ�รั�a ��ึ�!ยั�!�aั�"�ึก��~ย๬��0าระ�a�a�ม�����0 แ�"��สามาร��ั�ลอก��0อ�วามหรือรู�:��~ย๒ห�0ลูก��0า�"รว��สอ�a���0</div> : null}
+              <button className="btn btn-primary" onClick={handleOpenPreviewDialog} disabled={previewing || !selectedMember || !hasPendingSlip}><FiCheckCircle /> {previewing ? 'กำลังเตรียมสรุปโพย...' : 'รีวิวและบันทึกโพย'}</button>
+              {!canSubmit && selectedMember ? <div className="submit-warning">งวดนี้ไม่ได้อยู่ในสถานะเปิดรับ จึงยังบันทึกโพยเข้าระบบไม่ได้ แต่สามารถคัดลอกข้อความหรือรูปโพยให้ลูกค้าตรวจสอบได้</div> : null}
             </div>
           </aside>
 
@@ -1912,18 +1913,18 @@ const OperatorBetting = () => {
 
                 <div className="card operator-preview-meta">
                   <div>
-                    <strong>�9ื�0อแ��":</strong> {preview.member?.name || selectedMember?.name}
+                    <strong>ซื้อแทน:</strong> {preview.member?.name || selectedMember?.name}
                     <span className="ops-table-note">
-                      @{preview.member?.username || selectedMember?.username || '-'} ⬢ ���0๬สีย {money(preview.member?.totals?.netProfit || selectedMember?.totals?.netProfit)} �aา�
+                      @{preview.member?.username || selectedMember?.username || '-'} • ได้เสีย {money(preview.member?.totals?.netProfit || selectedMember?.totals?.netProfit)} บาท
                     </span>
                   </div>
-                  <div style={{ marginTop: 6 }}><strong>�Sู�0�ำรายการ:</strong> {preview.placedBy?.name || user?.name} <span className="ops-table-note">{copy.actorLabel}</span></div>
+                  <div style={{ marginTop: 6 }}><strong>ผู้ทำรายการ:</strong> {preview.placedBy?.name || user?.name} <span className="ops-table-note">{copy.actorLabel}</span></div>
                 </div>
                 <div className="operator-preview-summary">
-                  <div className="card" style={{ padding: 12 }}><div className="ops-table-note" style={{ margin: 0 }}>��ำ�"ว�"รายการ</div><strong>{preview.summary?.itemCount || 0}</strong></div>
-                  <div className="card" style={{ padding: 12 }}><div className="ops-table-note" style={{ margin: 0 }}>ยอ�รวม</div><strong>{money(preview.summary?.totalAmount)} �aา�</strong></div>
-                  <div className="card" style={{ padding: 12 }}><div className="ops-table-note" style={{ margin: 0 }}>����ายสู�!สุ�</div><strong>{money(preview.summary?.potentialPayout)} �aา�</strong></div>
-                  <div className="card" style={{ padding: 12 }}><div className="ops-table-note" style={{ margin: 0 }}>ส�า�"ะ�!ว�</div><strong>{getRoundStatusLabel(preview.roundStatus?.status)}</strong></div>
+                  <div className="card" style={{ padding: 12 }}><div className="ops-table-note" style={{ margin: 0 }}>จำนวนรายการ</div><strong>{preview.summary?.itemCount || 0}</strong></div>
+                  <div className="card" style={{ padding: 12 }}><div className="ops-table-note" style={{ margin: 0 }}>ยอดรวม</div><strong>{money(preview.summary?.totalAmount)} บาท</strong></div>
+                  <div className="card" style={{ padding: 12 }}><div className="ops-table-note" style={{ margin: 0 }}>จ่ายสูงสุด</div><strong>{money(preview.summary?.potentialPayout)} บาท</strong></div>
+                  <div className="card" style={{ padding: 12 }}><div className="ops-table-note" style={{ margin: 0 }}>สถานะงวด</div><strong>{getRoundStatusLabel(preview.roundStatus?.status)}</strong></div>
                 </div>
                 <div className="operator-preview-list operator-slip-group-list">
                   {previewGroups.map((group) => (
@@ -1953,16 +1954,16 @@ const OperatorBetting = () => {
 
                 <div className="modal-footer operator-preview-modal-actions">
                   <button className="btn btn-secondary" onClick={handleCopyAsText} disabled={copyingText || copyingImage || submitting}>
-                    <FiFileText /> {copyingText ? 'กำลั�!�ั�ลอก��0อ�วาม...' : '�ั�ลอก��0อ�วาม'}
+                    <FiFileText /> {copyingText ? 'กำลังคัดลอกข้อความ...' : 'คัดลอกข้อความ'}
                   </button>
                   <button className="btn btn-secondary" onClick={handleCopyAsImage} disabled={copyingText || copyingImage || submitting}>
-                    <FiCopy /> {copyingImage ? 'กำลั�!�ั�ลอก��~ย๬�:�!�"รู�:...' : '�ั�ลอก��~ย๬�:�!�"รู�:'}
+                    <FiCopy /> {copyingImage ? 'กำลังคัดลอกโพยเป็นรูป...' : 'คัดลอกโพยเป็นรูป'}
                   </button>
                   <button className="btn btn-primary" onClick={handleSubmitSlip} disabled={copyingText || copyingImage || submitting || !canSubmit}>
-                    <FiSend /> {submitting ? 'กำลั�!�aั�"�ึก��~ย...' : '�aั�"�ึก��~ย'}
+                    <FiSend /> {submitting ? 'กำลังบันทึกโพย...' : 'บันทึกโพย'}
                   </button>
                 </div>
-                {!canSubmit ? <div className="submit-warning">�!ว��"ี�0�ม�����0อยู��๒�"ส�า�"ะ๬�:ิ�รั�a ��ึ�!ยั�!�aั�"�ึก��~ย๬��0าระ�a�a�ม�����0 แ�"��สามาร��ั�ลอก��0อ�วามหรือรู�:��~ย๬�~ื��อส���!๒ห�0ลูก��0า�"รว��สอ�a���0</div> : null}
+                {!canSubmit ? <div className="submit-warning">งวดนี้ไม่ได้อยู่ในสถานะเปิดรับ จึงยังบันทึกโพยเข้าระบบไม่ได้ แต่สามารถคัดลอกข้อความหรือรูปโพยเพื่อส่งให้ลูกค้าตรวจสอบได้</div> : null}
               </div>
             </div>
           ) : null}
