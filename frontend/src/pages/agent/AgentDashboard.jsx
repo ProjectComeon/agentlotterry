@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import toast from 'react-hot-toast';
 import { FiBell, FiClock, FiDollarSign, FiEye, FiTrendingUp, FiUsers, FiWifi } from 'react-icons/fi';
+import GroupedSlipSummary from '../../components/GroupedSlipSummary';
 import PageSkeleton from '../../components/PageSkeleton';
 import SlipPreviewModal from '../../components/SlipPreviewModal';
 import { useCatalog } from '../../context/CatalogContext';
@@ -29,11 +30,13 @@ const groupRecentBetsBySlip = (items = []) => {
       existing.items.push(bet);
       existing.totalAmount += Number(bet.amount || 0);
       existing.totalPotentialPayout += Number(bet.potentialPayout || 0);
-      existing.result = existing.result === 'pending' || (bet.result || 'pending') === 'pending'
-        ? 'pending'
-        : existing.result === 'won' || (bet.result || 'pending') === 'won'
-          ? 'won'
-          : 'lost';
+      existing.result =
+        existing.result === 'pending' || (bet.result || 'pending') === 'pending'
+          ? 'pending'
+          : existing.result === 'won' || (bet.result || 'pending') === 'won'
+            ? 'won'
+            : 'lost';
+      existing.memo = existing.memo || bet.memo || '';
       return;
     }
 
@@ -47,6 +50,7 @@ const groupRecentBetsBySlip = (items = []) => {
       result: bet.result || 'pending',
       totalAmount: Number(bet.amount || 0),
       totalPotentialPayout: Number(bet.potentialPayout || 0),
+      memo: bet.memo || '',
       items: [bet]
     });
   });
@@ -81,44 +85,47 @@ const AgentDashboard = () => {
   const groupedRecentBets = useMemo(() => groupRecentBetsBySlip(data?.recentBets || []), [data?.recentBets]);
   const hasSidePanels = Boolean(data?.onlineMembers?.length || announcements.length);
 
-  const statCards = useMemo(() => ([
-    {
-      icon: FiUsers,
-      value: stats.totalCustomers || 0,
-      label: agentCopy.dashboard.statCards.members.label,
-      hint: agentCopy.dashboard.statCards.members.hint(stats.activeCustomers || 0)
-    },
-    {
-      icon: FiWifi,
-      value: stats.onlineCustomers || 0,
-      label: agentCopy.dashboard.statCards.onlineNow.label,
-      hint: agentCopy.dashboard.statCards.onlineNow.hint
-    },
-    {
-      icon: FiClock,
-      value: stats.pendingBets || 0,
-      label: agentCopy.dashboard.statCards.pendingItems.label,
-      hint: agentCopy.dashboard.statCards.pendingItems.hint(stats.totalBets || 0)
-    },
-    {
-      icon: FiDollarSign,
-      value: money(stats.agentCreditBalance),
-      label: agentCopy.dashboard.statCards.agentCredit.label,
-      hint: agentCopy.dashboard.statCards.agentCredit.hint
-    },
-    {
-      icon: FiDollarSign,
-      value: money(stats.totalCreditBalance),
-      label: agentCopy.dashboard.statCards.memberCredit.label,
-      hint: agentCopy.dashboard.statCards.memberCredit.hint
-    },
-    {
-      icon: FiTrendingUp,
-      value: `${Number(stats.averageStockPercent || 0).toFixed(1)}%`,
-      label: agentCopy.dashboard.statCards.averageStock.label,
-      hint: agentCopy.dashboard.statCards.averageStock.hint
-    }
-  ]), [stats]);
+  const statCards = useMemo(
+    () => [
+      {
+        icon: FiUsers,
+        value: stats.totalCustomers || 0,
+        label: agentCopy.dashboard.statCards.members.label,
+        hint: agentCopy.dashboard.statCards.members.hint(stats.activeCustomers || 0)
+      },
+      {
+        icon: FiWifi,
+        value: stats.onlineCustomers || 0,
+        label: agentCopy.dashboard.statCards.onlineNow.label,
+        hint: agentCopy.dashboard.statCards.onlineNow.hint
+      },
+      {
+        icon: FiClock,
+        value: stats.pendingBets || 0,
+        label: agentCopy.dashboard.statCards.pendingItems.label,
+        hint: agentCopy.dashboard.statCards.pendingItems.hint(stats.totalBets || 0)
+      },
+      {
+        icon: FiDollarSign,
+        value: money(stats.agentCreditBalance),
+        label: agentCopy.dashboard.statCards.agentCredit.label,
+        hint: agentCopy.dashboard.statCards.agentCredit.hint
+      },
+      {
+        icon: FiDollarSign,
+        value: money(stats.totalCreditBalance),
+        label: agentCopy.dashboard.statCards.memberCredit.label,
+        hint: agentCopy.dashboard.statCards.memberCredit.hint
+      },
+      {
+        icon: FiTrendingUp,
+        value: `${Number(stats.averageStockPercent || 0).toFixed(1)}%`,
+        label: agentCopy.dashboard.statCards.averageStock.label,
+        hint: agentCopy.dashboard.statCards.averageStock.hint
+      }
+    ],
+    [stats]
+  );
 
   const handleCopySlipImage = async () => {
     if (!selectedSlip) return;
@@ -132,11 +139,7 @@ const AgentDashboard = () => {
         actorLabel: agentCopy.dashboard.heroTitle,
         resolveBetTypeLabel: getBetTypeLabel
       });
-      toast.success(
-        result.mode === 'clipboard'
-          ? 'คัดลอกโพยเป็นรูปแล้ว'
-          : 'สร้างไฟล์รูปโพยแล้ว'
-      );
+      toast.success(result.mode === 'clipboard' ? 'คัดลอกโพยเป็นรูปแล้ว' : 'สร้างไฟล์รูปโพยแล้ว');
     } catch (error) {
       console.error(error);
       toast.error(error.message || 'คัดลอกโพยเป็นรูปไม่สำเร็จ');
@@ -201,34 +204,40 @@ const AgentDashboard = () => {
           </div>
 
           <div className="recent-list">
-            {groupedRecentBets.length ? groupedRecentBets.map((bet) => (
-              <article key={bet.key} className={`recent-row recent-${bet.result}`}>
-                <div className="recent-main">
-                  <div className="recent-topline">
-                    <strong>{bet.items.map((item) => item.number).join('  ')}</strong>
-                    <span className={`result-pill result-${bet.result}`}>{getBetResultLabel(bet.result)}</span>
+            {groupedRecentBets.length ? (
+              groupedRecentBets.map((bet) => (
+                <article key={bet.key} className={`recent-slip-card recent-slip-card-${bet.result}`}>
+                  <div className="recent-slip-card-head">
+                    <div className="recent-slip-card-copy">
+                      <div className="recent-slip-kicker">เลขอ้างอิง: {bet.slipNumber || bet.slipId || '-'}</div>
+                      <strong>{bet.customer?.name || agentCopy.dashboard.unknownMember}</strong>
+                      <div className="recent-meta">{bet.marketName} • {bet.roundLabel}</div>
+                    </div>
+
+                    <div className="recent-slip-card-actions">
+                      <span className={`result-pill result-${bet.result}`}>{getBetResultLabel(bet.result)}</span>
+                      <button type="button" className="btn btn-secondary btn-sm" onClick={() => setSelectedSlip(bet)}>
+                        <FiEye />
+                        ดูโพย
+                      </button>
+                    </div>
                   </div>
-                  <div className="recent-meta">
-                    {bet.customer?.name || agentCopy.dashboard.unknownMember}
-                    {' • '}
-                    {bet.items
-                      .map((item) => getBetTypeLabel(item.betType))
-                      .filter((value, index, array) => array.indexOf(value) === index)
-                      .join(', ')}
+
+                  <div className="recent-slip-card-summary">
+                    <div className="recent-slip-metric">
+                      <span>ยอดแทงรวม</span>
+                      <strong>{money(bet.totalAmount)} บาท</strong>
+                    </div>
+                    <div className="recent-slip-metric">
+                      <span>จ่ายสูงสุด</span>
+                      <strong>{money(bet.totalPotentialPayout)} บาท</strong>
+                    </div>
                   </div>
-                  <div className="recent-meta">{bet.marketName} • {bet.roundLabel}</div>
-                  <div className="recent-meta recent-slip-ref">โพย {bet.slipNumber || bet.slipId || '-'}</div>
-                </div>
-                <div className="recent-right">
-                  <strong>{money(bet.totalAmount)} บาท</strong>
-                  <span>{agentCopy.dashboard.potentialPayout(money(bet.totalPotentialPayout))}</span>
-                  <button type="button" className="btn btn-secondary btn-sm recent-view-btn" onClick={() => setSelectedSlip(bet)}>
-                    <FiEye />
-                    ดูโพย
-                  </button>
-                </div>
-              </article>
-            )) : (
+
+                  <GroupedSlipSummary slip={bet} dense className="recent-slip-grouped-summary" />
+                </article>
+              ))
+            ) : (
               <div className="empty-state"><div className="empty-state-text">{agentCopy.dashboard.noRecentItems}</div></div>
             )}
           </div>
@@ -546,149 +555,8 @@ const AgentDashboard = () => {
           box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6);
         }
 
-        .recent-row strong {
-          letter-spacing: -0.03em;
-        }
-
         .recent-pending {
           border-left: 3px solid var(--warning);
-        }
-
-        .recent-won {
-          border-left: 3px solid var(--success);
-        }
-
-        .recent-lost {
-          border-left: 3px solid var(--danger);
-        }
-
-        .recent-main {
-          min-width: 0;
-          display: flex;
-          flex-direction: column;
-          gap: 6px;
-        }
-
-        .recent-topline {
-          display: flex;
-          align-items: center;
-          gap: 10px;
-          flex-wrap: wrap;
-        }
-
-        .recent-topline strong {
-          font-size: 1.1rem;
-        }
-
-        .recent-meta {
-          font-size: 0.84rem;
-          line-height: 1.4;
-        }
-
-        .recent-slip-ref {
-          font-size: 0.76rem;
-        }
-
-        .recent-right {
-          min-width: 150px;
-          display: flex;
-          flex-direction: column;
-          gap: 6px;
-          align-items: flex-end;
-          text-align: right;
-        }
-
-        .recent-right strong {
-          font-size: 1.05rem;
-        }
-
-        .recent-view-btn {
-          align-self: flex-end;
-        }
-
-        .recent-slip-modal {
-          max-width: 760px;
-        }
-
-        .recent-slip-meta-grid {
-          display: grid;
-          grid-template-columns: repeat(2, minmax(0, 1fr));
-          gap: 12px;
-          margin-bottom: 16px;
-        }
-
-        .recent-slip-meta-card,
-        .recent-slip-item {
-          border: 1px solid var(--border);
-          border-radius: 16px;
-          background: rgba(255, 251, 251, 0.92);
-        }
-
-        .recent-slip-meta-card {
-          padding: 12px 14px;
-          display: flex;
-          flex-direction: column;
-          gap: 6px;
-        }
-
-        .recent-slip-meta-card span,
-        .recent-slip-item-values span {
-          color: var(--text-muted);
-          font-size: 0.8rem;
-        }
-
-        .recent-slip-items {
-          display: flex;
-          flex-direction: column;
-          gap: 10px;
-        }
-
-        .recent-slip-footer {
-          display: none;
-        }
-
-        .recent-slip-modal-actions {
-          display: inline-flex;
-          align-items: center;
-          gap: 10px;
-          margin-left: auto;
-        }
-
-        .recent-slip-item {
-          padding: 12px;
-          display: grid;
-          grid-template-columns: 72px minmax(0, 1fr);
-          gap: 12px;
-        }
-
-        .recent-slip-number {
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          border-radius: 14px;
-          background: rgba(220, 38, 38, 0.08);
-          color: var(--primary-dark);
-          font-size: 1.6rem;
-          font-weight: 800;
-        }
-
-        .recent-slip-item-body {
-          display: flex;
-          flex-direction: column;
-          gap: 8px;
-        }
-
-        .recent-slip-item-head {
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          gap: 10px;
-        }
-
-        .recent-slip-item-values {
-          display: flex;
-          flex-wrap: wrap;
-          gap: 8px 14px;
         }
 
         .result-pill {
@@ -726,38 +594,14 @@ const AgentDashboard = () => {
 
         @media (max-width: 720px) {
           .hero-insight-grid,
-          .dash-grid.agent-dash-overview {
+          .dash-grid.agent-dash-overview,
+          .panel-head {
             grid-template-columns: 1fr;
           }
 
-          .recent-row,
-          .panel-head {
+          .recent-row {
             flex-direction: column;
             align-items: flex-start;
-          }
-
-          .recent-right {
-            min-width: 0;
-            width: 100%;
-            text-align: left;
-            align-items: flex-start;
-          }
-
-          .recent-view-btn {
-            align-self: flex-start;
-          }
-
-          .recent-slip-meta-grid {
-            grid-template-columns: 1fr;
-          }
-
-          .recent-slip-modal-actions {
-            width: 100%;
-            justify-content: space-between;
-          }
-
-          .recent-slip-item {
-            grid-template-columns: 1fr;
           }
         }
       `}</style>

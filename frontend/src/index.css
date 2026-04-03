@@ -1172,15 +1172,21 @@ input, select, textarea {
 .operator-slip-group-list {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
 }
 
 .operator-slip-group-card {
   display: grid;
-  grid-template-columns: 146px minmax(0, 1fr);
-  gap: 14px;
-  padding: 14px;
+  grid-template-columns: 128px minmax(0, 1fr);
+  gap: 12px;
+  padding: 12px;
   box-shadow: none;
+}
+
+.operator-slip-group-card-dense {
+  grid-template-columns: 92px minmax(0, 1fr);
+  gap: 8px;
+  padding: 9px 10px;
 }
 
 .operator-slip-group-card-compact {
@@ -1192,17 +1198,32 @@ input, select, textarea {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 6px;
-  min-height: 104px;
-  padding: 14px 12px;
+  gap: 4px;
+  min-height: 86px;
+  padding: 10px 8px;
   border-radius: 16px;
   border: 1px solid rgba(220, 38, 38, 0.14);
   background: rgba(255, 245, 245, 0.96);
   text-align: center;
 }
 
+.operator-slip-group-card-dense .operator-slip-group-side {
+  min-height: 64px;
+  padding: 6px 5px;
+  border-radius: 14px;
+}
+
+.operator-slip-group-card-dense .operator-slip-family {
+  font-size: 0.88rem;
+}
+
+.operator-slip-group-card-dense .operator-slip-combo,
+.operator-slip-group-card-dense .operator-slip-amount {
+  font-size: 0.72rem;
+}
+
 .operator-slip-family {
-  font-size: 0.98rem;
+  font-size: 0.94rem;
   font-weight: 800;
   color: var(--primary);
   line-height: 1.1;
@@ -1210,7 +1231,7 @@ input, select, textarea {
 
 .operator-slip-combo,
 .operator-slip-amount {
-  font-size: 0.82rem;
+  font-size: 0.78rem;
   font-weight: 700;
   color: var(--text-secondary);
   line-height: 1.2;
@@ -1224,7 +1245,7 @@ input, select, textarea {
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
   justify-content: flex-start;
 }
 
@@ -1237,15 +1258,23 @@ input, select, textarea {
 }
 
 .operator-slip-numbers {
-  padding: 16px 18px;
+  padding: 12px 14px;
   border-radius: 16px;
   border: 1px solid rgba(220, 38, 38, 0.12);
   background: rgba(255, 253, 253, 0.96);
-  font-size: 1.04rem;
+  font-size: 1rem;
   font-weight: 700;
-  line-height: 1.72;
+  line-height: 1.55;
   word-break: break-word;
-  min-height: 74px;
+  min-height: 56px;
+}
+
+.operator-slip-group-card-dense .operator-slip-numbers {
+  padding: 8px 10px;
+  min-height: 42px;
+  border-radius: 14px;
+  font-size: 0.95rem;
+  line-height: 1.38;
 }
 
 .operator-draft-summary {
@@ -1334,26 +1363,44 @@ input, select, textarea {
 }
 
 .operator-preview-meta {
-  padding: 12px 14px;
-  margin-top: 12px;
+  padding: 8px 10px;
+  margin-top: 8px;
   border-color: rgba(220, 38, 38, 0.2);
   background: linear-gradient(180deg, rgba(255, 253, 253, 0.96), rgba(255, 245, 245, 0.98));
 }
 
 .operator-preview-meta-row {
-  margin-top: 4px;
+  margin-top: 2px;
+}
+
+.operator-preview-meta {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px 12px;
+  padding: 10px 12px;
+}
+
+.operator-preview-meta > :last-child {
+  grid-column: 1 / -1;
 }
 
 .operator-preview-summary {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 12px;
-  margin-top: 10px;
+  gap: 8px;
+  margin-top: 4px;
 }
 
 .operator-preview-summary .card {
-  padding: 10px 14px;
+  padding: 8px 10px;
   box-shadow: none;
+}
+
+.operator-preview-summary .card strong {
+  display: block;
+  margin-top: 2px;
+  font-size: 1.04rem;
+  line-height: 1.18;
 }
 
 .operator-preview-list > .card {
@@ -1372,9 +1419,9 @@ input, select, textarea {
 }
 
 .operator-preview-list {
-  max-height: min(60vh, 760px);
+  max-height: min(60vh, 720px);
   overflow: auto;
-  margin-top: 10px;
+  margin-top: 6px;
 }
 
 .operator-preview-item {
@@ -1411,25 +1458,196 @@ input, select, textarea {
 }
 
 .operator-preview-dialog {
-  width: min(1320px, calc(100vw - 28px));
-  max-height: min(92vh, 1040px);
+  width: min(1560px, calc(100vw - 24px));
+  max-width: min(1560px, calc(100vw - 24px));
+  max-height: min(86vh, 900px);
   overflow: auto;
+  padding: 16px 18px;
 }
 
 .operator-preview-note {
-  margin-top: 10px;
-  padding: 14px 16px;
+  margin-top: 4px;
+  padding: 7px 10px;
   box-shadow: none;
 }
 
 .operator-preview-note strong {
   display: block;
-  margin-top: 6px;
-  line-height: 1.55;
+  margin-top: 4px;
+  line-height: 1.45;
+}
+
+.operator-preview-grouped-summary .operator-slip-group-list {
+  gap: 8px;
+}
+
+.operator-preview-grouped-summary .operator-slip-group-card,
+.operator-preview-grouped-summary .operator-slip-group-card-dense {
+  grid-template-columns: 74px minmax(0, 1fr);
+  gap: 6px;
+  padding: 6px;
+}
+
+.operator-preview-grouped-summary .operator-slip-group-head {
+  align-items: center;
+}
+
+.operator-preview-grouped-summary .operator-slip-group-side {
+  min-height: 48px;
+  padding: 4px 3px;
+}
+
+.operator-preview-grouped-summary .operator-slip-family {
+  font-size: 0.8rem;
+}
+
+.operator-preview-grouped-summary .operator-slip-combo,
+.operator-preview-grouped-summary .operator-slip-amount {
+  font-size: 0.67rem;
+}
+
+.operator-preview-grouped-summary .operator-slip-group-body {
+  gap: 4px;
+}
+
+.operator-preview-grouped-summary .operator-slip-group-head .ops-table-note {
+  font-size: 0.74rem;
+}
+
+.operator-preview-grouped-summary .operator-slip-group-head strong {
+  font-size: 0.92rem;
+}
+
+.operator-preview-grouped-summary .operator-slip-numbers {
+  min-height: 34px;
+  padding: 7px 10px;
+  font-size: 0.94rem;
+  line-height: 1.32;
+}
+
+.operator-preview-grouped-summary .grouped-slip-note {
+  margin-top: 4px;
 }
 
 .operator-preview-modal-actions {
   align-items: center;
+}
+
+.operator-preview-stat-label,
+.grouped-slip-note-label {
+  margin: 0;
+}
+
+.recent-slip-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  border-radius: 18px;
+  border: 1px solid rgba(220, 38, 38, 0.12);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(255, 248, 248, 0.98));
+  box-shadow: var(--shadow-sm);
+}
+
+.recent-slip-card-pending {
+  border-left: 3px solid var(--warning);
+}
+
+.recent-slip-card-won {
+  border-left: 3px solid var(--success);
+}
+
+.recent-slip-card-lost {
+  border-left: 3px solid var(--danger);
+}
+
+.recent-slip-card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.recent-slip-card-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.recent-slip-card-copy strong {
+  font-size: 0.98rem;
+  line-height: 1.2;
+}
+
+.recent-slip-kicker {
+  color: var(--text-muted);
+  font-size: 0.76rem;
+}
+
+.recent-slip-card-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+}
+
+.recent-slip-card-summary {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.recent-slip-metric {
+  padding: 6px 8px;
+  border-radius: 14px;
+  border: 1px solid rgba(220, 38, 38, 0.12);
+  background: rgba(255, 252, 252, 0.92);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.recent-slip-metric span {
+  color: var(--text-muted);
+  font-size: 0.76rem;
+  font-weight: 700;
+}
+
+.recent-slip-metric strong {
+  font-size: 0.98rem;
+  line-height: 1.3;
+}
+
+.recent-slip-grouped-summary .operator-slip-group-card {
+  background: rgba(255, 253, 253, 0.96);
+}
+
+.recent-slip-grouped-summary .operator-slip-group-card,
+.recent-slip-grouped-summary .operator-slip-group-card-dense {
+  grid-template-columns: 74px minmax(0, 1fr);
+  gap: 6px;
+  padding: 6px;
+}
+
+.recent-slip-grouped-summary .operator-slip-group-side {
+  min-height: 48px;
+  padding: 4px 3px;
+}
+
+.recent-slip-grouped-summary .operator-slip-family {
+  font-size: 0.8rem;
+}
+
+.recent-slip-grouped-summary .operator-slip-combo,
+.recent-slip-grouped-summary .operator-slip-amount {
+  font-size: 0.67rem;
+}
+
+.recent-slip-grouped-summary .operator-slip-numbers {
+  min-height: 34px;
+  padding: 7px 10px;
+  font-size: 0.9rem;
 }
 
 @media (max-width: 1180px) {
@@ -1465,7 +1683,9 @@ input, select, textarea {
   }
 
   .operator-preview-dialog {
-    width: min(calc(100vw - 16px), 100%);
+    width: calc(100vw - 16px);
+    max-width: calc(100vw - 16px);
+    padding: 18px;
   }
 
   .operator-search-result,
@@ -1481,6 +1701,15 @@ input, select, textarea {
   .operator-preview-item-right {
     text-align: left;
     width: 100%;
+  }
+
+  .recent-slip-card-head,
+  .recent-slip-card-actions {
+    align-items: flex-start;
+  }
+
+  .recent-slip-card-summary {
+    grid-template-columns: 1fr;
   }
 }
 

@@ -10,9 +10,8 @@ import {
   FiRefreshCw,
   FiRotateCcw
 } from 'react-icons/fi';
+import GroupedSlipSummary from '../../components/GroupedSlipSummary';
 import PageSkeleton from '../../components/PageSkeleton';
-import { agentCopy } from '../../i18n/th/agent';
-import { getBetResultLabel } from '../../i18n/th/labels';
 import { cancelAgentBettingSlip, getAgentBets } from '../../services/api';
 import { buildSlipDisplayGroups } from '../../utils/slipGrouping';
 import { copySavedSlipImage } from '../../utils/slipImage';
@@ -21,7 +20,7 @@ const money = (value) => Number(value || 0).toLocaleString('th-TH');
 
 const ui = {
   eyebrow: 'พื้นที่ติดตามโพย',
-  title: 'รายการโพยที่ซื้อแทน',
+  title: 'โพยที่ซื้อแทน',
   subtitle: 'รวมรายการที่อยู่ในเลขอ้างอิงเดียวกันไว้ในการ์ดเดียว และแสดงผลแบบเดียวกับรีวิวโพยก่อนส่งรายการซื้อ',
   count: (value) => `${value} โพย`,
   roundLabel: 'งวดที่กำลังดู',
@@ -30,8 +29,10 @@ const ui = {
   pendingLabel: 'โพยรอผล',
   wonLabel: 'ยอดถูกรวม',
   cancellableLabel: 'โพยที่ยกเลิกได้',
+  totalWonHint: 'รวมยอดที่ถูกรางวัลแล้ว',
+  cancellableHint: 'ยกเลิกได้เฉพาะโพยที่ยังรอผล',
   filterTitle: 'กรองตามงวด',
-  filterHint: 'เลือกรายการตามงวดที่ต้องการ แล้วดูโพยแบบรวมเลขในเลขอ้างอิงเดียวกัน',
+  filterHint: 'เลือกงวดที่ต้องการเพื่อดูโพยแบบรวมเลขตามเลขอ้างอิงเดียวกัน',
   clearFilter: 'ล้างงวด',
   loadError: 'โหลดรายการโพยไม่สำเร็จ',
   cancelSuccess: 'ยกเลิกโพยสำเร็จ',
@@ -50,7 +51,12 @@ const ui = {
   createImageSuccess: 'สร้างไฟล์รูปโพยแล้ว',
   copyImageError: 'คัดลอกโพยเป็นรูปไม่สำเร็จ',
   openFootnote: 'โพยนี้ยังเปิดอยู่และยกเลิกได้',
-  closedFootnote: 'โพยนี้ปิดการยกเลิกแล้ว'
+  closedFootnote: 'โพยนี้ปิดการยกเลิกแล้ว',
+  empty: 'ยังไม่มีข้อมูลโพยในงวดที่เลือก',
+  unknownMember: 'ไม่ระบุสมาชิก',
+  defaultMarket: 'ตลาดหวย',
+  statusWon: 'ถูกรางวัล',
+  memoLabel: 'บันทึกช่วยจำ'
 };
 
 const groupBetsBySlip = (bets = []) => {
@@ -82,8 +88,9 @@ const groupBetsBySlip = (bets = []) => {
       slipId: bet.slipId || '',
       slipNumber: bet.slipNumber || '',
       customer: bet.customerId,
-      marketName: bet.marketName || agentCopy.bets.defaultMarket,
+      marketName: bet.marketName || ui.defaultMarket,
       roundDate: bet.roundDate,
+      roundLabel: bet.roundTitle || bet.roundDate || '-',
       createdAt: bet.createdAt,
       items: [bet],
       totalStake: Number(bet.amount || 0),
@@ -160,9 +167,10 @@ const AgentBets = () => {
           totalAmount: group.totalStake,
           totalPotentialPayout: group.totalPotentialPayout,
           roundLabel: `${group.marketName || '-'} • ${group.roundDate || '-'}`,
-          resultLabel: getBetResultLabel(group.result)
+          resultLabel:
+            group.result === 'won' ? ui.statusWon : group.result === 'pending' ? 'รอผล' : 'ไม่ถูกรางวัล'
         },
-        actorLabel: agentCopy.dashboard?.heroTitle || ui.title
+        actorLabel: ui.title
       });
       toast.success(result.mode === 'clipboard' ? ui.copyImageSuccess : ui.createImageSuccess);
     } catch (error) {
@@ -222,14 +230,14 @@ const AgentBets = () => {
           <span className="ops-icon-badge"><FiActivity /></span>
           <span>{ui.wonLabel}</span>
           <strong>{money(summary.totalWon)}</strong>
-          <small>รวมยอดที่ถูกรางวัลแล้ว</small>
+          <small>{ui.totalWonHint}</small>
         </article>
 
         <article className="ops-overview-card">
           <span className="ops-icon-badge"><FiLayers /></span>
           <span>{ui.cancellableLabel}</span>
           <strong>{money(summary.cancellableSlips)}</strong>
-          <small>ยกเลิกได้เฉพาะโพยที่ยังรอผล</small>
+          <small>{ui.cancellableHint}</small>
         </article>
       </section>
 
@@ -265,7 +273,7 @@ const AgentBets = () => {
         {slipGroups.length === 0 ? (
           <div className="card ops-section">
             <div className="empty-state">
-              <div className="empty-state-text">{agentCopy.bets.empty}</div>
+              <div className="empty-state-text">{ui.empty}</div>
             </div>
           </div>
         ) : slipGroups.map((group) => (
@@ -273,28 +281,30 @@ const AgentBets = () => {
             <div className="ag-bet-card-top">
               <div className="ag-bet-card-heading">
                 <div className="ag-bet-card-kicker">{ui.placedFor}</div>
-                <strong>{group.customer?.name || agentCopy.bets.unknownMember}</strong>
-                <div className="ag-bet-card-slip">{ui.slipLabel}: {group.slipNumber || group.slipId || '-'}</div>
+                <strong>{group.customer?.name || ui.unknownMember}</strong>
+                <div className="ag-bet-card-slip">
+                  {ui.slipLabel}: {group.slipNumber || group.slipId || '-'}
+                </div>
               </div>
 
               <div className="ag-bet-card-top-right">
                 <span className={`ag-bet-badge ag-bet-badge-${group.result}`}>
-                  {getBetResultLabel(group.result)}
+                  {group.result === 'won' ? ui.statusWon : group.result === 'pending' ? 'รอผล' : 'ไม่ถูกรางวัล'}
                 </span>
                 <small>{ui.itemCount(group.itemCount)}</small>
               </div>
             </div>
 
-            <div className="ag-bet-summary-grid">
-              <div className="ag-bet-meta-block">
+            <div className="ag-bet-info-strip">
+              <div className="ag-bet-info-chip ag-bet-info-chip-wide">
                 <span>{ui.marketRound}</span>
                 <strong>{group.marketName} • {group.roundDate}</strong>
               </div>
-              <div className="ag-bet-meta-block">
+              <div className="ag-bet-info-chip">
                 <span>{ui.totalStake}</span>
                 <strong>{money(group.totalStake)} บาท</strong>
               </div>
-              <div className="ag-bet-meta-block">
+              <div className="ag-bet-info-chip">
                 <span>{ui.totalWon}</span>
                 <strong className={group.totalWon > 0 ? 'ag-bet-meta-positive' : ''}>
                   {group.totalWon > 0 ? `+${money(group.totalWon)} บาท` : '-'}
@@ -302,32 +312,7 @@ const AgentBets = () => {
               </div>
             </div>
 
-            <div className="operator-slip-group-list ag-bet-group-list">
-              {group.displayGroups.map((displayGroup) => (
-                <div key={displayGroup.key} className="card operator-slip-group-card ag-bet-group-card">
-                  <div className="operator-slip-group-side">
-                    <div className="operator-slip-family">{displayGroup.familyLabel}</div>
-                    <div className="operator-slip-combo">{displayGroup.comboLabel}</div>
-                    <div className="operator-slip-amount">{displayGroup.amountLabel}</div>
-                  </div>
-                  <div className="operator-slip-group-body">
-                    <div className="operator-slip-group-head">
-                      <span className="ops-table-note">{ui.itemCount(displayGroup.itemCount)}</span>
-                      <strong>{money(displayGroup.totalAmount)} บาท</strong>
-                    </div>
-                    <div className="operator-slip-numbers">{displayGroup.numbersText}</div>
-                    <div className="ops-table-note">จ่ายสูงสุด {money(displayGroup.potentialPayout)} บาท</div>
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            
-              <div className="card ag-bet-memo">
-                <span>{agentCopy.bets.memoLabel || 'บันทึกช่วยจำ'}</span>
-                <strong>{group.memo || 'ไม่มีบันทึกช่วยจำ'}</strong>
-              </div>
-            
+            <GroupedSlipSummary slip={group} dense showMemo className="ag-bet-grouped-summary" />
 
             <div className="ag-bet-card-bottom">
               <div className="ag-bet-card-footnote">
@@ -367,19 +352,15 @@ const AgentBets = () => {
         .ag-bets-list {
           display: flex;
           flex-direction: column;
-          gap: 16px;
+          gap: 14px;
         }
 
         .ag-bets-hero .ops-hero-side strong {
           font-size: clamp(1.5rem, 3vw, 2.1rem);
         }
 
-        .ag-bets-overview .ops-overview-card {
-          min-height: 100%;
-        }
-
         .ag-bets-filter {
-          box-shadow: 0 16px 28px rgba(127, 29, 29, 0.08);
+          box-shadow: 0 12px 24px rgba(127, 29, 29, 0.08);
         }
 
         .ag-bets-toolbar {
@@ -418,21 +399,14 @@ const AgentBets = () => {
         }
 
         .ag-bet-card {
-          border-radius: 22px;
+          border-radius: 20px;
           border: 1px solid var(--border);
           background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(255, 247, 247, 0.98));
-          box-shadow: 0 16px 28px rgba(127, 29, 29, 0.08);
-          padding: 18px;
+          box-shadow: 0 12px 22px rgba(127, 29, 29, 0.07);
+          padding: 8px 10px;
           display: flex;
           flex-direction: column;
-          gap: 14px;
-          transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
-        }
-
-        .ag-bet-card:hover {
-          transform: translateY(-2px);
-          border-color: var(--border-accent);
-          box-shadow: var(--shadow-md);
+          gap: 6px;
         }
 
         .ag-bet-card-pending {
@@ -452,22 +426,14 @@ const AgentBets = () => {
           display: flex;
           align-items: flex-start;
           justify-content: space-between;
-          gap: 12px;
-        }
-
-        .ag-bet-card-top-right {
-          display: flex;
-          flex-direction: column;
-          align-items: flex-end;
-          gap: 8px;
-          color: var(--text-muted);
-          font-size: 0.78rem;
+          gap: 6px;
         }
 
         .ag-bet-card-heading {
           display: flex;
           flex-direction: column;
-          gap: 6px;
+          gap: 3px;
+          min-width: 0;
         }
 
         .ag-bet-card-kicker,
@@ -478,8 +444,17 @@ const AgentBets = () => {
         }
 
         .ag-bet-card-heading strong {
-          font-size: 1.08rem;
+          font-size: 0.96rem;
           letter-spacing: -0.02em;
+        }
+
+        .ag-bet-card-top-right {
+          display: flex;
+          flex-direction: column;
+          align-items: flex-end;
+          gap: 4px;
+          color: var(--text-muted);
+          font-size: 0.78rem;
         }
 
         .ag-bet-badge {
@@ -508,70 +483,75 @@ const AgentBets = () => {
           color: var(--danger);
         }
 
-        .ag-bet-summary-grid {
+        .ag-bet-info-strip {
           display: grid;
-          grid-template-columns: repeat(3, minmax(0, 1fr));
-          gap: 12px;
+          grid-template-columns: minmax(0, 1.5fr) repeat(2, minmax(0, 1fr));
+          gap: 6px;
         }
 
-        .ag-bet-meta-block {
+        .ag-bet-info-chip {
           display: flex;
           flex-direction: column;
-          gap: 6px;
-          padding: 14px;
-          border-radius: 16px;
+          gap: 3px;
+          min-width: 0;
+          padding: 6px 8px;
+          border-radius: 14px;
           border: 1px solid var(--border);
           background: rgba(255, 252, 252, 0.9);
         }
 
-        .ag-bet-meta-block span {
+        .ag-bet-info-chip span {
           color: var(--text-muted);
-          font-size: 0.77rem;
-          letter-spacing: 0.04em;
+          font-size: 0.74rem;
           font-weight: 700;
         }
 
-        .ag-bet-meta-block strong {
-          font-size: 0.98rem;
-          line-height: 1.4;
+        .ag-bet-info-chip strong {
+          font-size: 0.92rem;
+          line-height: 1.28;
         }
 
         .ag-bet-meta-positive {
           color: var(--success);
         }
 
-        .ag-bet-group-list {
-          gap: 12px;
+        .ag-bet-grouped-summary .grouped-slip-note {
+          margin-top: 4px;
         }
 
-        .ag-bet-group-card {
-          background: rgba(255, 255, 255, 0.94);
-          border-color: rgba(220, 38, 38, 0.14);
+        .ag-bet-grouped-summary .operator-slip-group-list {
+          gap: 8px;
         }
 
-        .ag-bet-memo {
-          padding: 14px 16px;
-          display: flex;
-          flex-direction: column;
-          gap: 6px;
-          background: rgba(255, 247, 237, 0.92);
-          border-color: rgba(249, 115, 22, 0.18);
-          box-shadow: none;
+        .ag-bet-grouped-summary .operator-slip-group-card,
+        .ag-bet-grouped-summary .operator-slip-group-card-dense {
+          grid-template-columns: 78px minmax(0, 1fr);
+          gap: 8px;
+          padding: 8px;
         }
 
-        .ag-bet-memo span {
-          color: var(--text-muted);
-          font-size: 0.78rem;
-          font-weight: 700;
+        .ag-bet-grouped-summary .operator-slip-group-side {
+          min-height: 58px;
+          padding: 5px 4px;
         }
 
-        .ag-bet-memo strong {
-          font-size: 0.96rem;
-          line-height: 1.45;
+        .ag-bet-grouped-summary .operator-slip-family {
+          font-size: 0.84rem;
+        }
+
+        .ag-bet-grouped-summary .operator-slip-combo,
+        .ag-bet-grouped-summary .operator-slip-amount {
+          font-size: 0.68rem;
+        }
+
+        .ag-bet-grouped-summary .operator-slip-numbers {
+          min-height: 36px;
+          padding: 7px 10px;
+          font-size: 0.94rem;
         }
 
         .ag-bet-card-bottom {
-          padding-top: 12px;
+          padding-top: 4px;
           border-top: 1px solid var(--border-light);
           align-items: center;
         }
@@ -583,7 +563,7 @@ const AgentBets = () => {
           gap: 10px;
         }
 
-        @media (max-width: 920px) {
+        @media (max-width: 980px) {
           .ag-bets-toolbar,
           .ag-bet-card-top,
           .ag-bet-card-bottom {
@@ -595,25 +575,12 @@ const AgentBets = () => {
             align-items: flex-start;
           }
 
+          .ag-bet-info-strip {
+            grid-template-columns: 1fr;
+          }
+
           .ag-bet-card-actions {
             justify-content: flex-start;
-          }
-
-          .ag-bets-hero .ops-hero-side {
-            width: 100%;
-            min-width: 0;
-          }
-
-          .ag-bets-toolbar-controls {
-            width: 100%;
-          }
-
-          .ag-bets-toolbar-controls > * {
-            flex: 1;
-          }
-
-          .ag-bet-summary-grid {
-            grid-template-columns: 1fr;
           }
         }
 
@@ -628,7 +595,7 @@ const AgentBets = () => {
           }
 
           .ag-bet-card {
-            padding: 16px;
+            padding: 14px;
           }
         }
       `}</style>
