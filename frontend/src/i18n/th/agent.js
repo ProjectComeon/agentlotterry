@@ -69,7 +69,7 @@ export const agentCopy = {
     count: (count) => `${count} สมาชิก`,
     filterTitle: 'ค้นหาและกรอง',
     filterSubtitle: 'กรองสมาชิกตามสถานะ การออนไลน์ คำค้น และเรียงลำดับการมองเห็นได้ทันที',
-    searchPlaceholder: 'ค้นหาชื่อ ชื่อผู้ใช้ เบอร์โทร หรือ UID',
+    searchPlaceholder: 'ค้นหาชื่อ ชื่อผู้ใช้ หรือเบอร์โทร',
     statusLabel: 'สถานะ',
     allStatuses: 'ทุกสถานะ',
     presenceLabel: 'การใช้งาน',

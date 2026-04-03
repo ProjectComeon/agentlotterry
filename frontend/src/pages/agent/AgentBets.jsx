@@ -312,7 +312,7 @@ const AgentBets = () => {
               </div>
             </div>
 
-            <GroupedSlipSummary slip={group} dense showMemo className="ag-bet-grouped-summary" />
+            <GroupedSlipSummary slip={group} dense showMemo className="ag-bet-grouped-summary slip-grouped-compact" />
 
             <div className="ag-bet-card-bottom">
               <div className="ag-bet-card-footnote">
@@ -403,10 +403,10 @@ const AgentBets = () => {
           border: 1px solid var(--border);
           background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(255, 247, 247, 0.98));
           box-shadow: 0 12px 22px rgba(127, 29, 29, 0.07);
-          padding: 8px 10px;
+          padding: 7px 8px;
           display: flex;
           flex-direction: column;
-          gap: 6px;
+          gap: 4px;
         }
 
         .ag-bet-card-pending {
@@ -486,16 +486,16 @@ const AgentBets = () => {
         .ag-bet-info-strip {
           display: grid;
           grid-template-columns: minmax(0, 1.5fr) repeat(2, minmax(0, 1fr));
-          gap: 6px;
+          gap: 4px;
         }
 
         .ag-bet-info-chip {
           display: flex;
           flex-direction: column;
-          gap: 3px;
+          gap: 2px;
           min-width: 0;
-          padding: 6px 8px;
-          border-radius: 14px;
+          padding: 5px 7px;
+          border-radius: 12px;
           border: 1px solid var(--border);
           background: rgba(255, 252, 252, 0.9);
         }
@@ -520,23 +520,23 @@ const AgentBets = () => {
         }
 
         .ag-bet-grouped-summary .operator-slip-group-list {
-          gap: 8px;
+          gap: 6px;
         }
 
         .ag-bet-grouped-summary .operator-slip-group-card,
         .ag-bet-grouped-summary .operator-slip-group-card-dense {
-          grid-template-columns: 78px minmax(0, 1fr);
-          gap: 8px;
-          padding: 8px;
+          grid-template-columns: 74px minmax(0, 1fr);
+          gap: 6px;
+          padding: 6px 7px;
         }
 
         .ag-bet-grouped-summary .operator-slip-group-side {
-          min-height: 58px;
-          padding: 5px 4px;
+          min-height: 46px;
+          padding: 4px 3px;
         }
 
         .ag-bet-grouped-summary .operator-slip-family {
-          font-size: 0.84rem;
+          font-size: 0.8rem;
         }
 
         .ag-bet-grouped-summary .operator-slip-combo,
@@ -545,13 +545,13 @@ const AgentBets = () => {
         }
 
         .ag-bet-grouped-summary .operator-slip-numbers {
-          min-height: 36px;
-          padding: 7px 10px;
-          font-size: 0.94rem;
+          min-height: 34px;
+          padding: 7px 9px;
+          font-size: 0.92rem;
         }
 
         .ag-bet-card-bottom {
-          padding-top: 4px;
+          padding-top: 3px;
           border-top: 1px solid var(--border-light);
           align-items: center;
         }

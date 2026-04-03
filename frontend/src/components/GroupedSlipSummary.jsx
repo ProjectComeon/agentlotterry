@@ -3,6 +3,14 @@ import { buildSlipDisplayGroups } from '../utils/slipGrouping';
 
 const money = (value) => Number(value || 0).toLocaleString('th-TH');
 
+const ui = {
+  items: (count) => `${count} รายการ`,
+  baht: 'บาท',
+  maxPayout: 'จ่ายสูงสุด',
+  memoLabel: 'บันทึกช่วยจำ',
+  emptyMemo: 'ไม่มีบันทึกช่วยจำ'
+};
+
 const GroupedSlipSummary = ({
   slip,
   dense = false,
@@ -39,12 +47,12 @@ const GroupedSlipSummary = ({
 
               <div className="operator-slip-group-body">
                 <div className="operator-slip-group-head">
-                  <span className="ops-table-note">{group.itemCount} รายการ</span>
-                  <strong>{money(group.totalAmount)} บาท</strong>
+                  <span className="ops-table-note">{ui.items(group.itemCount)}</span>
+                  <strong>{money(group.totalAmount)} {ui.baht}</strong>
                 </div>
 
                 <div className="operator-slip-numbers">{group.numbersText}</div>
-                <div className="ops-table-note">จ่ายสูงสุด {money(group.potentialPayout)} บาท</div>
+                <div className="ops-table-note">{ui.maxPayout} {money(group.potentialPayout)} {ui.baht}</div>
               </div>
             </div>
           ))}
@@ -53,8 +61,8 @@ const GroupedSlipSummary = ({
 
       {showMemo ? (
         <div className="card operator-preview-note grouped-slip-note">
-          <div className="ops-table-note grouped-slip-note-label">บันทึกช่วยจำ</div>
-          <strong>{memoText || 'ไม่มีบันทึกช่วยจำ'}</strong>
+          <div className="ops-table-note grouped-slip-note-label">{ui.memoLabel}</div>
+          <strong>{memoText || ui.emptyMemo}</strong>
         </div>
       ) : null}
     </div>

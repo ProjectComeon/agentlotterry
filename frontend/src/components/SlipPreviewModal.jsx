@@ -56,9 +56,6 @@ const SlipPreviewModal = ({
         <div className="card operator-preview-meta">
           <div>
             <strong>{copy.memberLabel}:</strong> {slip.customer?.name || unknownMember}
-            {slip.customer?.username ? (
-              <span className="ops-table-note"> @{slip.customer.username}</span>
-            ) : null}
           </div>
           <div className="operator-preview-meta-row">
             <strong>{copy.actorLabel}:</strong> {slip.placedBy?.name || actorLabel}
@@ -89,7 +86,7 @@ const SlipPreviewModal = ({
         </div>
 
         <div className="operator-preview-list">
-          <GroupedSlipSummary slip={slip} dense showMemo className="operator-preview-grouped-summary" />
+          <GroupedSlipSummary slip={slip} dense showMemo className="operator-preview-grouped-summary slip-grouped-compact" />
         </div>
       </div>
     </div>

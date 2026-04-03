@@ -223,18 +223,12 @@ const AgentDashboard = () => {
                     </div>
                   </div>
 
-                  <div className="recent-slip-card-summary">
-                    <div className="recent-slip-metric">
-                      <span>ยอดแทงรวม</span>
-                      <strong>{money(bet.totalAmount)} บาท</strong>
-                    </div>
-                    <div className="recent-slip-metric">
-                      <span>จ่ายสูงสุด</span>
-                      <strong>{money(bet.totalPotentialPayout)} บาท</strong>
-                    </div>
-                  </div>
-
-                  <GroupedSlipSummary slip={bet} dense className="recent-slip-grouped-summary" />
+                  <GroupedSlipSummary
+                    slip={bet}
+                    dense
+                    showMemo={Boolean(String(bet.memo || '').trim())}
+                    className="recent-slip-grouped-summary slip-grouped-compact"
+                  />
                 </article>
               ))
             ) : (
@@ -610,3 +604,4 @@ const AgentDashboard = () => {
 };
 
 export default AgentDashboard;
+

@@ -21,6 +21,7 @@ import {
   FiUser,
   FiX
 } from 'react-icons/fi';
+import GroupedSlipSummary from '../../components/GroupedSlipSummary';
 import PageSkeleton from '../../components/PageSkeleton';
 import { useAuth } from '../../context/AuthContext';
 import { operatorBettingCopy } from '../../i18n/th/operatorBetting';
@@ -48,7 +49,6 @@ import { buildSlipDisplayGroups } from '../../utils/slipGrouping';
 import { copySlipPreviewImage } from '../../utils/slipImage';
 import { copyPreviewSlipText } from '../../utils/slipText';
 
-const quickAmountOptions = ['10', '20', '50', '100'];
 const hiddenRoundStatuses = new Set(['closed', 'resulted']);
 const doubleSetCounts = {
   1: 10,
@@ -1640,22 +1640,11 @@ const OperatorBetting = () => {
 
           {selectedMember ? (
             <div className="card operator-selected-member">
-                <div className="operator-selected-member-head">
-                <div className="operator-selected-avatar">{selectedMember.name?.charAt(0) || 'M'}</div>
+              <div className="operator-selected-member-head">
                 <div className="operator-selected-body">
                   <strong>{selectedMember.name}</strong>
-                  <div className="ops-table-note" style={{ margin: '4px 0 0' }}>@{selectedMember.username}</div>
-                  <div className="ops-table-note" style={{ margin: '6px 0 0' }}>
-                    {getUserStatusLabel(selectedMember.status)} • {selectedMember.phone || '-'}
-                  </div>
                 </div>
                 <button type="button" className="btn btn-secondary btn-sm" onClick={clearSelectedMember}><FiX /> {copyText.clearSelection}</button>
-              </div>
-              <div className="operator-selected-grid">
-                <div className="card" style={{ padding: 12 }}><strong>{copyText.creditBalance}</strong><div className="ops-table-note">{money(selectedMember.creditBalance)} {copyText.baht}</div></div>
-                <div className="card" style={{ padding: 12 }}><strong>{copyText.totalSales}</strong><div className="ops-table-note">{money(selectedMember.totals?.totalAmount)} {copyText.baht}</div></div>
-                <div className="card" style={{ padding: 12 }}><strong>{copyText.totalWon}</strong><div className="ops-table-note">{money(selectedMember.totals?.totalWon)} {copyText.baht}</div></div>
-                <div className="card" style={{ padding: 12 }}><strong>{copyText.netProfit}</strong><div className="ops-table-note">{money(selectedMember.totals?.netProfit)} {copyText.baht}</div></div>
               </div>
             </div>
           ) : null}
@@ -1789,13 +1778,14 @@ const OperatorBetting = () => {
                       {fastFamilyConfig.columns.map((column) => {
                         const betLabel = getBetTypeLabel(column.betType);
                         const enabled = supportedFastColumns[column.key];
-                        const rate = selectedRateProfile?.rates?.[column.betType] || 0;
 
                         return (
                           <div key={column.key} className={`card operator-fast-amount-card ${enabled ? '' : 'operator-fast-amount-card-disabled'}`}>
-                            <div className="ops-table-note">{betLabel}</div>
-                            <strong>x{rate}</strong>
+                            <div className="operator-fast-amount-head">
+                              <label className="operator-fast-amount-label" htmlFor={`fast-amount-${column.key}`}>{betLabel}</label>
+                            </div>
                             <input
+                              id={`fast-amount-${column.key}`}
                               className="form-input"
                               type="number"
                               min="0"
@@ -1804,19 +1794,6 @@ const OperatorBetting = () => {
                               value={fastAmounts[column.key]}
                               onChange={(event) => setFastAmounts((current) => ({ ...current, [column.key]: event.target.value }))}
                             />
-                            <div className="operator-helper-row compact">
-                              {quickAmountOptions.map((amount) => (
-                                <button
-                                  key={`${column.key}-${amount}`}
-                                  type="button"
-                                  className={`btn ${fastAmounts[column.key] === amount ? 'btn-primary' : 'btn-secondary'} btn-sm`}
-                                  disabled={!enabled}
-                                  onClick={() => setFastAmounts((current) => ({ ...current, [column.key]: amount }))}
-                                >
-                                  {amount} {copyText.baht}
-                                </button>
-                              ))}
-                            </div>
                           </div>
                         );
                       })}
@@ -1862,7 +1839,23 @@ const OperatorBetting = () => {
                     </div>
                     <div style={{ marginTop: 16 }}><label className="form-label">{copyText.memoLabel}</label><input className="form-input" type="text" placeholder={copyText.memoPlaceholder} value={memo} onChange={(event) => setMemo(event.target.value)} /></div>
                     <div className="operator-grid-bulk">
-                      {[{ key: 'top', betType: gridColumns[0], enabled: supportedGridColumns.top }, { key: 'bottom', betType: gridColumns[1], enabled: supportedGridColumns.bottom }, { key: 'tod', betType: gridColumns[2], enabled: supportedGridColumns.tod }].map((column) => <div key={column.key} className="card" style={{ padding: 12 }}><div className="ops-table-note" style={{ margin: 0 }}>{getBetTypeLabel(column.betType)}</div><div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}><input className="form-input" style={{ minWidth: 0, flex: 1 }} type="number" min="0" placeholder={copyText.amountPlaceholder} disabled={!column.enabled} value={gridBulkAmounts[column.key]} onChange={(event) => setGridBulkAmounts((current) => ({ ...current, [column.key]: event.target.value }))} /><button type="button" className="btn btn-secondary btn-sm" disabled={!column.enabled} onClick={() => applyGridBulkAmount(column.key)}><FiCopy /> {copyText.copyAmount}</button></div></div>)}
+                      {[{ key: 'top', betType: gridColumns[0], enabled: supportedGridColumns.top }, { key: 'bottom', betType: gridColumns[1], enabled: supportedGridColumns.bottom }, { key: 'tod', betType: gridColumns[2], enabled: supportedGridColumns.tod }].map((column) => (
+                        <div key={column.key} className="card operator-grid-bulk-card">
+                          <label className="operator-grid-bulk-label" htmlFor={`grid-bulk-${column.key}`}>
+                            {getBetTypeLabel(column.betType)}
+                          </label>
+                          <input
+                            id={`grid-bulk-${column.key}`}
+                            className="form-input"
+                            type="number"
+                            min="0"
+                            placeholder={copyText.amountPlaceholder}
+                            disabled={!column.enabled}
+                            value={gridBulkAmounts[column.key]}
+                            onChange={(event) => setGridBulkAmounts((current) => ({ ...current, [column.key]: event.target.value }))}
+                          />
+                        </div>
+                      ))}
                     </div>
                     <div className="operator-grid-rows">
                       {gridRows.map((row) => (
