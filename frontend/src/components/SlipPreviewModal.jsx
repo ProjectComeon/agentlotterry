@@ -13,7 +13,10 @@ const SlipPreviewModal = ({
   actorLabel = '-',
   unknownMember = '-'
 }) => {
-  const groups = useMemo(() => buildSlipDisplayGroups(slip?.items || []), [slip]);
+  const groups = useMemo(
+    () => (slip?.displayGroups?.length ? slip.displayGroups : buildSlipDisplayGroups(slip?.items || [])),
+    [slip]
+  );
   const copy = operatorBettingCopy.previewModal;
 
   if (!slip) return null;
@@ -107,12 +110,10 @@ const SlipPreviewModal = ({
           ))}
         </div>
 
-        {slip.memo ? (
-          <div className="card operator-preview-note">
-            <div className="ops-table-note" style={{ margin: 0 }}>{copy.memoLabel}</div>
-            <strong>{slip.memo}</strong>
-          </div>
-        ) : null}
+        <div className="card operator-preview-note">
+          <div className="ops-table-note" style={{ margin: 0 }}>{copy.memoLabel}</div>
+          <strong>{slip.memo || 'ไม่มีบันทึกช่วยจำ'}</strong>
+        </div>
       </div>
     </div>
   );

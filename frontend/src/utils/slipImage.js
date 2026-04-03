@@ -1,6 +1,6 @@
 import { buildSlipDisplayGroups } from './slipGrouping';
 
-const CANVAS_WIDTH = 1080;
+const CANVAS_WIDTH = 1280;
 const PADDING = 48;
 const BRAND_RED = '#dc2626';
 const BRAND_DARK = '#7f1d1d';
@@ -45,10 +45,7 @@ const wrapText = (ctx, text, maxWidth) => {
     current = chunk;
   });
 
-  if (current) {
-    lines.push(current);
-  }
-
+  if (current) lines.push(current);
   return lines.length ? lines : ['-'];
 };
 
@@ -88,6 +85,39 @@ const downloadBlob = (blob, fileName) => {
   window.setTimeout(() => URL.revokeObjectURL(url), 1000);
 };
 
+const measureGroupedLayout = (ctx, groups = [], note = '') => {
+  const contentWidth = CANVAS_WIDTH - (PADDING * 2);
+  const sideWidth = 190;
+  const sideGap = 22;
+  const bodyWidth = contentWidth - sideWidth - sideGap - 18;
+
+  const normalizedGroups = groups.map((group) => {
+    const numberLines = wrapText(ctx, group.numbersText, bodyWidth - 42);
+    const numbersHeight = Math.max(68, 24 + (numberLines.length * 28));
+    const groupHeight = Math.max(138, 68 + numbersHeight);
+
+    return {
+      ...group,
+      numberLines,
+      numbersHeight,
+      groupHeight
+    };
+  });
+
+  const noteLines = note ? wrapText(ctx, note, contentWidth - 36) : [];
+  const noteHeight = note ? Math.max(90, 42 + (noteLines.length * 24)) : 0;
+
+  return {
+    contentWidth,
+    sideWidth,
+    sideGap,
+    bodyWidth,
+    normalizedGroups,
+    noteLines,
+    noteHeight
+  };
+};
+
 const buildPreviewImagePayload = ({
   preview,
   selectedMember,
@@ -107,6 +137,7 @@ const buildPreviewImagePayload = ({
   const memberLabel = memberUsername ? `${memberName} • @${memberUsername}` : memberName;
 
   return {
+    title: 'สำเนาโพย',
     subtitle: 'คัดลอกจากหน้าตรวจสอบโพยก่อนส่งรายการซื้อ',
     headerMeta: [
       ['สมาชิก', memberLabel],
@@ -134,8 +165,22 @@ const buildSavedSlipImagePayload = ({ slip, actorLabel }) => {
     dateStyle: 'medium',
     timeStyle: 'short'
   });
+  const groups = slip?.displayGroups?.length ? slip.displayGroups : buildSlipDisplayGroups(slip?.items || []);
+  const itemCount =
+    Number(slip?.itemCount) ||
+    Number(slip?.items?.length) ||
+    groups.reduce((sum, group) => sum + Number(group.itemCount || 0), 0);
+  const totalAmount =
+    Number(slip?.totalAmount) ||
+    Number(slip?.totalStake) ||
+    groups.reduce((sum, group) => sum + Number(group.totalAmount || 0), 0);
+  const totalPotentialPayout =
+    Number(slip?.totalPotentialPayout) ||
+    Number(slip?.potentialPayout) ||
+    groups.reduce((sum, group) => sum + Number(group.potentialPayout || 0), 0);
 
   return {
+    title: 'สำเนาโพย',
     subtitle: 'คัดลอกจากรายการโพยที่ถูกส่งแล้ว',
     headerMeta: [
       ['สมาชิก', slip?.customer?.username ? `${slip?.customer?.name || '-'} • @${slip.customer.username}` : slip?.customer?.name || '-'],
@@ -146,24 +191,30 @@ const buildSavedSlipImagePayload = ({ slip, actorLabel }) => {
       ['สร้างภาพเมื่อ', createdAtLabel]
     ],
     summaryCards: [
-      ['จำนวนรายการ', `${slip?.items?.length || 0}`],
-      ['ยอดรวม', `${money(slip?.totalAmount)} บาท`],
-      ['จ่ายสูงสุด', `${money(slip?.totalPotentialPayout)} บาท`],
+      ['จำนวนรายการ', `${itemCount}`],
+      ['ยอดรวม', `${money(totalAmount)} บาท`],
+      ['จ่ายสูงสุด', `${money(totalPotentialPayout)} บาท`],
       ['สถานะโพย', slip?.resultLabel || '-']
     ],
-    groups: buildSlipDisplayGroups(slip?.items || []),
-    note: slip?.memo || ''
+    groups,
+    note: slip?.memo || 'ไม่มีบันทึกช่วยจำ'
   };
 };
 
-const renderGroupedSlipImage = ({ subtitle, headerMeta, summaryCards, groups, note }) => {
+const renderGroupedSlipImage = ({ title, subtitle, headerMeta, summaryCards, groups, note }) => {
   const safeGroups = groups?.length ? groups : [];
-  const noteHeight = note ? 84 : 0;
-  const groupHeight = safeGroups.length ? safeGroups.length * 122 : 82;
-  const canvasHeight = 430 + (headerMeta.length * 38) + 138 + groupHeight + noteHeight;
+  const ratio = window.devicePixelRatio > 1 ? 2 : 1;
+
+  const measureCanvas = document.createElement('canvas');
+  const measureCtx = measureCanvas.getContext('2d');
+  measureCtx.font = '700 20px sans-serif';
+  const layout = measureGroupedLayout(measureCtx, safeGroups, note);
+  const groupsHeight = layout.normalizedGroups.length
+    ? layout.normalizedGroups.reduce((sum, group) => sum + group.groupHeight + 18, 0) - 18
+    : 82;
+  const canvasHeight = 430 + (headerMeta.length * 38) + 138 + groupsHeight + layout.noteHeight;
 
   const canvas = document.createElement('canvas');
-  const ratio = window.devicePixelRatio > 1 ? 2 : 1;
   canvas.width = CANVAS_WIDTH * ratio;
   canvas.height = canvasHeight * ratio;
   canvas.style.width = `${CANVAS_WIDTH}px`;
@@ -186,12 +237,12 @@ const renderGroupedSlipImage = ({ subtitle, headerMeta, summaryCards, groups, no
   ctx.font = '700 22px sans-serif';
   ctx.fillText('Agent Lottery', PADDING, 62);
   ctx.font = '800 42px sans-serif';
-  ctx.fillText('สำเนาโพย', PADDING, 116);
+  ctx.fillText(title, PADDING, 116);
   ctx.font = '500 18px sans-serif';
   ctx.fillText(subtitle, PADDING, 152);
 
   let y = 220;
-  drawRoundedRect(ctx, PADDING, y, CANVAS_WIDTH - (PADDING * 2), 48 + (headerMeta.length * 38), 24, '#ffffff', BORDER);
+  drawRoundedRect(ctx, PADDING, y, layout.contentWidth, 48 + (headerMeta.length * 38), 24, '#ffffff', BORDER);
   y += 34;
 
   headerMeta.forEach(([label, value]) => {
@@ -200,12 +251,12 @@ const renderGroupedSlipImage = ({ subtitle, headerMeta, summaryCards, groups, no
     ctx.fillText(label, PADDING + 20, y);
     ctx.fillStyle = TEXT_DARK;
     ctx.font = '600 18px sans-serif';
-    ctx.fillText(value || '-', PADDING + 180, y);
+    ctx.fillText(value || '-', PADDING + 220, y);
     y += 38;
   });
 
   y += 12;
-  const cardWidth = (CANVAS_WIDTH - (PADDING * 2) - 36) / 4;
+  const cardWidth = (layout.contentWidth - 36) / 4;
   summaryCards.forEach(([label, value], index) => {
     const x = PADDING + (index * (cardWidth + 12));
     drawRoundedRect(ctx, x, y, cardWidth, 96, 22, PANEL, '#fecaca');
@@ -223,51 +274,57 @@ const renderGroupedSlipImage = ({ subtitle, headerMeta, summaryCards, groups, no
 
   y += 126;
 
-  if (!safeGroups.length) {
-    drawRoundedRect(ctx, PADDING, y, CANVAS_WIDTH - (PADDING * 2), 72, 18, '#ffffff', BORDER);
+  if (!layout.normalizedGroups.length) {
+    drawRoundedRect(ctx, PADDING, y, layout.contentWidth, 72, 18, '#ffffff', BORDER);
     ctx.fillStyle = TEXT_MUTED;
     ctx.font = '600 18px sans-serif';
     ctx.fillText('ยังไม่มีรายการในโพยนี้', PADDING + 24, y + 42);
     y += 90;
   } else {
-    safeGroups.forEach((group) => {
-      drawRoundedRect(ctx, PADDING, y, CANVAS_WIDTH - (PADDING * 2), 108, 22, '#ffffff', BORDER);
-      drawRoundedRect(ctx, PADDING + 18, y + 14, 170, 80, 18, '#fff5f5', '#fecaca');
+    layout.normalizedGroups.forEach((group) => {
+      drawRoundedRect(ctx, PADDING, y, layout.contentWidth, group.groupHeight, 22, '#ffffff', BORDER);
+      drawRoundedRect(ctx, PADDING + 18, y + 18, layout.sideWidth, group.groupHeight - 36, 18, '#fff5f5', '#fecaca');
+
       ctx.fillStyle = BRAND_RED;
-      ctx.font = '800 26px sans-serif';
-      ctx.fillText(group.familyLabel, PADDING + 44, y + 44);
+      ctx.font = '800 28px sans-serif';
+      ctx.fillText(group.familyLabel, PADDING + 44, y + 56);
       ctx.font = '700 18px sans-serif';
-      ctx.fillText(group.comboLabel, PADDING + 44, y + 66);
-      ctx.fillText(group.amountLabel, PADDING + 44, y + 88);
+      ctx.fillText(group.comboLabel, PADDING + 44, y + 84);
+      ctx.fillText(group.amountLabel, PADDING + 44, y + 112);
 
       ctx.fillStyle = TEXT_MUTED;
       ctx.font = '700 14px sans-serif';
-      ctx.fillText(`${group.itemCount} รายการ`, CANVAS_WIDTH - PADDING - 200, y + 34);
+      ctx.fillText(`${group.itemCount} รายการ`, PADDING + layout.sideWidth + 58, y + 36);
+
       ctx.fillStyle = TEXT_DARK;
       ctx.font = '800 22px sans-serif';
-      ctx.fillText(`${money(group.totalAmount)} บาท`, CANVAS_WIDTH - PADDING - 200, y + 62);
+      ctx.fillText(`${money(group.totalAmount)} บาท`, CANVAS_WIDTH - PADDING - 160, y + 36);
 
-      drawRoundedRect(ctx, PADDING + 208, y + 38, CANVAS_WIDTH - (PADDING * 2) - 226, 44, 16, '#fffdfd', '#fecaca');
+      drawRoundedRect(ctx, PADDING + layout.sideWidth + 40, y + 50, layout.bodyWidth, group.numbersHeight, 18, '#fffdfd', '#fecaca');
       ctx.fillStyle = TEXT_DARK;
       ctx.font = '700 20px sans-serif';
-      const numberLines = wrapText(ctx, group.numbersText, CANVAS_WIDTH - (PADDING * 2) - 254);
-      ctx.fillText(numberLines[0], PADDING + 226, y + 66);
+      group.numberLines.forEach((line, lineIndex) => {
+        ctx.fillText(line, PADDING + layout.sideWidth + 62, y + 82 + (lineIndex * 28));
+      });
 
       ctx.fillStyle = TEXT_MUTED;
       ctx.font = '700 15px sans-serif';
-      ctx.fillText(`จ่ายสูงสุด ${money(group.potentialPayout)} บาท`, CANVAS_WIDTH - PADDING - 260, y + 96);
-      y += 122;
+      ctx.fillText(`จ่ายสูงสุด ${money(group.potentialPayout)} บาท`, CANVAS_WIDTH - PADDING - 290, y + group.groupHeight - 18);
+
+      y += group.groupHeight + 18;
     });
   }
 
-  if (note) {
-    drawRoundedRect(ctx, PADDING, y, CANVAS_WIDTH - (PADDING * 2), 60, 18, '#fff7ed', '#fed7aa');
+  if (layout.noteHeight) {
+    drawRoundedRect(ctx, PADDING, y, layout.contentWidth, layout.noteHeight, 18, '#fff7ed', '#fed7aa');
     ctx.fillStyle = TEXT_MUTED;
     ctx.font = '600 15px sans-serif';
-    ctx.fillText('หมายเหตุ', PADDING + 18, y + 22);
+    ctx.fillText('หมายเหตุ', PADDING + 18, y + 24);
     ctx.fillStyle = TEXT_DARK;
-    ctx.font = '600 17px sans-serif';
-    ctx.fillText(note, PADDING + 18, y + 44);
+    ctx.font = '600 18px sans-serif';
+    layout.noteLines.forEach((line, lineIndex) => {
+      ctx.fillText(line, PADDING + 18, y + 54 + (lineIndex * 24));
+    });
   }
 
   return new Promise((resolve, reject) => {

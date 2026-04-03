@@ -116,6 +116,7 @@ const mapBetItemToLegacyShape = (item) => ({
   roundTitle: item.slipId?.roundTitle || '',
   slipId: item.slipId?._id?.toString?.() || item.slipId?.toString?.() || '',
   slipNumber: item.slipId?.slipNumber || '',
+  memo: item.slipId?.memo || '',
   betType: item.betType,
   number: item.number,
   amount: item.amount,
@@ -595,7 +596,7 @@ const listAgentBetItems = async ({ agentId, roundDate, customerId, marketId, lim
     .limit(limit)
     .populate('customerId', 'name username')
     .populate('agentId', 'name username')
-    .populate('slipId', 'slipNumber lotteryCode lotteryName roundCode roundTitle');
+    .populate('slipId', 'slipNumber lotteryCode lotteryName roundCode roundTitle memo');
 
   return items.map(mapBetItemToLegacyShape);
 };

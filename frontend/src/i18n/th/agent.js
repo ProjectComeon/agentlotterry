@@ -160,6 +160,7 @@ export const agentCopy = {
     empty: 'ไม่มีข้อมูล',
     unknownMember: 'ไม่ระบุสมาชิก',
     defaultMarket: 'รัฐบาลไทย',
+    memoLabel: 'บันทึกช่วยจำ',
   },
   reports: {
     tabs: {

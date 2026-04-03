@@ -67,6 +67,8 @@ const groupBetsBySlip = (bets = []) => {
       current.items.push(bet);
       current.totalStake += Number(bet.amount || 0);
       current.totalWon += Number(bet.wonAmount || 0);
+      current.totalPotentialPayout += Number(bet.potentialPayout || 0);
+      current.memo = current.memo || bet.memo || '';
       current.hasPending = current.hasPending || (bet.result || 'pending') === 'pending';
       current.hasWon = current.hasWon || (bet.result || 'pending') === 'won' || Number(bet.wonAmount || 0) > 0;
       if (new Date(bet.createdAt || 0) > new Date(current.createdAt || 0)) {
@@ -86,6 +88,8 @@ const groupBetsBySlip = (bets = []) => {
       items: [bet],
       totalStake: Number(bet.amount || 0),
       totalWon: Number(bet.wonAmount || 0),
+      totalPotentialPayout: Number(bet.potentialPayout || 0),
+      memo: bet.memo || '',
       hasPending: (bet.result || 'pending') === 'pending',
       hasWon: (bet.result || 'pending') === 'won' || Number(bet.wonAmount || 0) > 0
     });
@@ -95,6 +99,7 @@ const groupBetsBySlip = (bets = []) => {
     .map((group) => ({
       ...group,
       displayGroups: buildSlipDisplayGroups(group.items),
+      memo: group.memo || 'ไม่มีบันทึกช่วยจำ',
       result: group.hasPending ? 'pending' : group.hasWon ? 'won' : 'lost',
       canCancel: group.hasPending && !!group.slipId,
       itemCount: group.items.length
@@ -152,6 +157,9 @@ const AgentBets = () => {
       const result = await copySavedSlipImage({
         slip: {
           ...group,
+          totalAmount: group.totalStake,
+          totalPotentialPayout: group.totalPotentialPayout,
+          roundLabel: `${group.marketName || '-'} • ${group.roundDate || '-'}`,
           resultLabel: getBetResultLabel(group.result)
         },
         actorLabel: agentCopy.dashboard?.heroTitle || ui.title
@@ -313,6 +321,13 @@ const AgentBets = () => {
                 </div>
               ))}
             </div>
+
+            
+              <div className="card ag-bet-memo">
+                <span>{agentCopy.bets.memoLabel || 'บันทึกช่วยจำ'}</span>
+                <strong>{group.memo || 'ไม่มีบันทึกช่วยจำ'}</strong>
+              </div>
+            
 
             <div className="ag-bet-card-bottom">
               <div className="ag-bet-card-footnote">
@@ -532,6 +547,27 @@ const AgentBets = () => {
         .ag-bet-group-card {
           background: rgba(255, 255, 255, 0.94);
           border-color: rgba(220, 38, 38, 0.14);
+        }
+
+        .ag-bet-memo {
+          padding: 14px 16px;
+          display: flex;
+          flex-direction: column;
+          gap: 6px;
+          background: rgba(255, 247, 237, 0.92);
+          border-color: rgba(249, 115, 22, 0.18);
+          box-shadow: none;
+        }
+
+        .ag-bet-memo span {
+          color: var(--text-muted);
+          font-size: 0.78rem;
+          font-weight: 700;
+        }
+
+        .ag-bet-memo strong {
+          font-size: 0.96rem;
+          line-height: 1.45;
         }
 
         .ag-bet-card-bottom {

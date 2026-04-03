@@ -1177,14 +1177,14 @@ input, select, textarea {
 
 .operator-slip-group-card {
   display: grid;
-  grid-template-columns: 124px minmax(0, 1fr);
-  gap: 12px;
-  padding: 12px;
+  grid-template-columns: 146px minmax(0, 1fr);
+  gap: 14px;
+  padding: 14px;
   box-shadow: none;
 }
 
 .operator-slip-group-card-compact {
-  padding: 12px;
+  padding: 14px;
 }
 
 .operator-slip-group-side {
@@ -1193,8 +1193,8 @@ input, select, textarea {
   align-items: center;
   justify-content: center;
   gap: 6px;
-  min-height: 92px;
-  padding: 12px 10px;
+  min-height: 104px;
+  padding: 14px 12px;
   border-radius: 16px;
   border: 1px solid rgba(220, 38, 38, 0.14);
   background: rgba(255, 245, 245, 0.96);
@@ -1232,12 +1232,12 @@ input, select, textarea {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 12px;
+  gap: 10px;
   flex-wrap: wrap;
 }
 
 .operator-slip-numbers {
-  padding: 14px 16px;
+  padding: 16px 18px;
   border-radius: 16px;
   border: 1px solid rgba(220, 38, 38, 0.12);
   background: rgba(255, 253, 253, 0.96);
@@ -1245,7 +1245,7 @@ input, select, textarea {
   font-weight: 700;
   line-height: 1.72;
   word-break: break-word;
-  min-height: 0;
+  min-height: 74px;
 }
 
 .operator-draft-summary {
@@ -1347,12 +1347,12 @@ input, select, textarea {
 .operator-preview-summary {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 10px;
-  margin-top: 12px;
+  gap: 12px;
+  margin-top: 10px;
 }
 
 .operator-preview-summary .card {
-  padding: 10px 12px;
+  padding: 10px 14px;
   box-shadow: none;
 }
 
@@ -1372,9 +1372,9 @@ input, select, textarea {
 }
 
 .operator-preview-list {
-  max-height: min(52vh, 640px);
+  max-height: min(60vh, 760px);
   overflow: auto;
-  margin-top: 12px;
+  margin-top: 10px;
 }
 
 .operator-preview-item {
@@ -1411,15 +1411,21 @@ input, select, textarea {
 }
 
 .operator-preview-dialog {
-  width: min(1120px, calc(100vw - 32px));
-  max-height: min(90vh, 980px);
+  width: min(1320px, calc(100vw - 28px));
+  max-height: min(92vh, 1040px);
   overflow: auto;
 }
 
 .operator-preview-note {
-  margin-top: 12px;
-  padding: 14px;
+  margin-top: 10px;
+  padding: 14px 16px;
   box-shadow: none;
+}
+
+.operator-preview-note strong {
+  display: block;
+  margin-top: 6px;
+  line-height: 1.55;
 }
 
 .operator-preview-modal-actions {
