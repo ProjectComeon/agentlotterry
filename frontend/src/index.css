@@ -901,11 +901,7 @@ input, select, textarea {
 }
 
 .operator-page {
-  gap: 16px;
-}
-
-.operator-hero {
-  grid-template-columns: minmax(0, 1fr);
+  gap: 10px;
 }
 
 .operator-layout {
@@ -914,8 +910,8 @@ input, select, textarea {
 
 .operator-workspace {
   display: grid;
-  grid-template-columns: minmax(0, 1.58fr) minmax(280px, 0.42fr);
-  gap: 12px;
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 340px);
+  gap: 10px;
   align-items: start;
 }
 
@@ -925,14 +921,19 @@ input, select, textarea {
   box-shadow: 0 20px 36px rgba(127, 29, 29, 0.08);
 }
 
+.operator-composer-panel,
+.operator-preview-panel {
+  padding: 14px 16px;
+}
+
 .operator-composer-divider {
   height: 1px;
-  margin: 12px 0;
+  margin: 10px 0 12px;
   background: linear-gradient(90deg, rgba(220, 38, 38, 0.14), rgba(220, 38, 38, 0.03));
 }
 
 .operator-search-block {
-  margin-top: 4px;
+  margin-top: 0;
   position: relative;
 }
 
@@ -989,7 +990,7 @@ input, select, textarea {
 
 .operator-search-option,
 .operator-search-empty {
-  padding: 10px 12px;
+  padding: 8px 10px;
   border-radius: 12px;
   text-align: left;
 }
@@ -1017,20 +1018,21 @@ input, select, textarea {
 
 .operator-selected-member {
   margin-top: 8px;
-  padding: 6px 10px;
+  padding: 4px 8px;
   border-color: rgba(220, 38, 38, 0.28);
   background: #fff8f8;
   box-shadow: none;
   display: inline-flex;
   width: fit-content;
   max-width: 100%;
+  border-radius: 14px;
 }
 
 .operator-selected-member-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
+  gap: 8px;
 }
 
 .operator-selected-body {
@@ -1039,10 +1041,34 @@ input, select, textarea {
 
 .operator-selected-body strong {
   display: block;
-  font-size: 1rem;
+  font-size: 0.96rem;
   font-weight: 800;
   line-height: 1.2;
   color: var(--text-strong);
+}
+
+.operator-select-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(220px, 320px);
+  gap: 10px;
+  align-items: end;
+}
+
+.operator-select-grid .form-label {
+  margin-bottom: 4px;
+  font-size: 0.82rem;
+}
+
+.operator-pill-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.operator-pill-row .ui-pill {
+  padding: 6px 10px;
+  font-size: 0.8rem;
 }
 
 .operator-recent-list,
@@ -1058,10 +1084,17 @@ input, select, textarea {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-  margin-top: 14px;
+  margin-top: 12px;
 }
 
 .operator-helper-row.compact {
+  margin-top: 10px;
+}
+
+.operator-mode-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
   margin-top: 12px;
 }
 
@@ -1079,36 +1112,37 @@ input, select, textarea {
 .operator-fast-entry-row {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 8px;
-  margin-top: 8px;
+  gap: 10px;
+  margin-top: 10px;
+  align-items: stretch;
 }
 
 .operator-fast-entry-row-two {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 1.55fr) minmax(150px, 0.72fr) minmax(150px, 0.72fr);
 }
 
 .operator-fast-amount-card {
-  padding: 8px;
+  padding: 10px 10px 8px;
   box-shadow: none;
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  border: 1px solid rgba(220, 38, 38, 0.34);
-  background: #fff6f6;
+  gap: 6px;
+  border: 1px solid rgba(220, 38, 38, 0.24);
+  background: #fff;
   border-radius: 12px;
 }
 
 .operator-fast-amount-label {
   margin: 0;
-  font-size: 0.84rem;
+  font-size: 0.88rem;
   font-weight: 800;
   color: var(--text-strong);
 }
 
 .operator-fast-amount-card .form-input {
-  min-height: 38px;
+  min-height: 42px;
   padding: 7px 10px;
-  border-color: rgba(220, 38, 38, 0.4);
+  border-color: rgba(220, 38, 38, 0.5);
   background: #fff;
   color: var(--text-strong);
   font-weight: 700;
@@ -1116,13 +1150,17 @@ input, select, textarea {
 
 .operator-fast-order-card {
   border-color: rgba(220, 38, 38, 0.4);
-  background: linear-gradient(180deg, #fff, #fff2f2);
+  background: #fff;
 }
 
 .operator-inline-order-input {
   resize: none;
   overflow: hidden;
   line-height: 1.25;
+  min-height: 42px;
+  height: 42px;
+  padding-top: 9px;
+  padding-bottom: 9px;
 }
 
 .operator-fast-amount-card-disabled {
@@ -1131,7 +1169,7 @@ input, select, textarea {
 
 .operator-grid-memo,
 .operator-fast-input {
-  margin-top: 16px;
+  margin-top: 12px;
 }
 
 .operator-grid-bulk {
@@ -1360,18 +1398,26 @@ input, select, textarea {
 }
 
 .operator-draft-summary {
-  margin-top: 16px;
-  padding: 10px 12px;
+  margin-top: 12px;
+  padding: 8px 10px;
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 10px;
+  gap: 8px;
   box-shadow: none;
   background: #fff;
   border: 1px solid rgba(220, 38, 38, 0.16);
+  border-radius: 14px;
 }
 
 .operator-draft-summary .ops-table-note {
   margin: 0;
+}
+
+.operator-draft-summary strong {
+  display: block;
+  margin-top: 2px;
+  font-size: 1.02rem;
+  line-height: 1.2;
 }
 
 .operator-rate-row {

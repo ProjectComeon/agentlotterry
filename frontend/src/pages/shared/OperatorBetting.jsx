@@ -1659,14 +1659,6 @@ const OperatorBetting = () => {
 
   return (
     <div className="ops-page operator-page animate-fade-in">
-      <section className="card ops-section ops-hero operator-hero">
-        <div className="ops-hero-copy operator-hero-copy">
-          <div className="ui-eyebrow">{copy.actorLabel}</div>
-          <h1 className="page-title">{copy.title}</h1>
-          {copy.subtitle ? <p className="page-subtitle">{copy.subtitle}</p> : null}
-        </div>
-      </section>
-
       <section className="operator-layout">
         <section className="operator-workspace">
           <section className="card ops-section operator-composer-panel">
@@ -1683,7 +1675,7 @@ const OperatorBetting = () => {
                   setSearchText(event.target.value);
                   setMemberPickerOpen(true);
                 }}
-                placeholder={copy.searchPlaceholder}
+                placeholder="ค้นหาสมาชิก"
               />
               <FiChevronDown className={`operator-search-chevron ${memberPickerOpen ? 'is-open' : ''}`} />
             </div>
@@ -1702,7 +1694,7 @@ const OperatorBetting = () => {
           </div>
 
           {selectedMember ? (
-            <div className="card operator-selected-member">
+            <div className="operator-selected-member">
               <div className="operator-selected-member-head">
                 <div className="operator-selected-body">
                   <strong>{selectedMember.name}</strong>
@@ -1767,7 +1759,7 @@ const OperatorBetting = () => {
                   <button type="button" className={`btn ${mode === 'grid' ? 'btn-primary' : 'btn-secondary'} btn-sm`} onClick={() => setMode('grid')}>{copyText.gridMode}</button>
                 </div>
 
-                <div className="card operator-draft-summary">
+                <div className="operator-draft-summary">
                   <div>
                     <div className="ops-table-note" style={{ margin: 0 }}>{copyText.currentMode}</div>
                     <strong>{mode === 'fast' ? copyText.fastMode : `กรอกตาราง ${digitMode} ตัว`}</strong>
