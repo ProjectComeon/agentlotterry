@@ -571,6 +571,35 @@ const combineFastDraftItems = (items) => {
   return [...grouped.values()];
 };
 
+const buildFastWorkingNumbers = ({
+  fastFamily,
+  rawInput,
+  numbers,
+  reverse,
+  includeDoubleSet
+}) => {
+  const config = getFastFamilyConfig(fastFamily);
+  const sourceNumbers = Array.isArray(numbers)
+    ? dedupeOrderedNumbers(numbers.filter((number) => normalizeDigits(number).length === config.digits))
+    : extractFastNumbersByDigits(rawInput, config.digits);
+  const previewBetType = config.columns[0]?.betType || '';
+  const workingNumbers = [];
+
+  sourceNumbers.forEach((number) => {
+    expandFastDraftNumbers(number, previewBetType, reverse).forEach((expandedNumber) => {
+      if (normalizeDigits(expandedNumber).length === config.digits) {
+        workingNumbers.push(expandedNumber);
+      }
+    });
+  });
+
+  if (includeDoubleSet) {
+    buildDraftDoubleSet(config.digits).forEach((number) => workingNumbers.push(number));
+  }
+
+  return dedupeOrderedNumbers(workingNumbers);
+};
+
 const buildFastDraftItems = ({
   fastFamily,
   rawInput,
@@ -590,9 +619,15 @@ const buildFastDraftItems = ({
   });
   const activeNumbers = Array.isArray(numbers)
     ? dedupeOrderedNumbers(numbers.filter((number) => normalizeDigits(number).length === config.digits))
-    : extractFastNumbersByDigits(rawInput, config.digits);
+    : buildFastWorkingNumbers({
+        fastFamily,
+        rawInput,
+        reverse,
+        includeDoubleSet
+      });
 
   const items = [];
+  const shouldExpandInline = !Array.isArray(numbers);
 
   const appendNumberItems = (number) => {
     config.columns.forEach((column) => {
@@ -600,7 +635,9 @@ const buildFastDraftItems = ({
       const payRate = Number(rates?.[column.betType] || 0);
       if (!enabledColumns[column.key] || amount <= 0 || payRate <= 0) return;
 
-      expandFastDraftNumbers(number, column.betType, reverse).forEach((expandedNumber) => {
+      const expandedNumbers = shouldExpandInline ? expandFastDraftNumbers(number, column.betType, reverse) : [number];
+
+      expandedNumbers.forEach((expandedNumber) => {
         items.push({
           betType: column.betType,
           number: expandedNumber,
@@ -616,7 +653,7 @@ const buildFastDraftItems = ({
     appendNumberItems(number);
   });
 
-  if (includeDoubleSet) {
+  if (includeDoubleSet && shouldExpandInline) {
     buildDraftDoubleSet(config.digits).forEach((number) => {
       appendNumberItems(number);
     });
@@ -733,8 +770,13 @@ const OperatorBetting = () => {
   );
   const parsedFastCandidates = useMemo(() => {
     if (mode !== 'fast') return [];
-    return extractFastNumbersByDigits(rawInput, fastFamilyConfig.digits);
-  }, [fastFamilyConfig.digits, mode, rawInput]);
+    return buildFastWorkingNumbers({
+      fastFamily,
+      rawInput,
+      reverse,
+      includeDoubleSet
+    });
+  }, [fastFamily, includeDoubleSet, mode, rawInput, reverse]);
   const activeFastNumbers = useMemo(
     () => parsedFastCandidates.filter((number) => !excludedFastNumbers.includes(number)),
     [excludedFastNumbers, parsedFastCandidates]
@@ -1846,21 +1888,19 @@ const OperatorBetting = () => {
                         )}
                       </div>
                     </div>
-                    <div className={`operator-fast-entry-row ${fastFamily === '2' ? 'operator-fast-entry-row-two' : ''}`}>
-                      {fastFamily === '2' ? (
-                        <div className="card operator-fast-amount-card operator-fast-order-card">
-                          <label className="operator-fast-amount-label" htmlFor="fast-order-input">{copyText.pastedOrderLabel}</label>
-                          <textarea
-                            id="fast-order-input"
-                            ref={fastInputRef}
-                            className="form-input operator-inline-order-input operator-command-input-masked"
-                            rows="1"
-                            placeholder=""
-                            value={rawInput}
-                            onChange={(event) => setRawInput(event.target.value)}
-                          />
-                        </div>
-                      ) : null}
+                    <div className={`operator-fast-entry-row operator-fast-entry-row-${fastFamily}`}>
+                      <div className="card operator-fast-amount-card operator-fast-order-card">
+                        <label className="operator-fast-amount-label" htmlFor="fast-order-input">{copyText.pastedOrderLabel}</label>
+                        <textarea
+                          id="fast-order-input"
+                          ref={fastInputRef}
+                          className="form-input operator-inline-order-input operator-command-input-masked"
+                          rows="1"
+                          placeholder=""
+                          value={rawInput}
+                          onChange={(event) => setRawInput(event.target.value)}
+                        />
+                      </div>
                       {fastFamilyConfig.columns.map((column) => {
                         const betLabel = getBetTypeLabel(column.betType);
                         const enabled = supportedFastColumns[column.key];
@@ -1899,19 +1939,6 @@ const OperatorBetting = () => {
                         {copyText.runBottom}
                       </button>
                     </div>
-                    {fastFamily !== '2' ? (
-                      <div className="operator-fast-input">
-                        <label className="form-label">{copyText.pastedOrderLabel}</label>
-                        <textarea
-                          ref={fastInputRef}
-                          className="form-input operator-command-input-masked"
-                          rows="8"
-                          placeholder=""
-                          value={rawInput}
-                          onChange={(event) => setRawInput(event.target.value)}
-                        />
-                      </div>
-                    ) : null}
                     <div className="operator-fast-grid">
                       <div className="operator-fast-grid-wide">
                         <input

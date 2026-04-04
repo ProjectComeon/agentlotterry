@@ -1135,8 +1135,13 @@ input, select, textarea {
   align-items: stretch;
 }
 
-.operator-fast-entry-row-two {
+.operator-fast-entry-row-2,
+.operator-fast-entry-row-run {
   grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.operator-fast-entry-row-3 {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
 .operator-fast-amount-card {
