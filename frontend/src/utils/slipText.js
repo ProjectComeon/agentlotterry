@@ -22,12 +22,10 @@ export const buildPreviewSlipText = ({
   selectedRound,
   selectedRateProfile,
   actorLabel,
-  operatorName,
-  resolveRoundStatusLabel
+  operatorName
 }) => {
   const memberName = preview?.member?.name || selectedMember?.name || '-';
   const memberUsername = preview?.member?.username || selectedMember?.username || '-';
-  const roundStatus = resolveRoundStatusLabel?.(preview?.roundStatus?.status) || preview?.roundStatus?.label || '-';
   const groups = buildSlipDisplayGroups(preview?.items || []);
   const copy = operatorBettingCopy.previewText;
 
@@ -38,10 +36,7 @@ export const buildPreviewSlipText = ({
     `${copy.marketLabel}: ${selectedLottery?.name || preview?.lottery?.name || '-'}`,
     `${copy.roundLabel}: ${selectedRound?.title || preview?.round?.title || '-'}`,
     `${copy.rateLabel}: ${selectedRateProfile?.name || preview?.rateProfile?.name || copy.defaultRateName}`,
-    `${copy.roundStatusLabel}: ${roundStatus}`,
-    `${copy.itemCountLabel}: ${preview?.summary?.itemCount || 0}`,
     `${copy.totalAmountLabel}: ${money(preview?.summary?.totalAmount)} บาท`,
-    `${copy.maxPayoutLabel}: ${money(preview?.summary?.potentialPayout)} บาท`,
     ''
   ];
 
@@ -49,7 +44,7 @@ export const buildPreviewSlipText = ({
     groups.forEach((group, index) => {
       lines.push(`${index + 1}. ${group.familyLabel} ${group.comboLabel} ${group.amountLabel}`);
       lines.push(`${copy.numbersLabel}: ${group.numbersText}`);
-      lines.push(copy.groupSummary(group.itemCount, group.totalAmount, group.potentialPayout));
+      lines.push(`${copy.totalAmountLabel}: ${money(group.totalAmount)} บาท`);
       lines.push('');
     });
   } else {

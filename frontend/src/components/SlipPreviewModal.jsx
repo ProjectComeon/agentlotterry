@@ -1,8 +1,18 @@
 import { FiCopy, FiX } from 'react-icons/fi';
 import GroupedSlipSummary from './GroupedSlipSummary';
-import { operatorBettingCopy } from '../i18n/th/operatorBetting';
 
 const money = (value) => Number(value || 0).toLocaleString('th-TH');
+
+const copy = {
+  eyebrow: 'สรุปโพยดิจิทัล',
+  title: 'ตรวจสอบก่อนบันทึกโพย',
+  memberLabel: 'สมาชิก',
+  actorLabel: 'ผู้ทำรายการ',
+  totalAmountLabel: 'ยอดรวม',
+  copyImage: 'คัดลอกโพยเป็นรูป',
+  copyImageLoading: 'กำลังคัดลอกรูป...',
+  closeAriaLabel: 'ปิดหน้าต่าง'
+};
 
 const SlipPreviewModal = ({
   slip,
@@ -12,8 +22,6 @@ const SlipPreviewModal = ({
   actorLabel = '-',
   unknownMember = '-'
 }) => {
-  const copy = operatorBettingCopy.previewModal;
-
   if (!slip) return null;
 
   return (
@@ -27,9 +35,7 @@ const SlipPreviewModal = ({
         <div className="modal-header">
           <div>
             <div className="ui-eyebrow">{copy.eyebrow}</div>
-            <h3 className="modal-title">
-              {copy.titlePrefix} {slip.slipNumber || slip.slipId || '-'}
-            </h3>
+            <h3 className="modal-title">{copy.title}</h3>
           </div>
 
           <div className="operator-preview-modal-actions">
@@ -59,29 +65,13 @@ const SlipPreviewModal = ({
           </div>
           <div className="operator-preview-meta-row">
             <strong>{copy.actorLabel}:</strong> {slip.placedBy?.name || actorLabel}
-            <span className="ops-table-note"> {slip.placedBy?.roleLabel || actorLabel}</span>
-          </div>
-          <div className="operator-preview-meta-row">
-            <strong>{copy.marketRoundLabel}:</strong> {slip.marketName || '-'} • {slip.roundLabel || '-'}
           </div>
         </div>
 
-        <div className="operator-preview-summary">
-          <div className="card">
-            <div className="ops-table-note operator-preview-stat-label">{copy.itemCountLabel}</div>
-            <strong>{slip.items?.length || 0}</strong>
-          </div>
+        <div className="operator-preview-summary operator-preview-summary-single">
           <div className="card">
             <div className="ops-table-note operator-preview-stat-label">{copy.totalAmountLabel}</div>
             <strong>{money(slip.totalAmount)} บาท</strong>
-          </div>
-          <div className="card">
-            <div className="ops-table-note operator-preview-stat-label">{copy.maxPayoutLabel}</div>
-            <strong>{money(slip.totalPotentialPayout)} บาท</strong>
-          </div>
-          <div className="card">
-            <div className="ops-table-note operator-preview-stat-label">{copy.slipStatusLabel}</div>
-            <strong>{slip.resultLabel || '-'}</strong>
           </div>
         </div>
 

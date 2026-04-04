@@ -1206,6 +1206,51 @@ input, select, textarea {
   margin-top: 8px;
 }
 
+.operator-grid-entry-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.operator-grid-entry-card {
+  padding: 10px;
+  box-shadow: none;
+  border: 1px solid rgba(220, 38, 38, 0.34);
+  background: #fff6f6;
+  border-radius: 12px;
+}
+
+.operator-grid-entry-label {
+  display: block;
+  margin: 0 0 6px;
+  font-size: 0.84rem;
+  font-weight: 800;
+  color: var(--text-strong);
+}
+
+.operator-grid-entry-card .form-input {
+  width: 100%;
+  min-width: 0;
+  min-height: 38px;
+  border-color: rgba(220, 38, 38, 0.42);
+  background: #fff;
+  color: var(--text-strong);
+  font-weight: 700;
+}
+
+.operator-grid-entry-action {
+  width: 100%;
+  justify-content: center;
+}
+
+.operator-grid-entry-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 8px;
+}
+
 .operator-grid-bulk {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -1877,6 +1922,7 @@ input, select, textarea {
   .operator-fast-entry-row,
   .operator-fast-grid,
   .operator-working-slip-stats,
+  .operator-grid-entry-grid,
   .operator-grid-bulk {
     grid-template-columns: 1fr;
   }

@@ -189,6 +189,27 @@ const cloneGridRows = (rows = []) =>
     }
   }));
 
+const reverseGridNumber = (value) => {
+  const digits = normalizeDigits(value);
+  if (!digits) return '';
+  return digits.split('').reverse().join('');
+};
+
+const buildGridReverseNumbers = (value, digitMode) => {
+  const digits = normalizeDigits(value);
+  const expectedLength = Number(digitMode || 2);
+
+  if (!digits || digits.length !== expectedLength) {
+    return [];
+  }
+
+  if (expectedLength === 3) {
+    return buildDraftPermutations(digits);
+  }
+
+  return dedupeOrderedNumbers([digits, reverseGridNumber(digits)]);
+};
+
 const buildSavedDraftEntry = (entry = {}) => {
   const items = Array.isArray(entry?.items) ? entry.items.filter(Boolean) : [];
 
@@ -781,6 +802,8 @@ const OperatorBetting = () => {
     () => parsedFastCandidates.filter((number) => !excludedFastNumbers.includes(number)),
     [excludedFastNumbers, parsedFastCandidates]
   );
+  const gridHeaderRow = gridRows[0] || buildEmptyGridRow();
+  const gridBodyRows = gridRows.slice(1);
   const fastDraftSummary = useMemo(
     () =>
       getFastDraftSummary({
@@ -795,7 +818,7 @@ const OperatorBetting = () => {
       }),
     [activeFastNumbers, fastAmounts, fastFamily, includeDoubleSet, parsedFastCandidates, reverse, roundClosedBetTypes, selectedLottery]
   );
-  const gridDraftSummary = useMemo(() => getGridDraftSummary(gridRows), [gridRows]);
+  const gridDraftSummary = useMemo(() => getGridDraftSummary(gridBodyRows), [gridBodyRows]);
   const recentSlipGroups = useMemo(() => groupRecentItemsBySlip(recentItems), [recentItems]);
   const fastDraftItems = useMemo(() => {
     if (mode !== 'fast') return [];
@@ -817,7 +840,7 @@ const OperatorBetting = () => {
     if (mode !== 'grid') return [];
 
     try {
-      return buildGridItems({ rows: gridRows, digitMode });
+      return buildGridItems({ rows: gridBodyRows, digitMode });
     } catch {
       return [];
     }
@@ -981,7 +1004,7 @@ const OperatorBetting = () => {
 
   const getCurrentComposerItems = () => {
     if (mode === 'grid') {
-      return buildGridItems({ rows: gridRows, digitMode });
+      return buildGridItems({ rows: gridBodyRows, digitMode });
     }
 
     if (!fastDraftItems.length) {
@@ -1499,6 +1522,117 @@ const OperatorBetting = () => {
   const updateGridAmount = (rowId, key, value) => setGridRows((current) => current.map((row) => (row.id === rowId ? { ...row, amounts: { ...row.amounts, [key]: value } } : row)));
   const updateGridRow = (rowId, patch) => setGridRows((current) => current.map((row) => (row.id === rowId ? { ...row, ...patch } : row)));
   const removeGridRow = (rowId) => setGridRows((current) => (current.length <= 1 ? [buildEmptyGridRow()] : current.filter((row) => row.id !== rowId)));
+  const applyGridHeaderReverse = () => {
+    const sourceNumber = normalizeDigits(gridHeaderRow.number);
+    const reverseNumbers = buildGridReverseNumbers(sourceNumber, digitMode);
+
+    if (!reverseNumbers.length) {
+      toast.error(`กรุณากรอกหมายเลข ${digitMode} หลักก่อน`);
+      return;
+    }
+
+    const trailingNumbers = reverseNumbers.filter((number) => number !== sourceNumber);
+
+    setGridRows((current) => {
+      const nextRows = [...current];
+      const headerRow = nextRows[0] || buildEmptyGridRow();
+      nextRows[0] = {
+        ...headerRow,
+        number: sourceNumber
+      };
+
+      while (nextRows.length < trailingNumbers.length + 1) {
+        nextRows.push(buildEmptyGridRow());
+      }
+
+      trailingNumbers.forEach((number, index) => {
+        const rowIndex = index + 1;
+        const targetRow = nextRows[rowIndex] || buildEmptyGridRow();
+        nextRows[rowIndex] = {
+          ...targetRow,
+          number,
+          amounts: {
+            top: '',
+            bottom: '',
+            tod: ''
+          }
+        };
+      });
+
+      for (let index = trailingNumbers.length + 1; index < nextRows.length; index += 1) {
+        nextRows[index] = {
+          ...nextRows[index],
+          number: '',
+          amounts: {
+            top: '',
+            bottom: '',
+            tod: ''
+          }
+        };
+      }
+
+      return nextRows;
+    });
+
+    toast.success(`สร้างเลขกลับ ${trailingNumbers.length} รายการ`);
+  };
+  const copyGridHeaderNumber = () => {
+    const sourceNumber = normalizeDigits(gridHeaderRow.number);
+    if (!sourceNumber || sourceNumber.length !== Number(digitMode || 2)) {
+      toast.error(`กรุณากรอกหมายเลข ${digitMode} หลักก่อน`);
+      return;
+    }
+
+    let duplicated = false;
+
+    setGridRows((current) => {
+      const nextRows = [...current];
+      const existingIndex = nextRows.findIndex((row, index) => index > 0 && normalizeDigits(row.number) === sourceNumber);
+
+      if (existingIndex !== -1) {
+        duplicated = true;
+        return current;
+      }
+
+      const targetIndex = nextRows.findIndex((row, index) => index > 0 && !normalizeDigits(row.number));
+      if (targetIndex === -1) {
+        nextRows.push({
+          ...buildEmptyGridRow(),
+          number: sourceNumber
+        });
+        return nextRows;
+      }
+
+      nextRows[targetIndex] = {
+        ...nextRows[targetIndex],
+        number: sourceNumber
+      };
+
+      return nextRows;
+    });
+
+    if (duplicated) {
+      toast.error('เลขนี้อยู่ในรายการแล้ว');
+      return;
+    }
+
+    toast.success('เพิ่มเลขเข้ารายการแล้ว');
+  };
+  const copyGridHeaderAmount = (columnKey) => {
+    const nextValue = gridHeaderRow.amounts?.[columnKey];
+    if (!nextValue) {
+      toast.error(copyMessages.gridBulkNeedsAmount);
+      return;
+    }
+
+    setGridRows((current) =>
+      current.map((row) =>
+        normalizeDigits(row.number)
+          ? { ...row, amounts: { ...row.amounts, [columnKey]: nextValue } }
+          : row
+      )
+    );
+  };
   const updateFastAmount = (columnKey, value) =>
     setFastAmounts((current) => ({
       ...current,
@@ -1514,15 +1648,6 @@ const OperatorBetting = () => {
       });
       return next;
     });
-  const applyGridBulkAmount = (columnKey) => {
-    const nextValue = gridBulkAmounts[columnKey];
-    if (!nextValue) {
-      toast.error(copyMessages.gridBulkNeedsAmount);
-      return;
-    }
-    setGridRows((current) => current.map((row) => (normalizeDigits(row.number) ? { ...row, amounts: { ...row.amounts, [columnKey]: nextValue } } : row)));
-  };
-
   useEffect(() => {
     const memberId = searchParams.get('memberId');
     if (memberId) fetchMemberContext(memberId);
@@ -1957,27 +2082,87 @@ const OperatorBetting = () => {
                       {digitModeOptions.map((option) => <button key={option.value} type="button" className={`btn ${digitMode === option.value ? 'btn-primary' : 'btn-secondary'} btn-sm`} onClick={() => setDigitMode(option.value)}>{option.label}</button>)}
                     </div>
                     <div style={{ marginTop: 16 }}><label className="form-label">{copyText.memoLabel}</label><input className="form-input" type="text" placeholder={copyText.memoPlaceholder} value={memo} onChange={(event) => setMemo(event.target.value)} /></div>
-                    <div className="operator-grid-bulk">
-                      {[{ key: 'top', betType: gridColumns[0], enabled: supportedGridColumns.top }, { key: 'bottom', betType: gridColumns[1], enabled: supportedGridColumns.bottom }, { key: 'tod', betType: gridColumns[2], enabled: supportedGridColumns.tod }].map((column) => (
-                        <div key={column.key} className="card operator-grid-bulk-card">
-                          <label className="operator-grid-bulk-label" htmlFor={`grid-bulk-${column.key}`}>
-                            {getBetTypeLabel(column.betType)}
-                          </label>
-                          <input
-                            id={`grid-bulk-${column.key}`}
-                            className="form-input"
-                            type="number"
-                            min="0"
-                            placeholder={copyText.amountPlaceholder}
-                            disabled={!column.enabled}
-                            value={gridBulkAmounts[column.key]}
-                            onChange={(event) => setGridBulkAmounts((current) => ({ ...current, [column.key]: event.target.value }))}
-                          />
+                    <div className="operator-grid-entry-grid">
+                      <div className="card operator-grid-entry-card">
+                        <label className="operator-grid-entry-label" htmlFor="grid-entry-number">หมายเลข</label>
+                        <input
+                          id="grid-entry-number"
+                          ref={setGridCellRef(gridHeaderRow.id, 'number')}
+                          className="form-input"
+                          type="text"
+                          inputMode="numeric"
+                          placeholder={digitMode === '3' ? 'เช่น 123' : 'เช่น 12'}
+                          value={gridHeaderRow.number}
+                          onChange={(event) => updateGridRow(gridHeaderRow.id, { number: event.target.value })}
+                          onKeyDown={(event) => handleGridKeyDown(gridHeaderRow.id, 'number', event)}
+                          onPaste={(event) => handleGridNumberPaste(gridHeaderRow.id, event)}
+                        />
+                        <div className="operator-grid-entry-actions">
+                          <button type="button" className="btn btn-secondary btn-sm operator-grid-entry-action" onClick={applyGridHeaderReverse}>
+                            <FiShuffle /> {copyText.reverse}
+                          </button>
+                          <button type="button" className="btn btn-secondary btn-sm operator-grid-entry-action" onClick={copyGridHeaderNumber}>
+                            <FiCopy /> คัดลอกเลข
+                          </button>
                         </div>
-                      ))}
+                      </div>
+                      <div className="card operator-grid-entry-card">
+                        <label className="operator-grid-entry-label" htmlFor="grid-entry-top">{getBetTypeLabel(gridColumns[0])}</label>
+                        <input
+                          id="grid-entry-top"
+                          ref={setGridCellRef(gridHeaderRow.id, 'top')}
+                          className="form-input"
+                          type="number"
+                          min="0"
+                          placeholder={copyText.amountPlaceholder}
+                          disabled={!supportedGridColumns.top}
+                          value={gridHeaderRow.amounts.top}
+                          onChange={(event) => updateGridAmount(gridHeaderRow.id, 'top', event.target.value)}
+                          onKeyDown={(event) => handleGridKeyDown(gridHeaderRow.id, 'top', event)}
+                        />
+                        <button type="button" className="btn btn-secondary btn-sm operator-grid-entry-action" onClick={() => copyGridHeaderAmount('top')} disabled={!supportedGridColumns.top}>
+                          <FiCopy /> คัดลอกยอด
+                        </button>
+                      </div>
+                      <div className="card operator-grid-entry-card">
+                        <label className="operator-grid-entry-label" htmlFor="grid-entry-bottom">{getBetTypeLabel(gridColumns[1])}</label>
+                        <input
+                          id="grid-entry-bottom"
+                          ref={setGridCellRef(gridHeaderRow.id, 'bottom')}
+                          className="form-input"
+                          type="number"
+                          min="0"
+                          placeholder={copyText.amountPlaceholder}
+                          disabled={!supportedGridColumns.bottom}
+                          value={gridHeaderRow.amounts.bottom}
+                          onChange={(event) => updateGridAmount(gridHeaderRow.id, 'bottom', event.target.value)}
+                          onKeyDown={(event) => handleGridKeyDown(gridHeaderRow.id, 'bottom', event)}
+                        />
+                        <button type="button" className="btn btn-secondary btn-sm operator-grid-entry-action" onClick={() => copyGridHeaderAmount('bottom')} disabled={!supportedGridColumns.bottom}>
+                          <FiCopy /> คัดลอกยอด
+                        </button>
+                      </div>
+                      <div className="card operator-grid-entry-card">
+                        <label className="operator-grid-entry-label" htmlFor="grid-entry-tod">{getBetTypeLabel(gridColumns[2])}</label>
+                        <input
+                          id="grid-entry-tod"
+                          ref={setGridCellRef(gridHeaderRow.id, 'tod')}
+                          className="form-input"
+                          type="number"
+                          min="0"
+                          placeholder={copyText.amountPlaceholder}
+                          disabled={!supportedGridColumns.tod}
+                          value={gridHeaderRow.amounts.tod}
+                          onChange={(event) => updateGridAmount(gridHeaderRow.id, 'tod', event.target.value)}
+                          onKeyDown={(event) => handleGridKeyDown(gridHeaderRow.id, 'tod', event)}
+                        />
+                        <button type="button" className="btn btn-secondary btn-sm operator-grid-entry-action" onClick={() => copyGridHeaderAmount('tod')} disabled={!supportedGridColumns.tod}>
+                          <FiCopy /> คัดลอกยอด
+                        </button>
+                      </div>
                     </div>
                     <div className="operator-grid-rows">
-                      {gridRows.map((row) => (
+                      {gridBodyRows.map((row) => (
                         <div
                           key={row.id}
                           className="card operator-grid-row"
@@ -2085,7 +2270,7 @@ const OperatorBetting = () => {
                         <div key={entry.id} className="operator-preview-stage-pill">
                           <div className="operator-preview-stage-pill-copy">
                             <strong>{copyText.setLabel} {index + 1}</strong>
-                            <span className="ops-table-note">{entry.itemCount} {copyText.itemsSuffix} • {money(entry.totalAmount)} {copyText.baht}</span>
+                            <span className="ops-table-note">{money(entry.totalAmount)} {copyText.baht}</span>
                           </div>
                           <div className="operator-preview-stage-pill-actions">
                             <button type="button" className="btn btn-secondary btn-sm" onClick={() => handleEditSavedDraftEntry(entry.id)}>
@@ -2137,37 +2322,22 @@ const OperatorBetting = () => {
                   </div>
                   <div style={{ marginTop: 6 }}><strong>{previewCopy.actorLabel}:</strong> {preview.placedBy?.name || user?.name} <span className="ops-table-note">{copy.actorLabel}</span></div>
                 </div>
-                <div className="operator-preview-summary">
-                  <div className="card" style={{ padding: 12 }}><div className="ops-table-note" style={{ margin: 0 }}>{previewCopy.itemCountLabel}</div><strong>{preview.summary?.itemCount || 0}</strong></div>
-                  <div className="card" style={{ padding: 12 }}><div className="ops-table-note" style={{ margin: 0 }}>{previewCopy.totalAmountLabel}</div><strong>{money(preview.summary?.totalAmount)} {copyText.baht}</strong></div>
-                  <div className="card" style={{ padding: 12 }}><div className="ops-table-note" style={{ margin: 0 }}>{previewCopy.maxPayoutLabel}</div><strong>{money(preview.summary?.potentialPayout)} {copyText.baht}</strong></div>
-                  <div className="card" style={{ padding: 12 }}><div className="ops-table-note" style={{ margin: 0 }}>{previewCopy.roundStatusLabel}</div><strong>{getRoundStatusLabel(preview.roundStatus?.status)}</strong></div>
-                </div>
-                <div className="operator-preview-list operator-slip-group-list">
-                  {previewGroups.map((group) => (
-                    <div key={group.key} className="card operator-slip-group-card operator-slip-group-card-compact">
-                      <div className="operator-slip-group-side">
-                        <div className="operator-slip-family">{group.familyLabel}</div>
-                        <div className="operator-slip-combo">{group.comboLabel}</div>
-                        <div className="operator-slip-amount">{group.amountLabel}</div>
-                      </div>
-                      <div className="operator-slip-group-body">
-                        <div className="operator-slip-group-head">
-                          <span className="ops-table-note">{group.itemCount} {copyText.itemsSuffix}</span>
-                          <strong>{money(group.totalAmount)} {copyText.baht}</strong>
-                        </div>
-                        <div className="operator-slip-numbers">{group.numbersText}</div>
-                        <div className="ops-table-note">{previewCopy.maxPayoutLabel} {money(group.potentialPayout)} {copyText.baht}</div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-                {preview.memo ? (
-                  <div className="card operator-preview-note">
-                    <div className="ops-table-note" style={{ margin: 0 }}>{previewCopy.memoLabel}</div>
-                    <strong>{preview.memo}</strong>
+                <div className="card operator-preview-compact-summary">
+                  <div>
+                    <div className="ops-table-note" style={{ margin: 0 }}>{previewCopy.memberLabel}</div>
+                    <strong>{preview.member?.name || selectedMember?.name || '-'}</strong>
                   </div>
-                ) : null}
+                  <div>
+                    <div className="ops-table-note" style={{ margin: 0 }}>{previewCopy.totalAmountLabel}</div>
+                    <strong>{money(preview.summary?.totalAmount)} {copyText.baht}</strong>
+                  </div>
+                </div>
+                <GroupedSlipSummary
+                  slip={{ items: preview?.items || [], displayGroups: previewGroups, memo: preview.memo }}
+                  dense
+                  showMemo={Boolean(preview.memo)}
+                  className="operator-preview-grouped-summary slip-grouped-compact"
+                />
 
                 <div className="modal-footer operator-preview-modal-actions">
                   <button className="btn btn-secondary" onClick={handleCopyAsText} disabled={copyingText || copyingImage || submitting}>
