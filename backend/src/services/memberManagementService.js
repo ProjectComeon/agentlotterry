@@ -373,8 +373,11 @@ const mapMemberSummary = (member, stats = {}, configSummary = {}) => ({
 });
 
 const getAgentMemberBootstrap = async ({ agentId }) => {
+  const normalizedAgentId = agentId || null;
   const [agent, lotteries, rateProfiles] = await Promise.all([
-    User.findById(agentId).select('name creditBalance stockPercent ownerPercent keepPercent commissionRate'),
+    normalizedAgentId
+      ? User.findById(normalizedAgentId).select('name creditBalance stockPercent ownerPercent keepPercent commissionRate')
+      : null,
     loadActiveLotteries(),
     loadActiveRateProfiles()
   ]);
@@ -395,7 +398,7 @@ const getAgentMemberBootstrap = async ({ agentId }) => {
     },
     onlineWindowSeconds: Math.floor(ONLINE_WINDOW_MS / 1000),
     agent: {
-      id: agent?._id?.toString() || agentId.toString(),
+      id: agent?._id?.toString() || normalizedAgentId?.toString?.() || '',
       name: agent?.name || '',
       creditBalance: agent?.creditBalance || 0,
       stockPercent: agent?.stockPercent || 0,
@@ -411,6 +414,9 @@ const getAgentMemberBootstrap = async ({ agentId }) => {
     }))
   };
 };
+
+const getAdminMemberBootstrap = async ({ agentId = '' } = {}) =>
+  getAgentMemberBootstrap({ agentId: toText(agentId) || null });
 
 const getAgentMembers = async ({ agentId, search = '', status = '', online = '' }) => {
   const filter = { agentId, role: 'customer' };
@@ -613,6 +619,18 @@ const getAgentMemberDetail = async ({ agentId, memberId }) => {
   };
 };
 
+const getAdminMemberDetail = async ({ memberId }) => {
+  const member = await User.findOne({ _id: memberId, role: 'customer' }).select('agentId');
+  if (!member) {
+    throw new Error('Member not found');
+  }
+
+  return getAgentMemberDetail({
+    agentId: member.agentId,
+    memberId
+  });
+};
+
 const createAgentMember = async ({ agentId, payload }) => {
   const account = payload.account || payload;
   const profile = payload.profile || payload;
@@ -663,6 +681,28 @@ const createAgentMember = async ({ agentId, payload }) => {
   });
 
   return getAgentMemberDetail({ agentId, memberId: member._id });
+};
+
+const createAdminMember = async ({ payload }) => {
+  const selectedAgentId = toText(
+    payload?.agentId ||
+    payload?.account?.agentId ||
+    payload?.profile?.agentId
+  );
+
+  if (!selectedAgentId) {
+    throw new Error('Agent is required');
+  }
+
+  const agent = await User.findOne({ _id: selectedAgentId, role: 'agent' }).select('_id');
+  if (!agent) {
+    throw new Error('Agent not found');
+  }
+
+  return createAgentMember({
+    agentId: selectedAgentId,
+    payload
+  });
 };
 
 const updateAgentMember = async ({ agentId, memberId, payload }) => {
@@ -720,6 +760,71 @@ const updateAgentMember = async ({ agentId, memberId, payload }) => {
   return getAgentMemberDetail({ agentId, memberId: member._id });
 };
 
+const updateAdminMember = async ({ memberId, payload }) => {
+  const member = await User.findOne({ _id: memberId, role: 'customer' }).select('agentId parentUserId');
+  if (!member) {
+    throw new Error('Member not found');
+  }
+
+  const currentAgentId = member.agentId?.toString();
+  const selectedAgentId = toText(
+    payload?.agentId ||
+    payload?.account?.agentId ||
+    payload?.profile?.agentId
+  ) || currentAgentId;
+
+  if (!selectedAgentId) {
+    throw new Error('Agent is required');
+  }
+
+  if (selectedAgentId !== currentAgentId) {
+    const agent = await User.findOne({ _id: selectedAgentId, role: 'agent' }).select('_id');
+    if (!agent) {
+      throw new Error('Agent not found');
+    }
+  }
+
+  if (!currentAgentId) {
+    const previousParentUserId = member.parentUserId || null;
+    member.agentId = selectedAgentId;
+    member.parentUserId = selectedAgentId;
+    await member.save();
+
+    try {
+      return await updateAgentMember({
+        agentId: selectedAgentId,
+        memberId,
+        payload
+      });
+    } catch (error) {
+      member.agentId = null;
+      member.parentUserId = previousParentUserId;
+      await member.save();
+      throw error;
+    }
+  }
+
+  let detail = await updateAgentMember({
+    agentId: currentAgentId,
+    memberId,
+    payload
+  });
+
+  if (selectedAgentId !== currentAgentId) {
+    member.agentId = selectedAgentId;
+    member.parentUserId = selectedAgentId;
+    await member.save();
+
+    detail = await updateAgentMember({
+      agentId: selectedAgentId,
+      memberId,
+      payload: {}
+    });
+  }
+
+  return detail;
+};
+
 const deactivateAgentMember = async ({ agentId, memberId }) => {
   const member = await User.findOne({ _id: memberId, agentId, role: 'customer' });
   if (!member) {
@@ -738,10 +843,14 @@ module.exports = {
   DEFAULT_LIMITS,
   isUserOnline,
   getAgentMemberBootstrap,
+  getAdminMemberBootstrap,
   getAgentMembers,
   getAgentMemberDetail,
+  getAdminMemberDetail,
   createAgentMember,
+  createAdminMember,
   updateAgentMember,
+  updateAdminMember,
   deactivateAgentMember,
   getMemberLotteryAccess,
   searchMembersForBetting,

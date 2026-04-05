@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import {
   FiBarChart2,
+  FiChevronRight,
   FiClock,
   FiDollarSign,
   FiEdit2,
@@ -17,19 +18,35 @@ import {
 } from 'react-icons/fi';
 import Modal from '../../components/Modal';
 import PageSkeleton from '../../components/PageSkeleton';
+import { agentCopy } from '../../i18n/th/agent';
 import { adminCopy } from '../../i18n/th/admin';
-import { getUserStatusLabel } from '../../i18n/th/labels';
+import { getBetTypeLabel, getUserStatusLabel } from '../../i18n/th/labels';
 import {
   createAdminCustomer,
   deleteAdminCustomer,
+  getAdminCustomerDetail,
+  getAdminMemberBootstrap,
   getAdminCustomers,
   getAgents,
   updateAdminCustomer
 } from '../../services/api';
 import { formatDateTime, formatMoney as money, formatNumber, getInitial, toNumber } from '../../utils/formatters';
+import {
+  applyProfileToLotterySettings,
+  buildMemberFormPayload,
+  createInitialMemberForm,
+  createMemberFormFromDetail,
+  groupLotterySettingsByLeague,
+  toggleBetType,
+  updateLotterySetting
+} from '../agent/memberFormUtils';
 
 const copy = adminCopy.customers;
+const wizardCopy = agentCopy.customers;
+const wizardSteps = wizardCopy.steps;
 const statusOptions = ['', 'active', 'inactive'];
+const memberStatusOptions = ['active', 'inactive', 'suspended'];
+const betTypeKeys = ['3top', '3bottom', '3tod', '2top', '2bottom', '2tod', 'run_top', 'run_bottom'];
 const sortOptions = [
   { value: 'recent', label: 'อัปเดตล่าสุด' },
   { value: 'sales_desc', label: 'ยอดซื้อสูงสุด' },
@@ -60,7 +77,14 @@ const ui = {
   createSuccess: 'สร้างสมาชิกแล้ว',
   deactivateSuccess: 'ปิดการใช้งานสมาชิกแล้ว',
   genericError: 'เกิดข้อผิดพลาด',
-  confirmDeactivate: (name) => `ต้องการปิดการใช้งานสมาชิก "${name}" ใช่หรือไม่`
+  confirmDeactivate: (name) => `ต้องการปิดการใช้งานสมาชิก "${name}" ใช่หรือไม่`,
+  bootstrapError: 'โหลดข้อมูลฟอร์มสมาชิกไม่สำเร็จ',
+  detailError: 'โหลดรายละเอียดสมาชิกไม่สำเร็จ',
+  agentRequired: 'กรุณาเลือกเจ้ามือผู้ดูแลก่อน',
+  memberWizardTitle: 'กำหนดรายละเอียดสมาชิก',
+  applyToAll: 'คัดลอกค่าไปทุกตลาดหวย',
+  noAvailableAgent: 'ยังไม่มีเจ้ามือให้เลือก',
+  ownerSelectionHint: 'กำหนดเจ้ามือผู้รับผิดชอบก่อนบันทึกฟอร์มนี้'
 };
 
 const formatSignedNumber = (value) => {
@@ -83,7 +107,10 @@ const CustomerManagement = () => {
   const [sortBy, setSortBy] = useState('recent');
   const [showModal, setShowModal] = useState(false);
   const [editCustomer, setEditCustomer] = useState(null);
-  const [form, setForm] = useState({ username: '', password: '', name: '', phone: '', agentId: '' });
+  const [bootstrap, setBootstrap] = useState(null);
+  const [wizardStep, setWizardStep] = useState(0);
+  const [saving, setSaving] = useState(false);
+  const [form, setForm] = useState(null);
 
   const loadData = async ({ silent = false } = {}) => {
     if (!silent) setLoading(true);
@@ -115,23 +142,119 @@ const CustomerManagement = () => {
     }
   };
 
+  const loadBootstrap = async (agentId = '') => {
+    const res = await getAdminMemberBootstrap(agentId);
+    setBootstrap(res.data);
+    return res.data;
+  };
+
+  const resetWizard = () => {
+    setShowModal(false);
+    setEditCustomer(null);
+    setWizardStep(0);
+    setForm(null);
+  };
+
+  const closeModal = () => {
+    if (saving) return;
+    resetWizard();
+  };
+
+  const openCreate = async () => {
+    const preferredAgentId = filterAgent || agents.find((agent) => agent.isActive)?._id || agents[0]?._id || '';
+    if (!preferredAgentId) {
+      toast.error(ui.noAvailableAgent);
+      return;
+    }
+
+    try {
+      const bootstrapData = await loadBootstrap(preferredAgentId);
+      setForm({
+        ...createInitialMemberForm(bootstrapData),
+        agentId: preferredAgentId
+      });
+      setWizardStep(0);
+      setEditCustomer(null);
+      setShowModal(true);
+    } catch (error) {
+      console.error(error);
+      toast.error(ui.bootstrapError);
+    }
+  };
+
+  const openEdit = async (customer) => {
+    const currentAgentId = customer.agentId?._id || customer.agentId || '';
+    try {
+      const [bootstrapData, detailRes] = await Promise.all([
+        loadBootstrap(currentAgentId),
+        getAdminCustomerDetail(customer._id)
+      ]);
+      setEditCustomer(customer);
+      setForm({
+        ...createMemberFormFromDetail(detailRes.data, bootstrapData),
+        agentId: detailRes.data?.member?.agentId || currentAgentId || ''
+      });
+      setWizardStep(0);
+      setShowModal(true);
+    } catch (error) {
+      console.error(error);
+      toast.error(error.response?.data?.message || ui.detailError);
+    }
+  };
+
+  const updateAccount = (field, value) => setForm((current) => ({
+    ...current,
+    account: { ...current.account, [field]: value }
+  }));
+  const updateProfile = (field, value) => setForm((current) => ({
+    ...current,
+    profile: { ...current.profile, [field]: value }
+  }));
+  const patchLottery = (lotteryTypeId, patch) => setForm((current) => ({
+    ...current,
+    lotterySettings: updateLotterySetting(current.lotterySettings, lotteryTypeId, patch)
+  }));
+  const applyProfileToAllLotteries = () => {
+    setForm((current) => applyProfileToLotterySettings(current));
+  };
+
   const handleSubmit = async (event) => {
     event.preventDefault();
+
+    if (!form?.agentId) {
+      toast.error(ui.agentRequired);
+      setWizardStep(0);
+      return;
+    }
+
+    if (!form?.account?.username || !form?.account?.name || (!editCustomer && !form?.account?.password)) {
+      toast.error(wizardCopy.wizard.requiredError);
+      setWizardStep(0);
+      return;
+    }
+
+    setSaving(true);
     try {
+      const payload = {
+        ...buildMemberFormPayload(form),
+        agentId: form.agentId
+      };
+
       if (editCustomer) {
-        const updateData = { name: form.name, phone: form.phone, agentId: form.agentId };
-        if (form.password) updateData.password = form.password;
-        await updateAdminCustomer(editCustomer._id, updateData);
+        await updateAdminCustomer(editCustomer._id, payload);
         toast.success(ui.saveSuccess);
       } else {
-        await createAdminCustomer(form);
+        await createAdminCustomer(payload);
         toast.success(ui.createSuccess);
       }
-      closeModal();
+
+      resetWizard();
       await loadData({ silent: true });
     } catch (error) {
       console.error(error);
       toast.error(error.response?.data?.message || ui.genericError);
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -147,23 +270,10 @@ const CustomerManagement = () => {
     }
   };
 
-  const openEdit = (customer) => {
-    setEditCustomer(customer);
-    setForm({
-      username: customer.username,
-      password: '',
-      name: customer.name,
-      phone: customer.phone || '',
-      agentId: customer.agentId?._id || customer.agentId || ''
-    });
-    setShowModal(true);
-  };
-
-  const closeModal = () => {
-    setShowModal(false);
-    setEditCustomer(null);
-    setForm({ username: '', password: '', name: '', phone: '', agentId: '' });
-  };
+  const groupedLotteries = useMemo(
+    () => groupLotterySettingsByLeague(form?.lotterySettings || []),
+    [form?.lotterySettings]
+  );
 
   const displayedCustomers = useMemo(() => {
     const keyword = search.trim().toLowerCase();
@@ -213,11 +323,6 @@ const CustomerManagement = () => {
     };
   }, [displayedCustomers]);
 
-  const selectedAgentName = useMemo(
-    () => agents.find((agent) => String(agent._id) === filterAgent)?.name || '',
-    [agents, filterAgent]
-  );
-
   if (loading) {
     return <PageSkeleton statCount={4} rows={5} sidebar={false} />;
   }
@@ -239,7 +344,7 @@ const CustomerManagement = () => {
             <FiDollarSign />
             ซื้อแทน
           </button>
-          <button className="btn btn-primary" onClick={() => setShowModal(true)}>
+          <button className="btn btn-primary" onClick={openCreate}>
             <FiPlus />
             {copy.add}
           </button>
@@ -427,70 +532,272 @@ const CustomerManagement = () => {
         })}
       </section>
 
-      <Modal isOpen={showModal} onClose={closeModal} title={editCustomer ? copy.editTitle : copy.createTitle}>
-        <form onSubmit={handleSubmit}>
-          {!editCustomer ? (
-            <div className="form-group">
-              <label className="form-label">{copy.username}</label>
-              <input
-                className="form-input"
-                value={form.username}
-                onChange={(event) => setForm({ ...form, username: event.target.value })}
-                required
-              />
-            </div>
-          ) : null}
-
-          <div className="form-group">
-            <label className="form-label">{editCustomer ? copy.passwordOptional : copy.passwordRequired}</label>
-            <input
-              className="form-input"
-              type="password"
-              value={form.password}
-              onChange={(event) => setForm({ ...form, password: event.target.value })}
-              required={!editCustomer}
-            />
-          </div>
-
-          <div className="form-group">
-            <label className="form-label">{copy.displayName}</label>
-            <input
-              className="form-input"
-              value={form.name}
-              onChange={(event) => setForm({ ...form, name: event.target.value })}
-              required
-            />
-          </div>
-
-          <div className="form-group">
-            <label className="form-label">{copy.phoneLabel}</label>
-            <input
-              className="form-input"
-              value={form.phone}
-              onChange={(event) => setForm({ ...form, phone: event.target.value })}
-            />
-          </div>
-
-          <div className="form-group">
-            <label className="form-label">{copy.agentLabel}</label>
-            <select
-              className="form-select"
-              value={form.agentId}
-              onChange={(event) => setForm({ ...form, agentId: event.target.value })}
-              required
-            >
-              <option value="">{copy.selectAgent}</option>
-              {agents.filter((agent) => agent.isActive).map((agent) => (
-                <option key={agent._id} value={agent._id}>{agent.name}</option>
+      <Modal isOpen={showModal} onClose={closeModal} title={editCustomer ? copy.editTitle : ui.memberWizardTitle} size="lg">
+        {form && (
+          <form onSubmit={handleSubmit} className="wizard-form">
+            <div className="wizard-steps">
+              {wizardSteps.map((step, index) => (
+                <button
+                  key={step}
+                  type="button"
+                  className={`wizard-step ${index === wizardStep ? 'active' : index < wizardStep ? 'done' : ''}`}
+                  onClick={() => setWizardStep(index)}
+                >
+                  <span>{index + 1}</span>
+                  <strong>{step}</strong>
+                </button>
               ))}
-            </select>
-          </div>
+            </div>
 
-          <div className="modal-footer">
-            <button type="button" className="btn btn-secondary" onClick={closeModal}>{adminCopy.common.cancel}</button>
-            <button type="submit" className="btn btn-primary">{editCustomer ? adminCopy.common.saveChanges : copy.createSubmit}</button>
-          </div>
-        </form>
+            {wizardStep === 0 && (
+              <>
+                <div className="wizard-grid">
+                  <label className="full">
+                    <span>{copy.agentLabel}</span>
+                    <select value={form.agentId} onChange={(event) => setForm((current) => ({ ...current, agentId: event.target.value }))} required>
+                      <option value="">{copy.selectAgent}</option>
+                      {agents.filter((agent) => agent.isActive).map((agent) => (
+                        <option key={agent._id} value={agent._id}>{agent.name}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <label>
+                    <span>{wizardCopy.wizard.account.username}</span>
+                    <input value={form.account.username} onChange={(event) => updateAccount('username', event.target.value)} required />
+                  </label>
+                  <label>
+                    <span>{editCustomer ? copy.passwordOptional : wizardCopy.wizard.account.password}</span>
+                    <input
+                      type="password"
+                      value={form.account.password}
+                      onChange={(event) => updateAccount('password', event.target.value)}
+                      required={!editCustomer}
+                      placeholder={editCustomer ? copy.passwordOptional : ''}
+                    />
+                  </label>
+                  <label>
+                    <span>{wizardCopy.wizard.account.name}</span>
+                    <input value={form.account.name} onChange={(event) => updateAccount('name', event.target.value)} required />
+                  </label>
+                  <label>
+                    <span>{wizardCopy.wizard.account.phone}</span>
+                    <input value={form.account.phone} onChange={(event) => updateAccount('phone', event.target.value)} />
+                  </label>
+                </div>
+                <div className="form-hint">{ui.ownerSelectionHint}</div>
+              </>
+            )}
+
+            {wizardStep === 1 && (
+              <>
+                <div className="wizard-grid">
+                  <label>
+                    <span>{wizardCopy.wizard.profile.status}</span>
+                    <select value={form.profile.status} onChange={(event) => updateProfile('status', event.target.value)}>
+                      {memberStatusOptions.map((status) => (
+                        <option key={status} value={status}>{getUserStatusLabel(status)}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <label>
+                    <span>{wizardCopy.wizard.profile.stockPercent}</span>
+                    <input type="number" min="0" max="100" value={form.profile.stockPercent} onChange={(event) => updateProfile('stockPercent', event.target.value)} />
+                  </label>
+                  <label>
+                    <span>{wizardCopy.wizard.profile.ownerPercent}</span>
+                    <input type="number" min="0" max="100" value={form.profile.ownerPercent} onChange={(event) => updateProfile('ownerPercent', event.target.value)} />
+                  </label>
+                  <label>
+                    <span>{wizardCopy.wizard.profile.keepPercent}</span>
+                    <input type="number" min="0" max="100" value={form.profile.keepPercent} onChange={(event) => updateProfile('keepPercent', event.target.value)} />
+                  </label>
+                  <label>
+                    <span>{wizardCopy.wizard.profile.commissionRate}</span>
+                    <input type="number" min="0" max="100" value={form.profile.commissionRate} onChange={(event) => updateProfile('commissionRate', event.target.value)} />
+                  </label>
+                  <label>
+                    <span>{wizardCopy.wizard.profile.defaultRateProfileId}</span>
+                    <select value={form.profile.defaultRateProfileId} onChange={(event) => updateProfile('defaultRateProfileId', event.target.value)}>
+                      {(bootstrap?.rateProfiles || []).map((profile) => (
+                        <option key={profile.id} value={profile.id}>{profile.name}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="full">
+                    <span>{wizardCopy.wizard.profile.notes}</span>
+                    <textarea rows="4" value={form.profile.notes} onChange={(event) => updateProfile('notes', event.target.value)} />
+                  </label>
+                </div>
+                <div className="form-hint">{wizardCopy.wizard.profile.startCreditHint}</div>
+                <div className="inline-actions">
+                  <button type="button" className="btn btn-secondary btn-sm" onClick={applyProfileToAllLotteries}>
+                    {ui.applyToAll}
+                  </button>
+                </div>
+              </>
+            )}
+
+            {wizardStep === 2 && (
+              <div className="lottery-groups">
+                {Object.entries(groupedLotteries).map(([leagueName, items]) => (
+                  <div key={leagueName} className="lottery-group">
+                    <div className="lottery-group-title">{leagueName}</div>
+                    {items.map((lottery) => (
+                      <div key={lottery.lotteryTypeId} className={`lottery-card ${lottery.isEnabled ? '' : 'muted'}`}>
+                        <div className="lottery-card-header">
+                          <div>
+                            <strong>{lottery.lotteryName}</strong>
+                            <span>{lottery.lotteryCode}</span>
+                          </div>
+                          <label className="inline-check">
+                            <input
+                              type="checkbox"
+                              checked={lottery.isEnabled}
+                              onChange={(event) => patchLottery(lottery.lotteryTypeId, { isEnabled: event.target.checked })}
+                            />
+                            {wizardCopy.wizard.lottery.enabled}
+                          </label>
+                        </div>
+
+                        <div className="wizard-grid">
+                          <label>
+                            <span>{wizardCopy.wizard.lottery.rateProfile}</span>
+                            <select value={lottery.rateProfileId} onChange={(event) => patchLottery(lottery.lotteryTypeId, { rateProfileId: event.target.value })}>
+                              {lottery.availableRateProfiles.map((profile) => (
+                                <option key={profile.id} value={profile.id}>{profile.name}</option>
+                              ))}
+                            </select>
+                          </label>
+                          <label>
+                            <span>{wizardCopy.wizard.lottery.minimumBet}</span>
+                            <input type="number" min="0" value={lottery.minimumBet} onChange={(event) => patchLottery(lottery.lotteryTypeId, { minimumBet: event.target.value })} />
+                          </label>
+                          <label>
+                            <span>{wizardCopy.wizard.lottery.maximumBet}</span>
+                            <input type="number" min="0" value={lottery.maximumBet} onChange={(event) => patchLottery(lottery.lotteryTypeId, { maximumBet: event.target.value })} />
+                          </label>
+                          <label>
+                            <span>{wizardCopy.wizard.lottery.maximumPerNumber}</span>
+                            <input type="number" min="0" value={lottery.maximumPerNumber} onChange={(event) => patchLottery(lottery.lotteryTypeId, { maximumPerNumber: event.target.value })} />
+                          </label>
+                          <label>
+                            <span>{wizardCopy.wizard.profile.stockPercent}</span>
+                            <input type="number" min="0" max="100" value={lottery.stockPercent} onChange={(event) => patchLottery(lottery.lotteryTypeId, { stockPercent: event.target.value })} />
+                          </label>
+                          <label>
+                            <span>{wizardCopy.wizard.profile.ownerPercent}</span>
+                            <input type="number" min="0" max="100" value={lottery.ownerPercent} onChange={(event) => patchLottery(lottery.lotteryTypeId, { ownerPercent: event.target.value })} />
+                          </label>
+                          <label>
+                            <span>{wizardCopy.wizard.profile.keepPercent}</span>
+                            <input type="number" min="0" max="100" value={lottery.keepPercent} onChange={(event) => patchLottery(lottery.lotteryTypeId, { keepPercent: event.target.value })} />
+                          </label>
+                          <label>
+                            <span>{wizardCopy.wizard.profile.commissionRate}</span>
+                            <input type="number" min="0" max="100" value={lottery.commissionRate} onChange={(event) => patchLottery(lottery.lotteryTypeId, { commissionRate: event.target.value })} />
+                          </label>
+                          <label>
+                            <span>{wizardCopy.wizard.lottery.keepMode}</span>
+                            <select value={lottery.keepMode} onChange={(event) => patchLottery(lottery.lotteryTypeId, { keepMode: event.target.value })}>
+                              <option value="off">{wizardCopy.wizard.lottery.keepModes.off}</option>
+                              <option value="cap">{wizardCopy.wizard.lottery.keepModes.cap}</option>
+                            </select>
+                          </label>
+                          <label>
+                            <span>{wizardCopy.wizard.lottery.keepCapAmount}</span>
+                            <input type="number" min="0" value={lottery.keepCapAmount} onChange={(event) => patchLottery(lottery.lotteryTypeId, { keepCapAmount: event.target.value })} />
+                          </label>
+                        </div>
+
+                        <div className="bet-type-row">
+                          {lottery.supportedBetTypes.map((betType) => (
+                            <button
+                              key={betType}
+                              type="button"
+                              className={`bet-chip ${lottery.enabledBetTypes.includes(betType) ? 'active' : ''}`}
+                              onClick={() => setForm((current) => ({
+                                ...current,
+                                lotterySettings: toggleBetType(current.lotterySettings, lottery.lotteryTypeId, betType)
+                              }))}
+                            >
+                              {getBetTypeLabel(betType)}
+                            </button>
+                          ))}
+                        </div>
+
+                        <div className="lottery-advanced-row">
+                          <label className="inline-check">
+                            <input
+                              type="checkbox"
+                              checked={lottery.useCustomRates}
+                              onChange={(event) => patchLottery(lottery.lotteryTypeId, { useCustomRates: event.target.checked })}
+                            />
+                            {wizardCopy.wizard.lottery.customRates}
+                          </label>
+                        </div>
+
+                        {lottery.useCustomRates && (
+                          <div className="wizard-grid">
+                            {betTypeKeys.map((betType) => (
+                              <label key={betType}>
+                                <span>{getBetTypeLabel(betType)}</span>
+                                <input
+                                  type="number"
+                                  min="0"
+                                  value={lottery.customRates?.[betType] || 0}
+                                  onChange={(event) => patchLottery(lottery.lotteryTypeId, {
+                                    customRates: {
+                                      ...lottery.customRates,
+                                      [betType]: event.target.value
+                                    }
+                                  })}
+                                />
+                              </label>
+                            ))}
+                          </div>
+                        )}
+
+                        <label className="wizard-grid-textarea">
+                          <span>{wizardCopy.wizard.lottery.blockedNumbers}</span>
+                          <textarea
+                            rows="3"
+                            value={(lottery.blockedNumbers || []).join('\n')}
+                            onChange={(event) => patchLottery(lottery.lotteryTypeId, {
+                              blockedNumbers: event.target.value.split(/\r?\n|,/).map((item) => item.trim()).filter(Boolean)
+                            })}
+                            placeholder={wizardCopy.wizard.lottery.blockedNumbersPlaceholder}
+                          />
+                        </label>
+                      </div>
+                    ))}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div className="modal-footer wizard-footer">
+              <button type="button" className="btn btn-secondary" onClick={closeModal} disabled={saving}>
+                {adminCopy.common.cancel}
+              </button>
+              <div className="wizard-footer-right">
+                {wizardStep > 0 && (
+                  <button type="button" className="btn btn-secondary" onClick={() => setWizardStep((current) => current - 1)} disabled={saving}>
+                    {wizardCopy.wizard.back}
+                  </button>
+                )}
+                {wizardStep < wizardSteps.length - 1 ? (
+                  <button type="button" className="btn btn-primary" onClick={() => setWizardStep((current) => current + 1)} disabled={saving}>
+                    {wizardCopy.wizard.next}
+                  </button>
+                ) : (
+                  <button type="submit" className="btn btn-primary" disabled={saving}>
+                    {saving ? (editCustomer ? adminCopy.common.saveChanges : wizardCopy.wizard.creating) : (editCustomer ? adminCopy.common.saveChanges : wizardCopy.wizard.submit)}
+                  </button>
+                )}
+              </div>
+            </div>
+          </form>
+        )}
       </Modal>
 
       <style>{`
@@ -879,10 +1186,194 @@ const CustomerManagement = () => {
           color: var(--danger);
         }
 
+        .wizard-form,
+        .lottery-groups,
+        .lottery-group {
+          display: flex;
+          flex-direction: column;
+          gap: 16px;
+        }
+
+        .wizard-steps,
+        .inline-actions,
+        .bet-type-row,
+        .lottery-card-header,
+        .wizard-footer-right {
+          display: flex;
+          gap: 10px;
+          flex-wrap: wrap;
+          align-items: center;
+        }
+
+        .wizard-steps {
+          margin-bottom: 6px;
+        }
+
+        .wizard-step {
+          flex: 1 1 0;
+          min-width: 120px;
+          padding: 12px 14px;
+          border-radius: 16px;
+          border: 1px solid rgba(220, 38, 38, 0.12);
+          background: rgba(255, 250, 250, 0.92);
+          color: var(--text-secondary);
+          text-align: left;
+        }
+
+        .wizard-step span {
+          display: inline-flex;
+          width: 28px;
+          height: 28px;
+          align-items: center;
+          justify-content: center;
+          border-radius: 999px;
+          background: rgba(220, 38, 38, 0.08);
+          color: var(--primary);
+          font-size: 0.8rem;
+          font-weight: 700;
+          margin-bottom: 10px;
+        }
+
+        .wizard-step strong {
+          display: block;
+          font-size: 0.9rem;
+        }
+
+        .wizard-step.active,
+        .wizard-step.done {
+          border-color: rgba(220, 38, 38, 0.24);
+          background: rgba(220, 38, 38, 0.08);
+          color: var(--primary-dark);
+        }
+
+        .wizard-grid {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 14px;
+        }
+
+        .wizard-grid label,
+        .wizard-grid-textarea {
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+        }
+
+        .wizard-grid label span,
+        .wizard-grid-textarea span {
+          font-size: 0.78rem;
+          color: var(--text-secondary);
+          text-transform: uppercase;
+          letter-spacing: 0.08em;
+          font-weight: 700;
+        }
+
+        .wizard-grid input,
+        .wizard-grid select,
+        .wizard-grid textarea,
+        .wizard-grid-textarea textarea {
+          width: 100%;
+          min-height: 52px;
+          padding: 14px 16px;
+          border-radius: 16px;
+          border: 1px solid rgba(220, 38, 38, 0.12);
+          background: rgba(255, 255, 255, 0.96);
+          color: var(--text-primary);
+        }
+
+        .wizard-grid input:focus,
+        .wizard-grid select:focus,
+        .wizard-grid textarea:focus,
+        .wizard-grid-textarea textarea:focus {
+          outline: none;
+          border-color: rgba(220, 38, 38, 0.32);
+          box-shadow: 0 0 0 4px rgba(220, 38, 38, 0.08);
+        }
+
+        .wizard-grid .full {
+          grid-column: 1 / -1;
+        }
+
+        .form-hint,
+        .lottery-group-title,
+        .lottery-card-header span {
+          color: var(--text-secondary);
+        }
+
+        .form-hint {
+          font-size: 0.9rem;
+        }
+
+        .lottery-group-title {
+          font-size: 0.9rem;
+          font-weight: 700;
+          text-transform: uppercase;
+          letter-spacing: 0.08em;
+        }
+
+        .lottery-card {
+          border-radius: 18px;
+          border: 1px solid rgba(220, 38, 38, 0.12);
+          background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(255, 248, 248, 0.96));
+          padding: 18px;
+        }
+
+        .lottery-card.muted {
+          opacity: 0.72;
+        }
+
+        .lottery-card-header {
+          justify-content: space-between;
+          align-items: flex-start;
+          margin-bottom: 16px;
+        }
+
+        .lottery-card-header strong {
+          display: block;
+          margin-bottom: 6px;
+        }
+
+        .inline-check {
+          display: inline-flex;
+          align-items: center;
+          gap: 8px;
+          color: var(--text-secondary);
+        }
+
+        .bet-type-row {
+          margin: 16px 0;
+        }
+
+        .bet-chip {
+          padding: 8px 14px;
+          border-radius: 999px;
+          border: 1px solid rgba(220, 38, 38, 0.12);
+          background: rgba(255, 255, 255, 0.9);
+          color: var(--text-secondary);
+          font-size: 0.8rem;
+          font-weight: 700;
+        }
+
+        .bet-chip.active {
+          border-color: rgba(220, 38, 38, 0.26);
+          background: rgba(220, 38, 38, 0.1);
+          color: var(--primary-dark);
+        }
+
+        .lottery-advanced-row {
+          margin-bottom: 12px;
+        }
+
+        .wizard-footer {
+          justify-content: space-between;
+          align-items: center;
+        }
+
         @media (max-width: 1080px) {
           .summary-grid,
           .member-metrics,
-          .filter-toolbar {
+          .filter-toolbar,
+          .wizard-grid {
             grid-template-columns: repeat(2, minmax(0, 1fr));
           }
         }
@@ -890,7 +1381,8 @@ const CustomerManagement = () => {
         @media (max-width: 920px) {
           .summary-grid,
           .member-metrics,
-          .filter-toolbar {
+          .filter-toolbar,
+          .wizard-grid {
             grid-template-columns: 1fr;
           }
 
@@ -929,6 +1421,8 @@ const CustomerManagement = () => {
             flex-direction: column;
           }
 
+          .wizard-footer,
+          .wizard-footer-right,
           .member-actions-buttons,
           .page-actions {
             width: 100%;

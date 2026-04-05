@@ -10,12 +10,100 @@ const {
   getAgentReportRows,
   listAgentBetItems
 } = require('../services/analyticsService');
+const {
+  createAdminMember,
+  getAdminMemberBootstrap,
+  getAdminMemberDetail,
+  updateAdminMember
+} = require('../services/memberManagementService');
 const { registerBettingRoutes } = require('./helpers/registerBettingRoutes');
 
 const router = express.Router();
 
 // All admin routes require auth + admin role
 router.use(auth, authorize('admin'));
+
+const AGENT_STATUS_OPTIONS = ['active', 'inactive', 'suspended'];
+
+const normalizePercent = (value, label, { fallback, allowUndefined = false } = {}) => {
+  if (value === undefined || value === null || value === '') {
+    return allowUndefined ? undefined : fallback;
+  }
+
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed < 0 || parsed > 100) {
+    throw new Error(`${label} must be between 0 and 100`);
+  }
+
+  return parsed;
+};
+
+const normalizeAgentStatus = (value, { fallback, allowUndefined = false } = {}) => {
+  if (value === undefined || value === null || value === '') {
+    return allowUndefined ? undefined : fallback;
+  }
+
+  const normalized = String(value).trim().toLowerCase();
+  if (!AGENT_STATUS_OPTIONS.includes(normalized)) {
+    throw new Error('Invalid agent status');
+  }
+
+  return normalized;
+};
+
+const buildAgentPayload = (body = {}, { isCreate = false } = {}) => {
+  const payload = {};
+
+  if (isCreate || body.username !== undefined) {
+    const username = String(body.username || '').trim().toLowerCase();
+    if (!username) throw new Error('Username is required');
+    payload.username = username;
+  }
+
+  if (isCreate || body.password !== undefined) {
+    const password = String(body.password || '');
+    if (isCreate && !password) throw new Error('Password is required');
+    if (password) payload.password = password;
+  }
+
+  if (isCreate || body.name !== undefined) {
+    const name = String(body.name || '').trim();
+    if (!name) throw new Error('Name is required');
+    payload.name = name;
+  }
+
+  if (isCreate || body.phone !== undefined) {
+    payload.phone = String(body.phone || '').trim();
+  }
+
+  if (isCreate || body.notes !== undefined) {
+    payload.notes = String(body.notes || '').trim();
+  }
+
+  const status = normalizeAgentStatus(body.status, { fallback: 'active', allowUndefined: !isCreate });
+  if (status !== undefined) {
+    payload.status = status;
+    payload.isActive = status !== 'inactive';
+  } else if (body.isActive !== undefined) {
+    const isActive = body.isActive === true || body.isActive === 'true';
+    payload.isActive = isActive;
+    payload.status = isActive ? 'active' : 'inactive';
+  }
+
+  const stockPercent = normalizePercent(body.stockPercent, 'Stock percent', { fallback: 0, allowUndefined: !isCreate });
+  if (stockPercent !== undefined) payload.stockPercent = stockPercent;
+
+  const ownerPercent = normalizePercent(body.ownerPercent, 'Owner percent', { fallback: 0, allowUndefined: !isCreate });
+  if (ownerPercent !== undefined) payload.ownerPercent = ownerPercent;
+
+  const keepPercent = normalizePercent(body.keepPercent, 'Keep percent', { fallback: 0, allowUndefined: !isCreate });
+  if (keepPercent !== undefined) payload.keepPercent = keepPercent;
+
+  const commissionRate = normalizePercent(body.commissionRate, 'Commission rate', { fallback: 0, allowUndefined: !isCreate });
+  if (commissionRate !== undefined) payload.commissionRate = commissionRate;
+
+  return payload;
+};
 
 registerBettingRoutes(router, {
   includeMemberAgentId: true,
@@ -119,53 +207,51 @@ router.get('/agents', async (req, res) => {
 // POST /api/admin/agents
 router.post('/agents', async (req, res) => {
   try {
-    const { username, password, name, phone } = req.body;
+    const payload = buildAgentPayload(req.body, { isCreate: true });
 
-    if (!username || !password || !name) {
-      return res.status(400).json({ message: 'Username, password, and name are required' });
-    }
-
-    const existing = await User.findOne({ username: username.toLowerCase() });
+    const existing = await User.findOne({ username: payload.username });
     if (existing) {
       return res.status(400).json({ message: 'Username already exists' });
     }
 
     const agent = await User.create({
-      username,
-      password,
       role: 'agent',
-      name,
-      phone: phone || ''
+      ...payload
     });
 
-    await createAuditLog(req.user._id, 'CREATE_AGENT', agent._id.toString(), { name });
+    await createAuditLog(req.user._id, 'CREATE_AGENT', agent._id.toString(), {
+      username: agent.username,
+      name: agent.name,
+      status: agent.status
+    });
     res.status(201).json(agent);
   } catch (error) {
     console.error('Create agent error:', error);
-    res.status(500).json({ message: 'Server error' });
+    res.status(400).json({ message: error.message || 'Failed to create agent' });
   }
 });
 
 // PUT /api/admin/agents/:id
 router.put('/agents/:id', async (req, res) => {
   try {
-    const { name, phone, isActive, password } = req.body;
     const agent = await User.findOne({ _id: req.params.id, role: 'agent' });
 
     if (!agent) {
       return res.status(404).json({ message: 'Agent not found' });
     }
 
-    if (name) agent.name = name;
-    if (phone !== undefined) agent.phone = phone;
-    if (isActive !== undefined) agent.isActive = isActive;
-    if (password) agent.password = password;
+    const payload = buildAgentPayload(req.body);
+    Object.assign(agent, payload);
 
     await agent.save();
-    await createAuditLog(req.user._id, 'UPDATE_AGENT', agent._id.toString(), { name });
+    await createAuditLog(req.user._id, 'UPDATE_AGENT', agent._id.toString(), {
+      username: agent.username,
+      name: agent.name,
+      status: agent.status
+    });
     res.json(agent);
   } catch (error) {
-    res.status(500).json({ message: 'Server error' });
+    res.status(400).json({ message: error.message || 'Failed to update agent' });
   }
 });
 
@@ -223,62 +309,76 @@ router.get('/customers', async (req, res) => {
   }
 });
 
+// GET /api/admin/customers/bootstrap
+router.get('/customers/bootstrap', async (req, res) => {
+  try {
+    const bootstrap = await getAdminMemberBootstrap({ agentId: req.query.agentId || '' });
+    res.json(bootstrap);
+  } catch (error) {
+    res.status(500).json({ message: error.message || 'Failed to load member bootstrap' });
+  }
+});
+
+// GET /api/admin/customers/:id
+router.get('/customers/:id', async (req, res) => {
+  try {
+    const detail = await getAdminMemberDetail({ memberId: req.params.id });
+    res.json(detail);
+  } catch (error) {
+    res.status(404).json({ message: error.message || 'Customer not found' });
+  }
+});
+
 // POST /api/admin/customers
 router.post('/customers', async (req, res) => {
   try {
-    const { username, password, name, phone, agentId } = req.body;
-
-    if (!username || !password || !name || !agentId) {
-      return res.status(400).json({ message: 'Username, password, name, and agentId are required' });
-    }
-
-    const agent = await User.findOne({ _id: agentId, role: 'agent' });
-    if (!agent) {
-      return res.status(400).json({ message: 'Agent not found' });
-    }
-
-    const existing = await User.findOne({ username: username.toLowerCase() });
-    if (existing) {
-      return res.status(400).json({ message: 'Username already exists' });
-    }
-
-    const customer = await User.create({
-      username,
-      password,
-      role: 'customer',
-      name,
-      phone: phone || '',
-      agentId
+    const detail = await createAdminMember({
+      payload: req.body
     });
 
-    await createAuditLog(req.user._id, 'CREATE_CUSTOMER', customer._id.toString(), { name, agentId });
-    res.status(201).json(customer);
+    await createAuditLog(req.user._id, 'CREATE_CUSTOMER', detail.member.id, {
+      username: detail.member.username,
+      name: detail.member.name,
+      agentId: detail.member.agentId
+    });
+
+    res.status(201).json(detail);
   } catch (error) {
-    res.status(500).json({ message: 'Server error' });
+    res.status(400).json({ message: error.message || 'Failed to create customer' });
   }
 });
 
 // PUT /api/admin/customers/:id
 router.put('/customers/:id', async (req, res) => {
   try {
-    const { name, phone, isActive, password, agentId } = req.body;
-    const customer = await User.findOne({ _id: req.params.id, role: 'customer' });
+    const payload = {
+      ...req.body,
+      profile: req.body.profile || {},
+      agentId:
+        req.body.agentId ||
+        req.body.account?.agentId ||
+        req.body.profile?.agentId ||
+        undefined
+    };
 
-    if (!customer) {
-      return res.status(404).json({ message: 'Customer not found' });
+    if (req.body.isActive !== undefined && payload.profile.status === undefined) {
+      payload.profile.status = req.body.isActive ? 'active' : 'inactive';
     }
 
-    if (name) customer.name = name;
-    if (phone !== undefined) customer.phone = phone;
-    if (isActive !== undefined) customer.isActive = isActive;
-    if (password) customer.password = password;
-    if (agentId) customer.agentId = agentId;
+    const detail = await updateAdminMember({
+      memberId: req.params.id,
+      payload
+    });
 
-    await customer.save();
-    await createAuditLog(req.user._id, 'UPDATE_CUSTOMER', customer._id.toString(), { name });
-    res.json(customer);
+    await createAuditLog(req.user._id, 'UPDATE_CUSTOMER', detail.member.id, {
+      username: detail.member.username,
+      name: detail.member.name,
+      agentId: detail.member.agentId
+    });
+
+    res.json(detail);
   } catch (error) {
-    res.status(500).json({ message: 'Server error' });
+    res.status(400).json({ message: error.message || 'Failed to update customer' });
   }
 });
 

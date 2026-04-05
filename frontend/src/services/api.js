@@ -42,6 +42,8 @@ export const createAgent = (data) => api.post('/admin/agents', data);
 export const updateAgent = (id, data) => api.put(`/admin/agents/${id}`, data);
 export const deleteAgent = (id) => api.delete(`/admin/agents/${id}`);
 export const getAdminCustomers = (agentId) => api.get(`/admin/customers${agentId ? `?agentId=${agentId}` : ''}`);
+export const getAdminMemberBootstrap = (agentId) => api.get('/admin/customers/bootstrap', { params: { agentId } });
+export const getAdminCustomerDetail = (id) => api.get(`/admin/customers/${id}`);
 export const createAdminCustomer = (data) => api.post('/admin/customers', data);
 export const updateAdminCustomer = (id, data) => api.put(`/admin/customers/${id}`, data);
 export const deleteAdminCustomer = (id) => api.delete(`/admin/customers/${id}`);
