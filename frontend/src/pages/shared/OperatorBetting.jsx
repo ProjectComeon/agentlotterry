@@ -116,6 +116,12 @@ const fastFamilyOptions = [
   }
 ];
 
+const generatedFastTabOptions = [
+  { value: 'rood', label: 'รูด', familyValue: '2' },
+  { value: 'win2', label: 'วิน2', familyValue: '2' },
+  { value: 'win3', label: 'วิน3', familyValue: '3' }
+];
+
 
 const roleConfig = {
   agent: {
@@ -644,6 +650,16 @@ const buildDraftWinNumbers = (seedDigits = [], digits) => {
   return dedupeOrderedNumbers(values);
 };
 
+const sanitizeSeedDigitsInput = (value) => extractFastSeedDigits(value).join('');
+
+const toggleSeedDigitInput = (value, digit) => {
+  const current = extractFastSeedDigits(value);
+  if (current.includes(digit)) {
+    return current.filter((item) => item !== digit).join('');
+  }
+  return [...current, digit].join('');
+};
+
 const buildDraftRoodNumbers = (seedDigits = []) => {
   const values = [];
 
@@ -697,6 +713,7 @@ const combineFastDraftItems = (items) => {
 
 const buildFastWorkingNumbers = ({
   fastFamily,
+  fastTab,
   rawInput,
   numbers,
   reverse,
@@ -705,6 +722,19 @@ const buildFastWorkingNumbers = ({
   const config = getFastFamilyConfig(fastFamily);
   if (Array.isArray(numbers)) {
     return dedupeOrderedNumbers(numbers.filter((number) => normalizeDigits(number).length === config.digits));
+  }
+
+  if (fastTab === 'rood') {
+    const seedDigits = extractFastSeedDigits(rawInput);
+    if (!seedDigits.length) return [];
+    return buildDraftRoodNumbers(seedDigits);
+  }
+
+  if (fastTab === 'win2' || fastTab === 'win3') {
+    const digits = fastTab === 'win3' ? 3 : 2;
+    const seedDigits = extractFastSeedDigits(rawInput);
+    if (seedDigits.length < digits) return [];
+    return buildDraftWinNumbers(seedDigits, digits);
   }
 
   const sourceNumbers = extractFastNumbersByDigits(rawInput, config.digits);
@@ -807,6 +837,7 @@ const OperatorBetting = () => {
   const [loadingRounds, setLoadingRounds] = useState(false);
   const [mode, setMode] = useState('fast');
   const [fastFamily, setFastFamily] = useState('2');
+  const [fastTab, setFastTab] = useState('2');
   const [digitMode, setDigitMode] = useState('2');
   const [fastAmounts, setFastAmounts] = useState(buildInitialFastAmounts);
   const [rawInput, setRawInput] = useState('');
@@ -866,6 +897,8 @@ const OperatorBetting = () => {
     ? [draftScopeParams.customerId, draftScopeParams.lotteryId, draftScopeParams.roundId, draftScopeParams.rateProfileId || ''].join(':')
     : '';
   const fastFamilyConfig = useMemo(() => getFastFamilyConfig(fastFamily), [fastFamily]);
+  const usesWinSeedSelector = fastTab === 'win2' || fastTab === 'win3';
+  const selectedSeedDigits = useMemo(() => extractFastSeedDigits(rawInput), [rawInput]);
   const enabledFastFamilies = useMemo(() => {
     const supported = new Set(selectedLottery?.supportedBetTypes || []);
     const closed = new Set(roundClosedBetTypes);
@@ -874,6 +907,28 @@ const OperatorBetting = () => {
       option.columns.some((column) => supported.has(column.betType) && !closed.has(column.betType))
     );
   }, [roundClosedBetTypes, selectedLottery]);
+  const visibleFastTabs = useMemo(() => {
+    const families = enabledFastFamilies.length ? enabledFastFamilies : fastFamilyOptions;
+    const tabs = families.map((option) => ({
+      value: option.value,
+      label: option.label,
+      type: 'family'
+    }));
+    const familyValues = new Set(families.map((option) => option.value));
+
+    generatedFastTabOptions.forEach((option) => {
+      if (familyValues.has(option.familyValue)) {
+        tabs.push({
+          value: option.value,
+          label: option.label,
+          type: 'generated',
+          familyValue: option.familyValue
+        });
+      }
+    });
+
+    return tabs;
+  }, [enabledFastFamilies]);
   const supportedFastColumns = useMemo(
     () =>
       getFastEnabledColumns({
@@ -887,12 +942,13 @@ const OperatorBetting = () => {
     if (mode !== 'fast') return [];
     return buildFastWorkingNumbers({
       fastFamily,
+      fastTab,
       rawInput,
       numbers: helperFastNumbers.length ? helperFastNumbers : undefined,
       reverse,
       includeDoubleSet
     });
-  }, [fastFamily, helperFastNumbers, includeDoubleSet, mode, rawInput, reverse]);
+  }, [fastFamily, fastTab, helperFastNumbers, includeDoubleSet, mode, rawInput, reverse]);
   const activeFastNumbers = useMemo(
     () => parsedFastCandidates.filter((number) => !excludedFastNumbers.includes(number)),
     [excludedFastNumbers, parsedFastCandidates]
@@ -1035,6 +1091,7 @@ const OperatorBetting = () => {
     setExcludedFastNumbers([]);
     setReverse(false);
     setIncludeDoubleSet(false);
+    setFastTab(fastFamily);
     setGridRows(buildInitialGridRows);
     setGridBulkAmounts({ top: '', bottom: '', tod: '' });
     setMemo('');
@@ -1124,6 +1181,7 @@ const OperatorBetting = () => {
     return {
       mode: 'fast',
       fastFamily,
+      fastTab,
       fastAmounts: { ...fastAmounts },
       rawInput,
       helperFastNumbers: [...helperFastNumbers],
@@ -1148,12 +1206,14 @@ const OperatorBetting = () => {
       setHelperFastNumbers([]);
       setReverse(false);
       setIncludeDoubleSet(false);
+      setFastTab(fastFamily);
       setMemo(source.memo || '');
       return;
     }
 
     setMode('fast');
     setFastFamily(source?.fastFamily || '2');
+    setFastTab(source?.fastTab || source?.fastFamily || '2');
     setFastAmounts({ ...buildInitialFastAmounts(), ...(source?.fastAmounts || {}) });
     setRawInput(source?.rawInput || '');
     setHelperFastNumbers(source?.helperFastNumbers || []);
@@ -1424,8 +1484,10 @@ const OperatorBetting = () => {
   };
 
   const applyRecentItem = (item) => {
+    const nextFamily = getFastFamilyFromBetType(item.betType || '');
     setMode('fast');
-    setFastFamily(getFastFamilyFromBetType(item.betType || ''));
+    setFastFamily(nextFamily);
+    setFastTab(nextFamily);
     setFastAmounts(buildFastAmountsForBetType(item.betType || '', item.amount));
     setRawInput(String(item.number || ''));
     setHelperFastNumbers([]);
@@ -1436,7 +1498,7 @@ const OperatorBetting = () => {
     toast.success(copyMessages.recentItemApplied);
   };
 
-  const applyFastGeneratedNumbers = (numbers, successMessage, { nextFamily = fastFamily } = {}) => {
+  const applyFastGeneratedNumbers = (numbers, successMessage, { nextFamily = fastFamily, nextTab = null } = {}) => {
     if (!numbers.length) {
       toast.error('กรุณากรอกเลขก่อนใช้สูตรนี้');
       return;
@@ -1444,6 +1506,7 @@ const OperatorBetting = () => {
 
     setMode('fast');
     setFastFamily(nextFamily);
+    setFastTab(nextTab || nextFamily);
     setHelperFastNumbers(numbers);
     setExcludedFastNumbers([]);
     setReverse(false);
@@ -1455,8 +1518,8 @@ const OperatorBetting = () => {
     });
   };
 
-  const applyWinHelper = () => {
-    const digits = Number(fastFamily || 0);
+  const applyWinHelper = (digitsOverride = Number(fastFamily || 0), nextTab = null) => {
+    const digits = Number(digitsOverride || fastFamily || 0);
     const seedDigits = extractFastSeedDigits(rawInput);
 
     if (seedDigits.length < digits) {
@@ -1465,7 +1528,10 @@ const OperatorBetting = () => {
     }
 
     const numbers = buildDraftWinNumbers(seedDigits, digits);
-    applyFastGeneratedNumbers(numbers, `สร้างสูตรวิน ${numbers.length} รายการแล้ว`);
+    applyFastGeneratedNumbers(numbers, `สร้างสูตรวิน ${numbers.length} รายการแล้ว`, {
+      nextFamily: String(digits),
+      nextTab: nextTab || `win${digits}`
+    });
   };
 
   const applyRoodHelper = () => {
@@ -1476,7 +1542,7 @@ const OperatorBetting = () => {
     }
 
     const numbers = buildDraftRoodNumbers(seedDigits);
-    applyFastGeneratedNumbers(numbers, `สร้างเลขรูด ${numbers.length} รายการแล้ว`, { nextFamily: '2' });
+    applyFastGeneratedNumbers(numbers, `สร้างเลขรูด ${numbers.length} รายการแล้ว`, { nextFamily: '2', nextTab: 'rood' });
   };
 
   const applyTongHelper = () => {
@@ -1507,6 +1573,7 @@ const OperatorBetting = () => {
     if (draft.mode === 'fast') {
       setMode('fast');
       setFastFamily(getFastFamilyFromBetType(draft.betType || ''));
+      setFastTab(getFastFamilyFromBetType(draft.betType || ''));
       setFastAmounts(buildFastAmountsForBetType(draft.betType || '', draft.defaultAmount));
       setRawInput(draft.rawInput);
       setHelperFastNumbers([]);
@@ -1831,8 +1898,43 @@ const OperatorBetting = () => {
     if (nextFamilies.length && !nextFamilies.some((option) => option.value === fastFamily)) {
       setHelperFastNumbers([]);
       setFastFamily(nextFamilies[0].value);
+      setFastTab(nextFamilies[0].value);
     }
   }, [fastFamily, roundClosedBetTypes, selectedLottery]);
+
+  const handleFastTabSelect = (tab) => {
+    if (tab.type === 'generated') {
+      setFastFamily(tab.familyValue);
+      setFastTab(tab.value);
+      setHelperFastNumbers([]);
+      setExcludedFastNumbers([]);
+      setReverse(false);
+      setIncludeDoubleSet(false);
+      setPreview(null);
+      return;
+    }
+
+    setFastFamily(tab.value);
+    setFastTab(tab.value);
+    setFastAmounts((current) => ({
+      ...buildInitialFastAmounts(),
+      ...current,
+      ...(tab.value === 'lao_set' ? { set: current?.set || LAO_SET_AMOUNT } : {})
+    }));
+    setHelperFastNumbers([]);
+    setIncludeDoubleSet(false);
+    setPreview(null);
+  };
+
+  const handleSeedDigitToggle = (digit) => {
+    setRawInput((current) => toggleSeedDigitInput(current, digit));
+    setHelperFastNumbers([]);
+  };
+
+  const handleWinSeedInputChange = (value) => {
+    setRawInput(sanitizeSeedDigitsInput(value));
+    setHelperFastNumbers([]);
+  };
 
   useEffect(() => {
     const desired = digitModeOptions.find((item) => item.value === digitMode)?.columns || [];
@@ -2085,27 +2187,37 @@ const OperatorBetting = () => {
                 {mode === 'fast' ? (
                   <>
                     <div className="operator-bettype-row">
-                      {(enabledFastFamilies.length ? enabledFastFamilies : fastFamilyOptions).map((option) => (
+                      {visibleFastTabs.map((option) => (
                         <button
                           key={option.value}
                           type="button"
-                          className={`btn ${fastFamily === option.value ? 'btn-primary' : 'btn-secondary'} btn-sm`}
-                          onClick={() => {
-                            setFastFamily(option.value);
-                            setFastAmounts((current) => ({
-                              ...buildInitialFastAmounts(),
-                              ...current,
-                              ...(option.value === 'lao_set' ? { set: current?.set || LAO_SET_AMOUNT } : {})
-                            }));
-                            setHelperFastNumbers([]);
-                            setIncludeDoubleSet(false);
-                            setPreview(null);
-                          }}
+                          className={`btn ${fastTab === option.value ? 'btn-primary' : 'btn-secondary'} btn-sm`}
+                          onClick={() => handleFastTabSelect(option)}
                         >
                           {option.label}
                         </button>
                       ))}
                     </div>
+                    {usesWinSeedSelector ? (
+                      <div className="card operator-seed-selector-card">
+                        <div className="operator-seed-selector-head">
+                          <strong>{fastTab === 'win3' ? 'เลือกเลขสำหรับวิน3' : 'เลือกเลขสำหรับวิน2'}</strong>
+                          <span className="ops-table-note">{parsedFastCandidates.length} รายการ</span>
+                        </div>
+                        <div className="operator-seed-selector-grid">
+                          {Array.from({ length: 10 }, (_, digit) => String(digit)).map((digit) => (
+                            <button
+                              key={digit}
+                              type="button"
+                              className={`operator-seed-chip ${selectedSeedDigits.includes(digit) ? 'is-active' : ''}`}
+                              onClick={() => handleSeedDigitToggle(digit)}
+                            >
+                              {digit}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    ) : null}
                     <div className="operator-working-slip-flat">
                       <div className="operator-fast-chip-list">
                         {parsedFastCandidates.length ? (
@@ -2138,8 +2250,12 @@ const OperatorBetting = () => {
                           placeholder=""
                           value={rawInput}
                           onChange={(event) => {
-                            setRawInput(event.target.value);
-                            setHelperFastNumbers([]);
+                            if (usesWinSeedSelector) {
+                              handleWinSeedInputChange(event.target.value);
+                            } else {
+                              setRawInput(event.target.value);
+                              setHelperFastNumbers([]);
+                            }
                           }}
                         />
                       </div>
@@ -2191,16 +2307,6 @@ const OperatorBetting = () => {
                       {fastFamily === '3' ? (
                         <button type="button" className="btn btn-secondary btn-sm" onClick={applyTongHelper}>
                           <FiStar /> เลขตอง
-                        </button>
-                      ) : null}
-                      {fastFamily === '2' ? (
-                        <button type="button" className="btn btn-secondary btn-sm" onClick={applyRoodHelper}>
-                          <FiStar /> รูด
-                        </button>
-                      ) : null}
-                      {(fastFamily === '2' || fastFamily === '3') ? (
-                        <button type="button" className="btn btn-secondary btn-sm" onClick={applyWinHelper}>
-                          <FiStar /> วิน
                         </button>
                       ) : null}
                       <button type="button" className="btn btn-secondary btn-sm" onClick={clearComposer}>
@@ -2394,16 +2500,6 @@ const OperatorBetting = () => {
               </div>
             ) : (
               <>
-                <div className="card operator-preview-compact-summary">
-                  <div>
-                    <div className="ops-table-note" style={{ margin: 0 }}>{previewCopy.memberLabel}</div>
-                    <strong>{selectedMember?.name || '-'}</strong>
-                  </div>
-                  <div>
-                    <div className="ops-table-note" style={{ margin: 0 }}>{previewCopy.totalAmountLabel}</div>
-                    <strong>{money(combinedDraftSummary.totalAmount)} {copyText.baht}</strong>
-                  </div>
-                </div>
                 <div className="operator-preview-grouped-summary">
                   {hasSavedDraftEntries ? (
                     <div className="operator-preview-staged-toolbar">
@@ -2429,6 +2525,18 @@ const OperatorBetting = () => {
                     slip={{ items: combinedDraftItems, displayGroups: combinedDraftGroups, memo: combinedDraftMemo }}
                     dense
                     showMemo={Boolean(combinedDraftMemo)}
+                    summaryBlock={(
+                      <div className="card operator-preview-compact-summary">
+                        <div>
+                          <div className="ops-table-note" style={{ margin: 0 }}>{previewCopy.memberLabel}</div>
+                          <strong>{selectedMember?.name || '-'}</strong>
+                        </div>
+                        <div>
+                          <div className="ops-table-note" style={{ margin: 0 }}>{previewCopy.totalAmountLabel}</div>
+                          <strong>{money(combinedDraftSummary.totalAmount)} {copyText.baht}</strong>
+                        </div>
+                      </div>
+                    )}
                     className="slip-grouped-compact"
                   />
                 </div>
@@ -2463,20 +2571,22 @@ const OperatorBetting = () => {
                   </div>
                   <div style={{ marginTop: 6 }}><strong>{previewCopy.actorLabel}:</strong> {preview.placedBy?.name || user?.name} <span className="ops-table-note">{copy.actorLabel}</span></div>
                 </div>
-                <div className="card operator-preview-compact-summary">
-                  <div>
-                    <div className="ops-table-note" style={{ margin: 0 }}>{previewCopy.memberLabel}</div>
-                    <strong>{preview.member?.name || selectedMember?.name || '-'}</strong>
-                  </div>
-                  <div>
-                    <div className="ops-table-note" style={{ margin: 0 }}>{previewCopy.totalAmountLabel}</div>
-                    <strong>{money(preview.summary?.totalAmount)} {copyText.baht}</strong>
-                  </div>
-                </div>
                 <GroupedSlipSummary
                   slip={{ items: preview?.items || [], displayGroups: previewGroups, memo: preview.memo }}
                   dense
                   showMemo={Boolean(preview.memo)}
+                  summaryBlock={(
+                    <div className="card operator-preview-compact-summary">
+                      <div>
+                        <div className="ops-table-note" style={{ margin: 0 }}>{previewCopy.memberLabel}</div>
+                        <strong>{preview.member?.name || selectedMember?.name || '-'}</strong>
+                      </div>
+                      <div>
+                        <div className="ops-table-note" style={{ margin: 0 }}>{previewCopy.totalAmountLabel}</div>
+                        <strong>{money(preview.summary?.totalAmount)} {copyText.baht}</strong>
+                      </div>
+                    </div>
+                  )}
                   className="operator-preview-grouped-summary slip-grouped-compact"
                 />
 

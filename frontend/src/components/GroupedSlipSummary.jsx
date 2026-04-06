@@ -8,7 +8,7 @@ const ui = {
   emptyMemo: 'ไม่มีบันทึกช่วยจำ'
 };
 
-const GroupedSlipSummary = ({ slip, dense = false, showMemo = false, className = '' }) => {
+const GroupedSlipSummary = ({ slip, dense = false, showMemo = false, className = '', summaryBlock = null }) => {
   const groups = useMemo(
     () => (slip?.displayGroups?.length ? slip.displayGroups : buildSlipDisplayGroups(slip?.items || [])),
     [slip]
@@ -41,6 +41,8 @@ const GroupedSlipSummary = ({ slip, dense = false, showMemo = false, className =
           ))}
         </div>
       ) : null}
+
+      {summaryBlock}
 
       {showMemo ? (
         <div className="card operator-preview-note grouped-slip-note">
