@@ -4,7 +4,7 @@ const LotteryResult = require('../models/LotteryResult');
 const LotteryType = require('../models/LotteryType');
 const ResultRecord = require('../models/ResultRecord');
 const { createBangkokDate } = require('../utils/bangkokTime');
-const { getPermutations } = require('../utils/numberHelpers');
+const { hasSameDigits } = require('../utils/numberHelpers');
 
 const normalizeDigits = (value) => String(value || '').replace(/\D/g, '');
 const flattenValues = (value) => Array.isArray(value) ? value.flatMap(flattenValues) : [value];
@@ -70,18 +70,18 @@ const checkItemResult = (item, normalizedResult) => {
         return normalizedResult.fourTopHits.includes(number);
       case '3top':
         return normalizedResult.threeTopHits.includes(number);
-      case '3front':
-        return normalizedResult.threeFrontHits.includes(number);
+    case '3front':
+      return normalizedResult.threeFrontHits.includes(number);
       case '3bottom':
         return normalizedResult.threeBottomHits.includes(number);
     case '3tod':
-      return normalizedResult.threeTopHits.some((value) => getPermutations(value).includes(number));
+      return normalizedResult.threeTopHits.some((value) => hasSameDigits(value, number));
     case '2top':
       return normalizedResult.twoTopHits.includes(number);
     case '2bottom':
       return normalizedResult.twoBottomHits.includes(number);
     case '2tod':
-      return normalizedResult.twoTopHits.some((value) => getPermutations(value).includes(number));
+      return normalizedResult.twoTopHits.some((value) => hasSameDigits(value, number));
     case 'run_top':
       return normalizedResult.runTop.includes(number);
     case 'run_bottom':
@@ -381,6 +381,7 @@ const getRoundResult = async (roundId) => {
 
 module.exports = {
   ensureRoundForLottery,
+  checkItemResult,
   findRoundByCode,
   normalizeResultPayload,
   upsertRoundResult,

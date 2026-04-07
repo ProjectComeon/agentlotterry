@@ -14,6 +14,18 @@ const getPermutations = (str) => {
   return [...new Set(permutations)];
 };
 
+const hasSameDigits = (left, right) => {
+  const a = String(left || '').replace(/\D/g, '');
+  const b = String(right || '').replace(/\D/g, '');
+
+  if (!a || !b || a.length !== b.length) {
+    return false;
+  }
+
+  return [...a].sort().join('') === [...b].sort().join('');
+};
+
 module.exports = {
-  getPermutations
+  getPermutations,
+  hasSameDigits
 };
