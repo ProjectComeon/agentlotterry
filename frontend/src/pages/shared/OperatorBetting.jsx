@@ -253,6 +253,30 @@ const sortMembersByActivity = (members = []) =>
     return String(left?.name || '').localeCompare(String(right?.name || ''), 'th');
   });
 const flattenLotteries = (catalog) => (catalog?.leagues || []).flatMap((league) => (league.lotteries || []).map((lottery) => ({ ...lottery, leagueName: league.name })));
+const lotteryThemePalette = [
+  { bg: '#fff6e7', border: 'rgba(245, 158, 11, 0.24)', accent: '#d97706', soft: 'rgba(245, 158, 11, 0.12)' },
+  { bg: '#effaf4', border: 'rgba(34, 197, 94, 0.24)', accent: '#15803d', soft: 'rgba(34, 197, 94, 0.12)' },
+  { bg: '#eef6ff', border: 'rgba(59, 130, 246, 0.24)', accent: '#2563eb', soft: 'rgba(59, 130, 246, 0.12)' },
+  { bg: '#fff1f6', border: 'rgba(236, 72, 153, 0.24)', accent: '#db2777', soft: 'rgba(236, 72, 153, 0.12)' },
+  { bg: '#f5f1ff', border: 'rgba(139, 92, 246, 0.24)', accent: '#7c3aed', soft: 'rgba(139, 92, 246, 0.12)' },
+  { bg: '#ecfeff', border: 'rgba(6, 182, 212, 0.24)', accent: '#0f766e', soft: 'rgba(6, 182, 212, 0.12)' },
+  { bg: '#fff7ed', border: 'rgba(249, 115, 22, 0.24)', accent: '#ea580c', soft: 'rgba(249, 115, 22, 0.12)' },
+  { bg: '#eefdf5', border: 'rgba(16, 185, 129, 0.24)', accent: '#059669', soft: 'rgba(16, 185, 129, 0.12)' }
+];
+const hashLotterySeed = (value = '') =>
+  String(value || '').split('').reduce((total, char) => total + char.charCodeAt(0), 0);
+const getLotteryTheme = (lottery) => lotteryThemePalette[hashLotterySeed(lottery?.code || lottery?.id || lottery?.name) % lotteryThemePalette.length];
+const getLotteryThemeStyle = (lottery) => {
+  const theme = getLotteryTheme(lottery);
+  return {
+    '--lottery-bg': theme.bg,
+    '--lottery-border': theme.border,
+    '--lottery-accent': theme.accent,
+    '--lottery-soft': theme.soft
+  };
+};
+const getLotteryRoundStatus = (lottery) => lottery?.activeRound?.status || lottery?.status || 'missing';
+const isLotteryOpen = (lottery) => getLotteryRoundStatus(lottery) === 'open';
 const buildEmptyGridRow = () => ({ id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, number: '', amounts: buildEmptyGridAmounts() });
 const buildInitialGridRows = () => Array.from({ length: 2 }, buildEmptyGridRow);
 const cloneGridRows = (rows = []) =>
@@ -891,6 +915,7 @@ const OperatorBetting = () => {
   const [searchResults, setSearchResults] = useState([]);
   const [searching, setSearching] = useState(false);
   const [memberPickerOpen, setMemberPickerOpen] = useState(true);
+  const [marketPickerOpen, setMarketPickerOpen] = useState(false);
   const [selectedMember, setSelectedMember] = useState(null);
   const [catalog, setCatalog] = useState(null);
   const [catalogLoading, setCatalogLoading] = useState(false);
@@ -925,6 +950,7 @@ const OperatorBetting = () => {
   const gridCellRefs = useRef({});
   const fastAmountRefs = useRef({});
   const memberPickerRef = useRef(null);
+  const marketPickerRef = useRef(null);
   const searchInputRef = useRef(null);
   const fastInputRef = useRef(null);
   const draftHydratingRef = useRef(false);
@@ -935,6 +961,8 @@ const OperatorBetting = () => {
   const selectedLottery = useMemo(() => flatLotteries.find((item) => item.id === selection.lotteryId) || null, [flatLotteries, selection.lotteryId]);
   const selectedRateProfile = useMemo(() => selectedLottery?.rateProfiles?.find((item) => item.id === selection.rateProfileId) || selectedLottery?.rateProfiles?.[0] || null, [selectedLottery, selection.rateProfileId]);
   const selectedRound = useMemo(() => rounds.find((item) => item.id === selection.roundId) || selectedLottery?.activeRound || null, [rounds, selection.roundId, selectedLottery]);
+  const selectedLotteryStatus = useMemo(() => getLotteryRoundStatus(selectedLottery), [selectedLottery]);
+  const selectedLotteryThemeStyle = useMemo(() => getLotteryThemeStyle(selectedLottery), [selectedLottery]);
   const sortedSearchResults = useMemo(() => sortMembersByActivity(searchResults), [searchResults]);
   const selectableRounds = useMemo(() => {
     const visible = rounds.filter((item) => !hiddenRoundStatuses.has(item.status));
@@ -1543,6 +1571,19 @@ const OperatorBetting = () => {
     return () => document.removeEventListener('mousedown', handlePointerDown);
   }, [memberPickerOpen]);
 
+  useEffect(() => {
+    if (!marketPickerOpen) return undefined;
+
+    const handlePointerDown = (event) => {
+      if (!marketPickerRef.current?.contains(event.target)) {
+        setMarketPickerOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handlePointerDown);
+    return () => document.removeEventListener('mousedown', handlePointerDown);
+  }, [marketPickerOpen]);
+
   const handleLotteryChange = async (lotteryId) => {
     const nextLottery = flatLotteries.find((item) => item.id === lotteryId);
     if (!nextLottery || nextLottery.id === selection.lotteryId) return;
@@ -1555,6 +1596,7 @@ const OperatorBetting = () => {
       roundId: nextLottery.activeRound?.id || '',
       rateProfileId: nextLottery.defaultRateProfileId || nextLottery.rateProfiles?.[0]?.id || ''
     });
+    setMarketPickerOpen(false);
   };
 
   const handleRoundChange = async (roundId) => {
@@ -2234,7 +2276,7 @@ const OperatorBetting = () => {
   return (
     <div className="ops-page operator-page animate-fade-in">
       <section className="operator-layout">
-        <section className="operator-workspace">
+        <section className="operator-workspace" style={selectedLotteryThemeStyle}>
           <section className="card ops-section operator-composer-panel">
           <div className="operator-search-block" ref={memberPickerRef}>
             <div className={`form-input operator-search-field ${memberPickerOpen ? 'operator-search-field-open' : ''}`}>
@@ -2279,11 +2321,55 @@ const OperatorBetting = () => {
             {selectedMember ? (
               <>
                 <div className="operator-select-grid">
-                  <div>
+                  <div className="operator-market-picker" ref={marketPickerRef}>
                     <label className="form-label">{copyText.marketLabel}</label>
-                    <select className="form-select" value={selectedLottery?.id || ''} onChange={(event) => handleLotteryChange(event.target.value)}>
-                      {flatLotteries.map((lottery) => <option key={lottery.id} value={lottery.id}>{lottery.leagueName} • {lottery.name}</option>)}
-                    </select>
+                    <button
+                      type="button"
+                      className={`operator-market-trigger ${marketPickerOpen ? 'is-open' : ''}`}
+                      style={selectedLotteryThemeStyle}
+                      onClick={() => setMarketPickerOpen((value) => !value)}
+                    >
+                      <div className="operator-market-trigger-copy">
+                        <strong>{selectedLottery ? `${selectedLottery.leagueName} • ${selectedLottery.name}` : copyText.marketLabel}</strong>
+                        <span className={`operator-market-status ${selectedLottery && isLotteryOpen(selectedLottery) ? 'is-open' : 'is-closed'}`}>
+                          {selectedLottery ? getRoundStatusLabel(selectedLotteryStatus) : 'ยังไม่เลือกตลาด'}
+                        </span>
+                      </div>
+                      <FiChevronDown className={`operator-search-chevron ${marketPickerOpen ? 'is-open' : ''}`} />
+                    </button>
+                    {marketPickerOpen ? (
+                      <div className="operator-market-dropdown">
+                        {flatLotteries.map((lottery) => {
+                          const isSelected = lottery.id === selectedLottery?.id;
+                          const lotteryStatus = getLotteryRoundStatus(lottery);
+
+                          return (
+                            <button
+                              key={lottery.id}
+                              type="button"
+                              className={`operator-market-option ${isSelected ? 'is-selected' : ''}`}
+                              style={getLotteryThemeStyle(lottery)}
+                              onClick={async () => {
+                                if (isSelected) {
+                                  setMarketPickerOpen(false);
+                                  return;
+                                }
+
+                                await handleLotteryChange(lottery.id);
+                              }}
+                            >
+                              <div className="operator-market-option-copy">
+                                <strong>{lottery.leagueName} • {lottery.name}</strong>
+                                <small>{lottery.activeRound ? formatRoundLabel(lottery.activeRound.title || lottery.activeRound.code) : 'ยังไม่มีงวดปัจจุบัน'}</small>
+                              </div>
+                              <span className={`operator-market-status ${lotteryStatus === 'open' ? 'is-open' : 'is-closed'}`}>
+                                {getRoundStatusLabel(lotteryStatus)}
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    ) : null}
                   </div>
                   <div>
                     <label className="form-label">{copyText.roundLabel}</label>

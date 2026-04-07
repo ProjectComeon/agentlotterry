@@ -26,9 +26,149 @@ const COLORS = {
   cardTint: 'rgba(255, 245, 245, 0.96)',
   metaTop: 'rgba(255, 253, 253, 0.96)',
   metaBottom: 'rgba(255, 245, 245, 0.98)',
+  groupSurface: 'rgba(255, 245, 245, 0.96)',
+  summarySurface: 'rgba(255, 245, 245, 0.98)',
+  noteSurface: 'rgba(255, 245, 245, 0.98)',
+  badgeSurface: 'rgba(254, 226, 226, 0.96)',
+  numbersSurface: 'rgba(255, 254, 254, 0.96)',
+  modalGlowTop: 'rgba(254, 226, 226, 0.45)',
+  modalGlowBottom: 'rgba(255, 245, 245, 0.18)',
   shadowModal: 'rgba(127, 29, 29, 0.1)',
   shadowCard: 'rgba(127, 29, 29, 0.06)'
 };
+
+const SLIP_THEME_PALETTES = [
+  {
+    canvas: '#fff4de',
+    modal: '#fff8ea',
+    border: 'rgba(217, 119, 6, 0.18)',
+    borderAccent: 'rgba(217, 119, 6, 0.28)',
+    borderSoft: 'rgba(217, 119, 6, 0.16)',
+    primary: '#d97706',
+    primaryLight: '#f59e0b',
+    cardSurface: 'rgba(255, 251, 240, 0.99)',
+    cardTint: 'rgba(255, 227, 167, 0.72)',
+    metaTop: 'rgba(255, 244, 214, 0.98)',
+    metaBottom: 'rgba(255, 226, 160, 0.98)',
+    groupSurface: 'rgba(255, 236, 190, 0.7)',
+    summarySurface: 'rgba(255, 239, 203, 0.82)',
+    noteSurface: 'rgba(255, 243, 217, 0.84)',
+    badgeSurface: 'rgba(254, 215, 120, 0.94)',
+    numbersSurface: 'rgba(255, 252, 245, 0.97)',
+    modalGlowTop: 'rgba(253, 230, 138, 0.48)',
+    modalGlowBottom: 'rgba(255, 247, 220, 0.24)'
+  },
+  {
+    canvas: '#ecfbf1',
+    modal: '#f6fff8',
+    border: 'rgba(21, 128, 61, 0.16)',
+    borderAccent: 'rgba(21, 128, 61, 0.28)',
+    borderSoft: 'rgba(21, 128, 61, 0.16)',
+    primary: '#15803d',
+    primaryLight: '#22c55e',
+    cardSurface: 'rgba(245, 255, 248, 0.99)',
+    cardTint: 'rgba(187, 247, 208, 0.7)',
+    metaTop: 'rgba(220, 252, 231, 0.98)',
+    metaBottom: 'rgba(187, 247, 208, 0.98)',
+    groupSurface: 'rgba(187, 247, 208, 0.64)',
+    summarySurface: 'rgba(220, 252, 231, 0.82)',
+    noteSurface: 'rgba(220, 252, 231, 0.78)',
+    badgeSurface: 'rgba(134, 239, 172, 0.94)',
+    numbersSurface: 'rgba(247, 255, 250, 0.97)',
+    modalGlowTop: 'rgba(187, 247, 208, 0.46)',
+    modalGlowBottom: 'rgba(220, 252, 231, 0.22)'
+  },
+  {
+    canvas: '#edf5ff',
+    modal: '#f7fbff',
+    border: 'rgba(37, 99, 235, 0.16)',
+    borderAccent: 'rgba(37, 99, 235, 0.28)',
+    borderSoft: 'rgba(37, 99, 235, 0.16)',
+    primary: '#2563eb',
+    primaryLight: '#60a5fa',
+    cardSurface: 'rgba(246, 250, 255, 0.99)',
+    cardTint: 'rgba(191, 219, 254, 0.72)',
+    metaTop: 'rgba(219, 234, 254, 0.98)',
+    metaBottom: 'rgba(191, 219, 254, 0.98)',
+    groupSurface: 'rgba(191, 219, 254, 0.62)',
+    summarySurface: 'rgba(219, 234, 254, 0.82)',
+    noteSurface: 'rgba(219, 234, 254, 0.8)',
+    badgeSurface: 'rgba(147, 197, 253, 0.94)',
+    numbersSurface: 'rgba(248, 251, 255, 0.97)',
+    modalGlowTop: 'rgba(191, 219, 254, 0.5)',
+    modalGlowBottom: 'rgba(219, 234, 254, 0.22)'
+  },
+  {
+    canvas: '#fff0f7',
+    modal: '#fff8fc',
+    border: 'rgba(219, 39, 119, 0.16)',
+    borderAccent: 'rgba(219, 39, 119, 0.28)',
+    borderSoft: 'rgba(219, 39, 119, 0.16)',
+    primary: '#db2777',
+    primaryLight: '#f472b6',
+    cardSurface: 'rgba(255, 248, 252, 0.99)',
+    cardTint: 'rgba(251, 207, 232, 0.7)',
+    metaTop: 'rgba(252, 231, 243, 0.98)',
+    metaBottom: 'rgba(251, 207, 232, 0.98)',
+    groupSurface: 'rgba(251, 207, 232, 0.62)',
+    summarySurface: 'rgba(252, 231, 243, 0.82)',
+    noteSurface: 'rgba(252, 231, 243, 0.8)',
+    badgeSurface: 'rgba(249, 168, 212, 0.94)',
+    numbersSurface: 'rgba(255, 249, 252, 0.97)',
+    modalGlowTop: 'rgba(251, 207, 232, 0.46)',
+    modalGlowBottom: 'rgba(252, 231, 243, 0.22)'
+  },
+  {
+    canvas: '#f4f0ff',
+    modal: '#faf8ff',
+    border: 'rgba(124, 58, 237, 0.16)',
+    borderAccent: 'rgba(124, 58, 237, 0.28)',
+    borderSoft: 'rgba(124, 58, 237, 0.16)',
+    primary: '#7c3aed',
+    primaryLight: '#a78bfa',
+    cardSurface: 'rgba(250, 247, 255, 0.99)',
+    cardTint: 'rgba(221, 214, 254, 0.72)',
+    metaTop: 'rgba(237, 233, 254, 0.98)',
+    metaBottom: 'rgba(221, 214, 254, 0.98)',
+    groupSurface: 'rgba(221, 214, 254, 0.62)',
+    summarySurface: 'rgba(237, 233, 254, 0.84)',
+    noteSurface: 'rgba(237, 233, 254, 0.82)',
+    badgeSurface: 'rgba(196, 181, 253, 0.94)',
+    numbersSurface: 'rgba(250, 248, 255, 0.97)',
+    modalGlowTop: 'rgba(221, 214, 254, 0.48)',
+    modalGlowBottom: 'rgba(237, 233, 254, 0.22)'
+  },
+  {
+    canvas: '#ecfbfa',
+    modal: '#f6fffe',
+    border: 'rgba(13, 148, 136, 0.16)',
+    borderAccent: 'rgba(13, 148, 136, 0.28)',
+    borderSoft: 'rgba(13, 148, 136, 0.16)',
+    primary: '#0f766e',
+    primaryLight: '#14b8a6',
+    cardSurface: 'rgba(245, 255, 254, 0.99)',
+    cardTint: 'rgba(153, 246, 228, 0.68)',
+    metaTop: 'rgba(204, 251, 241, 0.98)',
+    metaBottom: 'rgba(153, 246, 228, 0.98)',
+    groupSurface: 'rgba(153, 246, 228, 0.62)',
+    summarySurface: 'rgba(204, 251, 241, 0.82)',
+    noteSurface: 'rgba(204, 251, 241, 0.8)',
+    badgeSurface: 'rgba(94, 234, 212, 0.92)',
+    numbersSurface: 'rgba(247, 255, 255, 0.97)',
+    modalGlowTop: 'rgba(153, 246, 228, 0.44)',
+    modalGlowBottom: 'rgba(204, 251, 241, 0.22)'
+  }
+];
+
+const hashThemeSeed = (value = '') =>
+  String(value || '')
+    .split('')
+    .reduce((total, char) => total + char.charCodeAt(0), 0);
+
+const getSlipThemeColors = (value) => ({
+  ...COLORS,
+  ...SLIP_THEME_PALETTES[hashThemeSeed(value) % SLIP_THEME_PALETTES.length]
+});
 
 const TYPE = {
   eyebrow: 0.78 * REM,
@@ -220,6 +360,7 @@ const buildPreviewImagePayload = ({
   title: 'ตรวจสอบก่อนบันทึกโพย',
   memberName: preview?.member?.name || selectedMember?.name || '-',
   marketName: selectedLottery?.name || preview?.lottery?.name || '-',
+  marketKey: selectedLottery?.code || selectedLottery?.id || selectedLottery?.name || preview?.lottery?.name || '-',
   roundLabel: formatThaiDate(selectedRound?.title || preview?.round?.title || selectedRound?.code || preview?.round?.code || '-'),
   totalAmount: Number(preview?.summary?.totalAmount || 0),
   groups: buildSlipDisplayGroups(preview?.items || []),
@@ -239,6 +380,7 @@ const buildSavedSlipImagePayload = ({ slip }) => {
     title: 'ตรวจสอบก่อนบันทึกโพย',
     memberName: slip?.customer?.name || '-',
     marketName: slip?.marketName || '-',
+    marketKey: slip?.marketCode || slip?.marketId || slip?.marketName || '-',
     roundLabel: formatThaiDate(normalizeRoundLabel(slip?.marketName, slip?.roundLabel || slip?.roundDate || '-')),
     totalAmount,
     groups,
@@ -529,6 +671,7 @@ const renderGroupedSlipImageWithBottomSummary = (payload) => {
   const noteTitle = '\u0e1a\u0e31\u0e19\u0e17\u0e36\u0e01\u0e0a\u0e48\u0e27\u0e22\u0e08\u0e33';
   const bahtLabel = '\u0e1a\u0e32\u0e17';
   const renderErrorLabel = '\u0e44\u0e21\u0e48\u0e2a\u0e32\u0e21\u0e32\u0e23\u0e16\u0e2a\u0e23\u0e49\u0e32\u0e07\u0e23\u0e39\u0e1b\u0e42\u0e1e\u0e22\u0e44\u0e14\u0e49';
+  const colors = getSlipThemeColors(payload.marketKey || payload.marketName);
 
   const ratio = window.devicePixelRatio > 1 ? 2 : 1;
   const measureCanvas = document.createElement('canvas');
@@ -546,7 +689,7 @@ const renderGroupedSlipImageWithBottomSummary = (payload) => {
   ctx.scale(ratio, ratio);
   ctx.imageSmoothingEnabled = true;
 
-  ctx.fillStyle = COLORS.canvas;
+  ctx.fillStyle = colors.canvas;
   ctx.fillRect(0, 0, CANVAS_WIDTH, canvasHeight);
 
   const modalX = FRAME_PADDING;
@@ -558,29 +701,40 @@ const renderGroupedSlipImageWithBottomSummary = (payload) => {
     MODAL_WIDTH,
     layout.modalHeight,
     20,
-    COLORS.modal,
-    COLORS.border,
-    { shadowColor: COLORS.shadowModal, shadowBlur: 26, shadowOffsetY: 10 }
+    colors.modal,
+    colors.border,
+    { shadowColor: colors.shadowModal, shadowBlur: 26, shadowOffsetY: 10 }
+  );
+  drawLinearCard(
+    ctx,
+    modalX,
+    modalY,
+    MODAL_WIDTH,
+    layout.modalHeight,
+    20,
+    colors.modalGlowTop,
+    colors.modalGlowBottom,
+    colors.border
   );
 
   const contentX = modalX + MODAL_PADDING_X;
   let y = modalY + MODAL_PADDING_TOP;
 
   ctx.textAlign = 'left';
-  ctx.fillStyle = COLORS.primaryLight;
+  ctx.fillStyle = colors.primaryLight;
   ctx.font = `700 ${TYPE.eyebrow}px sans-serif`;
   ctx.fillText(payload.eyebrow, contentX, y + 13);
 
-  ctx.fillStyle = COLORS.textPrimary;
+  ctx.fillStyle = colors.textPrimary;
   ctx.font = `700 ${TYPE.title}px sans-serif`;
   ctx.fillText(payload.title, contentX, y + 38);
 
   y += layout.headerHeight + 14;
 
-  drawShadowCard(ctx, contentX, y, layout.contentWidth, layout.metaCardHeight, 16, COLORS.metaTop, COLORS.borderAccent);
-  drawLinearCard(ctx, contentX, y, layout.contentWidth, layout.metaCardHeight, 16, COLORS.metaTop, COLORS.metaBottom, COLORS.borderAccent);
+  drawShadowCard(ctx, contentX, y, layout.contentWidth, layout.metaCardHeight, 16, colors.metaTop, colors.borderAccent);
+  drawLinearCard(ctx, contentX, y, layout.contentWidth, layout.metaCardHeight, 16, colors.metaTop, colors.metaBottom, colors.borderAccent);
 
-  ctx.fillStyle = COLORS.textPrimary;
+  ctx.fillStyle = colors.textPrimary;
   ctx.font = `700 ${TYPE.metaLine}px sans-serif`;
   ctx.fillText(`${memberLabel}: ${payload.memberName}`, contentX + 16, y + 28);
   ctx.fillText(`${marketLabel}: ${payload.marketName}`, contentX + 16, y + 58);
@@ -589,15 +743,15 @@ const renderGroupedSlipImageWithBottomSummary = (payload) => {
   y += layout.metaCardHeight + SECTION_GAP;
 
   if (!layout.groups.length) {
-    drawShadowCard(ctx, contentX, y, layout.contentWidth, layout.emptyCardHeight, 16, COLORS.cardSurface, COLORS.border);
-    ctx.fillStyle = COLORS.textMuted;
+    drawShadowCard(ctx, contentX, y, layout.contentWidth, layout.emptyCardHeight, 16, colors.cardSurface, colors.border);
+    ctx.fillStyle = colors.textMuted;
     ctx.font = `600 ${TYPE.empty}px sans-serif`;
     ctx.fillText(emptyItemsLabel, contentX + 16, y + 42);
     y += layout.emptyCardHeight;
   } else {
     layout.groups.forEach((group, index) => {
       const cardY = y;
-      drawShadowCard(ctx, contentX, cardY, layout.contentWidth, group.cardHeight, 16, COLORS.cardSurface, COLORS.border);
+      drawShadowCard(ctx, contentX, cardY, layout.contentWidth, group.cardHeight, 16, colors.groupSurface, colors.border);
 
       const badgeX = contentX + GROUP.cardPaddingX;
       const maxBadgeHeight = group.cardHeight - (GROUP.cardPaddingY * 2);
@@ -619,14 +773,14 @@ const renderGroupedSlipImageWithBottomSummary = (payload) => {
         GROUP.badgeWidth,
         badgeHeight,
         10,
-        COLORS.cardTint,
-        COLORS.borderSoft
+        colors.badgeSurface,
+        colors.borderSoft
       );
 
       ctx.save();
       ctx.textAlign = 'center';
       ctx.textBaseline = 'top';
-      ctx.fillStyle = COLORS.primary;
+      ctx.fillStyle = colors.primary;
       const badgeTextStartY = badgeY + ((badgeHeight - badgeTextHeight) / 2);
       ctx.font = `800 ${TYPE.groupFamily}px sans-serif`;
       ctx.fillText(group.familyLabel, badgeX + (GROUP.badgeWidth / 2), badgeTextStartY);
@@ -647,7 +801,7 @@ const renderGroupedSlipImageWithBottomSummary = (payload) => {
       const bodyWidth = layout.contentWidth - (GROUP.cardPaddingX * 2) - GROUP.badgeWidth - GROUP.cardGap;
 
       ctx.textAlign = 'left';
-      ctx.fillStyle = COLORS.textPrimary;
+      ctx.fillStyle = colors.textPrimary;
       ctx.font = `700 ${TYPE.groupTotal}px sans-serif`;
       ctx.fillText(`${money(group.totalAmount)} ${bahtLabel}`, bodyX, badgeY + 18);
 
@@ -660,11 +814,11 @@ const renderGroupedSlipImageWithBottomSummary = (payload) => {
         bodyWidth,
         numbersBoxHeight,
         12,
-        COLORS.cardSurface,
-        COLORS.borderSoft
+        colors.numbersSurface,
+        colors.borderSoft
       );
 
-      ctx.fillStyle = COLORS.textPrimary;
+      ctx.fillStyle = colors.textPrimary;
       ctx.font = `700 ${TYPE.numbers}px sans-serif`;
       group.numberLines.forEach((line, lineIndex) => {
         ctx.fillText(
@@ -680,15 +834,15 @@ const renderGroupedSlipImageWithBottomSummary = (payload) => {
 
   y += 8;
 
-  drawShadowCard(ctx, contentX, y, layout.contentWidth, layout.summaryCardHeight, 16, COLORS.cardSurface, COLORS.border);
+  drawShadowCard(ctx, contentX, y, layout.contentWidth, layout.summaryCardHeight, 16, colors.summarySurface, colors.border);
   const summaryColWidth = layout.contentWidth / 2;
 
-  ctx.fillStyle = COLORS.textMuted;
+  ctx.fillStyle = colors.textMuted;
   ctx.font = `600 ${TYPE.summaryLabel}px sans-serif`;
   ctx.fillText(memberLabel, contentX + 18, y + 22);
   ctx.fillText(totalLabel, contentX + summaryColWidth + 18, y + 22);
 
-  ctx.fillStyle = COLORS.textPrimary;
+  ctx.fillStyle = colors.textPrimary;
   ctx.font = `700 ${TYPE.summaryValue}px sans-serif`;
   ctx.fillText(payload.memberName, contentX + 18, y + 48);
   ctx.fillText(`${money(payload.totalAmount)} ${bahtLabel}`, contentX + summaryColWidth + 18, y + 48);
@@ -697,12 +851,12 @@ const renderGroupedSlipImageWithBottomSummary = (payload) => {
 
   if (layout.showNote) {
     y += 8;
-    drawShadowCard(ctx, contentX, y, layout.contentWidth, layout.noteCardHeight, 16, COLORS.cardSurface, COLORS.borderSoft);
-    ctx.fillStyle = COLORS.textMuted;
+    drawShadowCard(ctx, contentX, y, layout.contentWidth, layout.noteCardHeight, 16, colors.noteSurface, colors.borderSoft);
+    ctx.fillStyle = colors.textMuted;
     ctx.font = `600 ${TYPE.noteLabel}px sans-serif`;
     ctx.fillText(noteTitle, contentX + NOTE.paddingX, y + 22);
 
-    ctx.fillStyle = COLORS.textPrimary;
+    ctx.fillStyle = colors.textPrimary;
     ctx.font = `700 ${TYPE.noteText}px sans-serif`;
     layout.noteLines.forEach((line, lineIndex) => {
       ctx.fillText(

@@ -7,7 +7,7 @@ const LotteryType = require('../models/LotteryType');
 const RateProfile = require('../models/RateProfile');
 const ResultRecord = require('../models/ResultRecord');
 const { getStoredLatestExternalResults } = require('./externalResultFeedService');
-const { getMemberConfigRows } = require('./memberManagementService');
+const { getMemberConfigRows, normalizeEnabledBetTypes } = require('./memberManagementService');
 const {
   DEFAULT_RATE_TIERS,
   LOTTERY_LEAGUES,
@@ -383,7 +383,7 @@ const getCatalogOverview = async (viewer = null) => {
       ? normalizeRateMap(memberConfig.customRates)
       : normalizeRateMap(selectedRateProfile?.rates);
     const supportedBetTypes = memberConfig?.enabledBetTypes?.length
-      ? lottery.supportedBetTypes.filter((betType) => memberConfig.enabledBetTypes.includes(betType))
+      ? normalizeEnabledBetTypes(memberConfig.enabledBetTypes, lottery.supportedBetTypes)
       : lottery.supportedBetTypes;
     const lotteryRounds = (roundsByLottery[lottery._id.toString()] || []).sort((a, b) => a.drawAt - b.drawAt);
     const now = new Date();

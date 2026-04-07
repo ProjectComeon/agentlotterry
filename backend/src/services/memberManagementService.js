@@ -93,6 +93,23 @@ const normalizeEnabledBetTypes = (value, supportedBetTypes) => {
     }
   }
 
+  // Legacy non-government configs could previously store `3bottom` where the
+  // market now correctly exposes `3tod`. If the member kept the full old set,
+  // preserve access by translating that legacy flag forward.
+  if (
+    supportedBetTypes.includes('3tod') &&
+    !supportedBetTypes.includes('3bottom') &&
+    !nextTypes.includes('3tod') &&
+    value.includes('3bottom')
+  ) {
+    const comparableSupportedTypes = supportedBetTypes.filter((betType) => betType !== '3tod');
+    const matchesLegacyDefault = comparableSupportedTypes.every((betType) => nextTypes.includes(betType));
+
+    if (matchesLegacyDefault) {
+      return [...nextTypes, '3tod'];
+    }
+  }
+
   return nextTypes;
 };
 
@@ -879,5 +896,6 @@ module.exports = {
   getMemberLotteryAccess,
   searchMembersForBetting,
   getMemberForBettingActor,
-  getMemberConfigRows
+  getMemberConfigRows,
+  normalizeEnabledBetTypes
 };

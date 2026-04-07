@@ -913,6 +913,10 @@ input, select, textarea {
   grid-template-columns: minmax(0, 6fr) minmax(320px, 4fr);
   gap: 10px;
   align-items: start;
+  --lottery-bg: #fff8f8;
+  --lottery-border: rgba(220, 38, 38, 0.18);
+  --lottery-accent: var(--primary);
+  --lottery-soft: rgba(220, 38, 38, 0.08);
 }
 
 .operator-member-panel,
@@ -924,6 +928,9 @@ input, select, textarea {
 .operator-composer-panel,
 .operator-preview-panel {
   padding: 14px 16px;
+  border-color: var(--lottery-border);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.96), color-mix(in srgb, var(--lottery-bg) 72%, white 28%));
 }
 
 .operator-composer-divider {
@@ -935,6 +942,131 @@ input, select, textarea {
 .operator-search-block {
   margin-top: 0;
   position: relative;
+}
+
+.operator-market-picker {
+  position: relative;
+}
+
+.operator-market-trigger {
+  width: 100%;
+  min-height: 58px;
+  padding: 10px 14px;
+  border-radius: 14px;
+  border: 1px solid var(--lottery-border, rgba(220, 38, 38, 0.22));
+  background: var(--lottery-bg, #fff8f8);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72);
+  transition: border-color 0.18s ease, box-shadow 0.18s ease, transform 0.18s ease;
+}
+
+.operator-market-trigger.is-open {
+  border-color: var(--lottery-accent, var(--primary));
+  box-shadow: 0 0 0 3px var(--lottery-soft, rgba(220, 38, 38, 0.12));
+}
+
+.operator-market-trigger-copy {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+}
+
+.operator-market-trigger-copy strong {
+  font-size: 0.98rem;
+  font-weight: 800;
+  color: var(--text-primary);
+  line-height: 1.2;
+  text-align: left;
+}
+
+.operator-market-dropdown {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  right: 0;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  border-radius: 18px;
+  border: 1px solid rgba(220, 38, 38, 0.18);
+  background: #fffdfd;
+  box-shadow: 0 22px 40px rgba(127, 29, 29, 0.14);
+  max-height: 420px;
+  overflow: auto;
+}
+
+.operator-market-option {
+  width: 100%;
+  padding: 12px 14px;
+  border-radius: 16px;
+  border: 1px solid var(--lottery-border, rgba(220, 38, 38, 0.16));
+  background: var(--lottery-bg, #fff8f8);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  text-align: left;
+  transition: transform 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
+}
+
+.operator-market-option:hover,
+.operator-market-option.is-selected {
+  transform: translateY(-1px);
+  border-color: var(--lottery-accent, var(--primary));
+  box-shadow: 0 8px 18px var(--lottery-soft, rgba(220, 38, 38, 0.12));
+}
+
+.operator-market-option-copy {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.operator-market-option-copy strong {
+  color: var(--text-primary);
+  font-size: 0.95rem;
+  font-weight: 800;
+  line-height: 1.2;
+}
+
+.operator-market-option-copy small {
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+  line-height: 1.2;
+}
+
+.operator-market-status {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 90px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 800;
+  line-height: 1;
+  border: 1px solid transparent;
+  flex-shrink: 0;
+}
+
+.operator-market-status.is-open {
+  background: rgba(34, 197, 94, 0.12);
+  border-color: rgba(34, 197, 94, 0.22);
+  color: #15803d;
+}
+
+.operator-market-status.is-closed {
+  background: rgba(239, 68, 68, 0.12);
+  border-color: rgba(239, 68, 68, 0.18);
+  color: #dc2626;
 }
 
 .operator-search-field {
@@ -1137,11 +1269,15 @@ input, select, textarea {
 
 .operator-fast-entry-row-2,
 .operator-fast-entry-row-run {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: minmax(220px, 1.35fr) repeat(3, minmax(0, 1fr));
 }
 
 .operator-fast-entry-row-3 {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: minmax(220px, 1.35fr) repeat(4, minmax(0, 1fr));
+}
+
+.operator-fast-entry-row-lao_set {
+  grid-template-columns: minmax(220px, 1.35fr) minmax(0, 1fr);
 }
 
 .operator-fast-amount-card {
@@ -1150,8 +1286,8 @@ input, select, textarea {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  border: 1px solid rgba(220, 38, 38, 0.24);
-  background: #fff;
+  border: 1px solid var(--lottery-border);
+  background: color-mix(in srgb, var(--lottery-bg) 64%, white 36%);
   border-radius: 12px;
 }
 
@@ -1172,8 +1308,8 @@ input, select, textarea {
 }
 
 .operator-fast-order-card {
-  border-color: rgba(220, 38, 38, 0.4);
-  background: #fff;
+  border-color: color-mix(in srgb, var(--lottery-accent) 34%, white 66%);
+  background: color-mix(in srgb, var(--lottery-bg) 76%, white 24%);
 }
 
 .operator-seed-selector-card {
@@ -1270,8 +1406,8 @@ input, select, textarea {
 .operator-grid-entry-card {
   padding: 10px;
   box-shadow: none;
-  border: 1px solid rgba(220, 38, 38, 0.34);
-  background: #fff6f6;
+  border: 1px solid var(--lottery-border);
+  background: color-mix(in srgb, var(--lottery-bg) 78%, white 22%);
   border-radius: 12px;
 }
 
@@ -1315,8 +1451,8 @@ input, select, textarea {
 .operator-grid-bulk-card {
   padding: 8px;
   box-shadow: none;
-  border: 1px solid rgba(220, 38, 38, 0.34);
-  background: #fff6f6;
+  border: 1px solid var(--lottery-border);
+  background: color-mix(in srgb, var(--lottery-bg) 78%, white 22%);
   border-radius: 12px;
 }
 
@@ -1354,6 +1490,8 @@ input, select, textarea {
   align-items: center;
   width: 100%;
   overflow: hidden;
+  border-color: var(--lottery-border);
+  background: color-mix(in srgb, var(--lottery-bg) 78%, white 22%);
 }
 
 .operator-grid-delete {
@@ -1400,6 +1538,8 @@ input, select, textarea {
   gap: 12px;
   padding: 12px;
   box-shadow: none;
+  border-color: var(--lottery-border);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--lottery-bg) 74%, white 26%), rgba(255, 255, 255, 0.96));
 }
 
 .operator-slip-group-card-dense {
@@ -1421,8 +1561,8 @@ input, select, textarea {
   min-height: 86px;
   padding: 10px 8px;
   border-radius: 16px;
-  border: 1px solid rgba(220, 38, 38, 0.14);
-  background: rgba(255, 245, 245, 0.96);
+  border: 1px solid var(--lottery-border);
+  background: color-mix(in srgb, var(--lottery-bg) 88%, white 12%);
   text-align: center;
 }
 
@@ -1479,8 +1619,8 @@ input, select, textarea {
 .operator-slip-numbers {
   padding: 12px 14px;
   border-radius: 16px;
-  border: 1px solid rgba(220, 38, 38, 0.12);
-  background: rgba(255, 253, 253, 0.96);
+  border: 1px solid color-mix(in srgb, var(--lottery-border) 88%, white 12%);
+  background: color-mix(in srgb, var(--lottery-bg) 36%, white 64%);
   font-size: 1rem;
   font-weight: 700;
   line-height: 1.55;
@@ -1669,6 +1809,8 @@ input, select, textarea {
   padding: 10px 12px;
   margin-top: 8px;
   box-shadow: none;
+  border-color: var(--lottery-border);
+  background: color-mix(in srgb, var(--lottery-bg) 62%, white 38%);
 }
 
 .operator-preview-compact-summary strong {
@@ -1681,8 +1823,8 @@ input, select, textarea {
 .operator-preview-meta {
   padding: 8px 10px;
   margin-top: 8px;
-  border-color: rgba(220, 38, 38, 0.2);
-  background: linear-gradient(180deg, rgba(255, 253, 253, 0.96), rgba(255, 245, 245, 0.98));
+  border-color: var(--lottery-border);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--lottery-bg) 70%, white 30%), rgba(255, 255, 255, 0.98));
 }
 
 .operator-preview-meta-row {
@@ -1714,6 +1856,8 @@ input, select, textarea {
 .operator-preview-summary .card {
   padding: 8px 10px;
   box-shadow: none;
+  border-color: var(--lottery-border);
+  background: color-mix(in srgb, var(--lottery-bg) 58%, white 42%);
 }
 
 .operator-preview-summary .card strong {
@@ -1798,6 +1942,8 @@ input, select, textarea {
   margin-top: 4px;
   padding: 7px 10px;
   box-shadow: none;
+  border-color: var(--lottery-border);
+  background: color-mix(in srgb, var(--lottery-bg) 68%, white 32%);
 }
 
 .operator-preview-note strong {
@@ -1870,7 +2016,7 @@ input, select, textarea {
 }
 
 .recent-slip-grouped-summary .operator-slip-group-card {
-  background: rgba(255, 253, 253, 0.96);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--lottery-bg) 74%, white 26%), rgba(255, 255, 255, 0.96));
 }
 
 .slip-grouped-compact .operator-slip-group-list,
@@ -2010,6 +2156,19 @@ input, select, textarea {
 
   .recent-slip-card-summary {
     grid-template-columns: 1fr;
+  }
+
+  .operator-market-option,
+  .operator-market-trigger {
+    align-items: flex-start;
+  }
+
+  .operator-market-option {
+    flex-direction: column;
+  }
+
+  .operator-market-status {
+    min-width: 0;
   }
 }
 
