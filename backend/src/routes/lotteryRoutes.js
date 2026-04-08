@@ -11,6 +11,10 @@ const { createAuditLog } = require('../middleware/auditLog');
 const { BET_TYPES } = require('../constants/betting');
 
 const router = express.Router();
+const getErrorStatus = (error, fallback = 500) => {
+  const statusCode = Number(error?.statusCode);
+  return Number.isInteger(statusCode) && statusCode >= 400 ? statusCode : fallback;
+};
 
 router.get('/latest', auth, async (req, res) => {
   try {
@@ -85,7 +89,7 @@ router.post('/fetch', auth, authorize('admin'), async (req, res) => {
     });
   } catch (error) {
     console.error('Fetch lottery error:', error);
-    res.status(500).json({ message: error.message || 'Failed to fetch lottery result' });
+    res.status(getErrorStatus(error)).json({ message: error.message || 'Failed to fetch lottery result' });
   }
 });
 
@@ -119,7 +123,7 @@ router.post('/manual', auth, authorize('admin'), async (req, res) => {
     });
   } catch (error) {
     console.error('Manual lottery error:', error);
-    res.status(500).json({ message: error.message || 'Server error' });
+    res.status(getErrorStatus(error)).json({ message: error.message || 'Server error' });
   }
 });
 

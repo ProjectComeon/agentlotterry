@@ -97,6 +97,19 @@ const betItemSchema = new mongoose.Schema({
     type: Number,
     default: 0
   },
+  payoutAppliedAmount: {
+    type: Number,
+    default: 0
+  },
+  payoutLedgerGroupId: {
+    type: String,
+    default: '',
+    trim: true
+  },
+  payoutUpdatedAt: {
+    type: Date,
+    default: null
+  },
   isLocked: {
     type: Boolean,
     default: false

@@ -16,6 +16,7 @@ const LotteryType = require('../models/LotteryType');
 const ResultRecord = require('../models/ResultRecord');
 const User = require('../models/User');
 const UserLotteryConfig = require('../models/UserLotteryConfig');
+const { getSlipDetail, getMemberSummary } = require('../services/betSlipService');
 const { buildDirectMongoUri } = require('../utils/mongoUri');
 
 const backendDir = path.join(__dirname, '..', '..');
@@ -213,7 +214,6 @@ const main = async () => {
   let server;
   let adminToken = '';
   let agentToken = '';
-  let memberToken = '';
   const created = {
     walletGroupIds: []
   };
@@ -334,48 +334,25 @@ const main = async () => {
     created.walletGroupIds.push(transferToMemberResponse.data.groupId);
     summary.checks.push('agent-transfer-to-member');
 
-    const memberLogin = await loginWithRetry(memberUsername, memberPassword, 'Member');
-    memberToken = memberLogin.token;
-    summary.checks.push('member-login');
+    const memberContextResponse = await agentClient.get(`/agent/betting/members/${created.memberId}/context`);
+    expectStatus(memberContextResponse, 200, 'Agent member betting context');
+    summary.checks.push('agent-member-betting-context');
 
-    const memberClient = makeClient(memberToken);
-    const [memberHeartbeatResponse, memberCatalogResponse] = await Promise.all([
-      memberClient.post('/presence/heartbeat'),
-      memberClient.get('/catalog/overview')
-    ]);
-    expectStatus(memberHeartbeatResponse, 200, 'Member heartbeat');
-    expectStatus(memberCatalogResponse, 200, 'Member catalog overview');
-    summary.checks.push('member-heartbeat');
-    summary.checks.push('member-catalog-overview');
-
-    const visibleLotteries = flattenLotteries(memberCatalogResponse.data);
+    const visibleLotteries = flattenLotteries(memberContextResponse.data.catalog || {});
     assert(visibleLotteries.length === 1, `Expected exactly 1 enabled lottery, found ${visibleLotteries.length}`);
     assert(visibleLotteries[0].code === created.round.lotteryCode, 'Member lottery visibility is incorrect');
     summary.checks.push('member-catalog-filtering');
 
-    const roundsResponse = await memberClient.get('/catalog/rounds', {
-      params: { lotteryId: visibleLotteries[0].id }
-    });
-    expectStatus(roundsResponse, 200, 'Member rounds');
-    const regressionRound = (roundsResponse.data || []).find((round) => round.code === created.roundCode);
+    const regressionRound = visibleLotteries[0].activeRound;
     assert(regressionRound, 'Regression round was not visible to the member');
+    assert(regressionRound.id === created.roundId, 'Regression round should be active for betting');
     summary.checks.push('member-rounds');
-
-    const memberWalletSelfResponse = await memberClient.get('/wallet/summary');
-    expectStatus(memberWalletSelfResponse, 200, 'Member wallet summary');
-    assert(Number(memberWalletSelfResponse.data.account?.creditBalance || 0) === 100, 'Member wallet balance should equal 100 after funding');
-    summary.checks.push('member-wallet-summary');
-
-    const forbiddenWalletResponse = await memberClient.get('/wallet/summary', {
-      params: { targetUserId: created.agentId }
-    });
-    assert(forbiddenWalletResponse.status === 403, 'Member should not be able to view agent wallet summary');
-    summary.checks.push('wallet-access-control');
 
     const agentViewMemberWalletResponse = await agentClient.get('/wallet/summary', {
       params: { targetUserId: created.memberId }
     });
     expectStatus(agentViewMemberWalletResponse, 200, 'Agent wallet summary for member');
+    assert(Number(agentViewMemberWalletResponse.data.account?.creditBalance || 0) === 100, 'Member wallet balance should equal 100 after funding');
     summary.checks.push('agent-wallet-member-view');
 
     const insufficientTransferResponse = await agentClient.post('/wallet/transfer', {
@@ -387,7 +364,8 @@ const main = async () => {
     assert(insufficientTransferResponse.status === 400, 'Oversized transfer should fail');
     summary.checks.push('wallet-insufficient-balance');
 
-    const reverseParseResponse = await memberClient.post('/member/slips/parse', {
+    const reverseParseResponse = await agentClient.post('/agent/betting/slips/parse', {
+      customerId: created.memberId,
       lotteryId: visibleLotteries[0].id,
       roundId: regressionRound.id,
       rateProfileId: visibleLotteries[0].defaultRateProfileId,
@@ -403,7 +381,8 @@ const main = async () => {
     assert(reverseParseResponse.data.items.every((item) => item.payRate === 87), 'Reverse parse should use custom 2top rate');
     summary.checks.push('member-parse-reverse');
 
-    const doubleSetParseResponse = await memberClient.post('/member/slips/parse', {
+    const doubleSetParseResponse = await agentClient.post('/agent/betting/slips/parse', {
+      customerId: created.memberId,
       lotteryId: visibleLotteries[0].id,
       roundId: regressionRound.id,
       rateProfileId: visibleLotteries[0].defaultRateProfileId,
@@ -418,7 +397,8 @@ const main = async () => {
     assert(doubleSetParseResponse.data.items.length === 10, 'Double-set helper should generate 10 repeated-digit numbers');
     summary.checks.push('member-parse-double-set');
 
-    const submitSlipResponse = await memberClient.post('/member/slips', {
+    const submitSlipResponse = await agentClient.post('/agent/betting/slips', {
+      customerId: created.memberId,
       lotteryId: visibleLotteries[0].id,
       roundId: regressionRound.id,
       rateProfileId: visibleLotteries[0].defaultRateProfileId,
@@ -445,9 +425,36 @@ const main = async () => {
     assert((pendingReportResponse.data.pendingRows || []).some((item) => item.slipId === created.slipId), 'Pending report should include submitted slip');
     summary.checks.push('agent-report-pending-before-result');
 
+    const incompleteResultResponse = await adminClient.post('/lottery/manual', {
+      roundDate: created.roundCode,
+      firstPrize: '123456',
+      twoBottom: '56',
+      runTop: ['4', '5', '6'],
+      runBottom: ['5', '6']
+    });
+    assert(
+      incompleteResultResponse.status === 400,
+      `Incomplete government result should be rejected before publish/settle (got ${incompleteResultResponse.status}: ${JSON.stringify(incompleteResultResponse.data)})`
+    );
+    assert(
+      /3 ตัวหน้า|threeFront|3 ตัวล่าง|threeBottom/i.test(String(incompleteResultResponse.data?.message || '')),
+      `Incomplete result error should explain missing 3-front/3-bottom prizes (got "${incompleteResultResponse.data?.message || ''}")`
+    );
+    const [resultRecordAfterIncomplete, winningItemAfterIncomplete] = await Promise.all([
+      ResultRecord.findOne({ drawRoundId: created.roundId }).lean(),
+      BetItem.findOne({ slipId: created.slipId, number: '456' }).lean()
+    ]);
+    assert(!resultRecordAfterIncomplete, 'Incomplete government result must not create a published result record');
+    assert(winningItemAfterIncomplete, 'Winning item should still exist after incomplete result rejection');
+    assert(winningItemAfterIncomplete.result === 'pending', 'Incomplete result must not settle any bet item');
+    assert(winningItemAfterIncomplete.isLocked === false, 'Incomplete result must not lock bet items');
+    summary.checks.push('admin-manual-result-validation');
+
     const saveResultResponse = await adminClient.post('/lottery/manual', {
       roundDate: created.roundCode,
       firstPrize: '123456',
+      threeTopList: ['123', '456'],
+      threeBotList: ['111', '222'],
       twoBottom: '56',
       runTop: ['4', '5', '6'],
       runBottom: ['5', '6']
@@ -456,36 +463,55 @@ const main = async () => {
     assert(Number(saveResultResponse.data.settlement?.wonCount || 0) >= 1, 'Settlement should mark at least one winning item');
     summary.checks.push('admin-manual-result');
 
-    const [slipDetailAfterResult, roundResultResponse, recentResultsResponse] = await Promise.all([
-      memberClient.get(`/member/slips/${created.slipId}`),
-      memberClient.get(`/results/round/${regressionRound.id}`),
-      memberClient.get('/results/recent', { params: { lotteryId: visibleLotteries[0].id, limit: 10 } })
+    const [slipDetailAfterResult, roundResultResponse, recentResultsResponse, memberWalletAfterResult, settlementLedgerEntriesAfterResult, rawWinningItemAfterResult] = await Promise.all([
+      getSlipDetail({ customerId: created.memberId, slipId: created.slipId }),
+      agentClient.get(`/results/round/${regressionRound.id}`),
+      agentClient.get('/results/recent', { params: { lotteryId: visibleLotteries[0].id, limit: 10 } }),
+      agentClient.get('/wallet/summary', { params: { targetUserId: created.memberId } }),
+      CreditLedgerEntry.find({ userId: created.memberId, entryType: 'settlement' }).lean(),
+      BetItem.findOne({ slipId: created.slipId, number: '456' }).lean()
     ]);
-    expectStatus(slipDetailAfterResult, 200, 'Slip detail after result');
     expectStatus(roundResultResponse, 200, 'Round result');
     expectStatus(recentResultsResponse, 200, 'Recent results');
+    expectStatus(memberWalletAfterResult, 200, 'Member wallet after result');
 
-    const winningItem = (slipDetailAfterResult.data.items || []).find((item) => item.number === '456');
+    const winningItem = (slipDetailAfterResult.items || []).find((item) => item.number === '456');
     assert(winningItem, 'Winning slip item not found in slip detail');
     assert(winningItem.result === 'won', 'Winning item should be marked won');
     assert(winningItem.isLocked === true, 'Winning item should be locked after settlement');
-    assert(Number(winningItem.wonAmount || 0) === 9870, 'Winning amount should equal 10 * 987');
+    assert(
+      Number(winningItem.wonAmount || 0) === 9870,
+      `Winning amount should equal 10 * 987 (got wonAmount=${winningItem.wonAmount}, payRate=${winningItem.payRate}, amount=${winningItem.amount})`
+    );
+    assert(
+      Number(memberWalletAfterResult.data.account?.creditBalance || 0) === 9970,
+      `Member wallet should receive the winning payout exactly once (got balance=${memberWalletAfterResult.data.account?.creditBalance}, wonAmount=${winningItem.wonAmount}, ledgerEntries=${settlementLedgerEntriesAfterResult.length}, ledgerAmount=${settlementLedgerEntriesAfterResult[0]?.amount || 0}, rawPayoutApplied=${rawWinningItemAfterResult?.payoutAppliedAmount || 0}, rawResult=${rawWinningItemAfterResult?.result || ''}, rawLocked=${rawWinningItemAfterResult?.isLocked || false})`
+    );
+    assert(
+      settlementLedgerEntriesAfterResult.length === 1,
+      `Settlement should create exactly one payout ledger entry for the member (got ${settlementLedgerEntriesAfterResult.length})`
+    );
+    assert(
+      Number(settlementLedgerEntriesAfterResult[0]?.amount || 0) === 9870,
+      `Settlement ledger amount should equal the winning payout (got ${settlementLedgerEntriesAfterResult[0]?.amount || 0})`
+    );
     assert(roundResultResponse.data.threeTop === '456', 'Round result should expose 3top=456');
     assert((recentResultsResponse.data || []).some((item) => item.roundCode === created.roundCode), 'Recent results should include regression round');
     summary.checks.push('member-slip-result');
     summary.checks.push('results-round');
     summary.checks.push('results-recent');
 
-    const summaryResponse = await memberClient.get('/member/reports/summary', {
-      params: { roundCode: created.roundCode, marketId: created.round.lotteryCode }
+    const summaryResponse = await getMemberSummary({
+      customerId: created.memberId,
+      roundCode: created.roundCode,
+      marketId: created.round.lotteryCode
     });
-    expectStatus(summaryResponse, 200, 'Member summary after result');
-    assert(Number(summaryResponse.data.overall?.totalWon || 0) >= 9870, 'Member summary should include winning amount');
+    assert(Number(summaryResponse.overall?.totalWon || 0) >= 9870, 'Member summary should include winning amount');
     summary.checks.push('member-summary-after-result');
 
-    const cancelAfterSettlementResponse = await memberClient.post(`/member/slips/${created.slipId}/cancel`);
+    const cancelAfterSettlementResponse = await adminClient.post(`/admin/betting/slips/${created.slipId}/cancel`);
     assert(cancelAfterSettlementResponse.status === 400, 'Settled slip should not be cancellable');
-    summary.checks.push('member-cancel-blocked-after-result');
+    summary.checks.push('admin-cancel-blocked-after-result');
 
     const transferBackResponse = await agentClient.post('/wallet/transfer', {
       memberId: created.memberId,
@@ -499,9 +525,10 @@ const main = async () => {
 
     const [agentWalletAfterTransfers, memberWalletAfterTransfers, memberWalletCreditHistory] = await Promise.all([
       agentClient.get('/wallet/summary'),
-      memberClient.get('/wallet/summary'),
-      memberClient.get('/wallet/history', {
+      agentClient.get('/wallet/summary', { params: { targetUserId: created.memberId } }),
+      agentClient.get('/wallet/history', {
         params: {
+          targetUserId: created.memberId,
           direction: 'credit',
           entryType: 'transfer',
           limit: 20
@@ -512,7 +539,7 @@ const main = async () => {
     expectStatus(memberWalletAfterTransfers, 200, 'Member wallet after transfers');
     expectStatus(memberWalletCreditHistory, 200, 'Member filtered wallet history');
     assert(Number(agentWalletAfterTransfers.data.account?.creditBalance || 0) === 220, 'Agent wallet should be 220 after to_member and from_member transfers');
-    assert(Number(memberWalletAfterTransfers.data.account?.creditBalance || 0) === 80, 'Member wallet should be 80 after transfers');
+    assert(Number(memberWalletAfterTransfers.data.account?.creditBalance || 0) === 9950, 'Member wallet should include payout minus the collected transfer');
     assert((memberWalletCreditHistory.data || []).some((entry) => entry.groupId === transferToMemberResponse.data.groupId), 'Filtered wallet history should include inbound transfer');
     summary.checks.push('wallet-history-filter');
 
@@ -530,15 +557,25 @@ const main = async () => {
     const resettleResponse = await adminClient.post('/lottery/manual', {
       roundDate: created.roundCode,
       firstPrize: '123456',
+      threeTopList: ['123', '456'],
+      threeBotList: ['111', '222'],
       twoBottom: '56',
       runTop: ['4', '5', '6'],
       runBottom: ['5', '6']
     });
     expectStatus(resettleResponse, 200, 'Manual result resettle');
     assert(Number(resettleResponse.data.settlement?.wonCount || 0) >= 1, 'Resettlement should still report a winner');
+    const [memberWalletAfterResettlement, settlementLedgerEntriesAfterResettlement] = await Promise.all([
+      agentClient.get('/wallet/summary', { params: { targetUserId: created.memberId } }),
+      CreditLedgerEntry.find({ userId: created.memberId, entryType: 'settlement' }).lean()
+    ]);
+    expectStatus(memberWalletAfterResettlement, 200, 'Member wallet after resettlement');
+    assert(Number(memberWalletAfterResettlement.data.account?.creditBalance || 0) === 9950, 'Resettlement should not pay the member twice');
+    assert(settlementLedgerEntriesAfterResettlement.length === 1, 'Resettlement should not create duplicate settlement ledger entries');
     summary.checks.push('result-resettlement');
 
-    const submitAfterResultResponse = await memberClient.post('/member/slips', {
+    const submitAfterResultResponse = await agentClient.post('/agent/betting/slips', {
+      customerId: created.memberId,
       lotteryId: visibleLotteries[0].id,
       roundId: regressionRound.id,
       rateProfileId: visibleLotteries[0].defaultRateProfileId,

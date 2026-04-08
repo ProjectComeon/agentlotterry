@@ -9,7 +9,7 @@ const creditLedgerEntrySchema = new mongoose.Schema({
   },
   entryType: {
     type: String,
-    enum: ['transfer', 'adjustment'],
+    enum: ['transfer', 'adjustment', 'settlement'],
     required: true
   },
   direction: {
@@ -31,13 +31,13 @@ const creditLedgerEntrySchema = new mongoose.Schema({
   performedByUserId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
-    required: true,
+    default: null,
     index: true
   },
   performedByRole: {
     type: String,
-    enum: ['admin', 'agent', 'customer'],
-    required: true
+    enum: ['admin', 'agent', 'customer', 'system'],
+    default: 'system'
   },
   amount: {
     type: Number,

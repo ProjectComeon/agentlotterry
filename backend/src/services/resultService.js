@@ -1,14 +1,23 @@
+const mongoose = require('mongoose');
 const BetItem = require('../models/BetItem');
+const CreditLedgerEntry = require('../models/CreditLedgerEntry');
 const DrawRound = require('../models/DrawRound');
 const LotteryResult = require('../models/LotteryResult');
 const LotteryType = require('../models/LotteryType');
 const ResultRecord = require('../models/ResultRecord');
+const User = require('../models/User');
 const { createBangkokDate } = require('../utils/bangkokTime');
 const { hasSameDigits } = require('../utils/numberHelpers');
 
 const normalizeDigits = (value) => String(value || '').replace(/\D/g, '');
 const flattenValues = (value) => Array.isArray(value) ? value.flatMap(flattenValues) : [value];
 const normalizeHitArray = (value) => [...new Set(flattenValues(value).map(normalizeDigits).filter(Boolean))];
+const toMoney = (value) => {
+  const amount = Number(value);
+  return Number.isFinite(amount) ? amount : 0;
+};
+const toIdString = (value) => value?._id?.toString?.() || value?.toString?.() || '';
+const makeSettlementGroupId = (roundCode = 'round') => `SET-${roundCode}-${new mongoose.Types.ObjectId().toString()}`;
 
 const parseRoundCode = (roundCode) => {
   const match = String(roundCode || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
@@ -60,6 +69,92 @@ const normalizeResultPayload = (payload = {}) => {
       runTop: runTop.length ? runTop : [...new Set(threeTopHits.join('').split('').filter(Boolean))],
       runBottom: runBottom.length ? runBottom : [...new Set(twoBottomHits.join('').split('').filter(Boolean))]
   };
+};
+
+const countNormalizedEntries = (value) => {
+  if (Array.isArray(value)) {
+    return value.map(normalizeDigits).filter(Boolean).length;
+  }
+
+  return normalizeDigits(value) ? 1 : 0;
+};
+
+const mergeRequirement = (target, key, label, minCount = 1) => {
+  const existing = target.get(key);
+  if (!existing || existing.minCount < minCount) {
+    target.set(key, { key, label, minCount });
+  }
+};
+
+const getPublishedResultRequirements = (lotteryType) => {
+  const supportedBetTypes = new Set(lotteryType?.supportedBetTypes || []);
+  const requirements = new Map();
+
+  if (lotteryType?.code === 'thai_government') {
+    mergeRequirement(requirements, 'firstPrize', 'รางวัลที่ 1', 1);
+  }
+
+  if (supportedBetTypes.has('lao_set4')) {
+    mergeRequirement(requirements, 'fourTopHits', '4 ตัวบน', 1);
+  }
+
+  if (supportedBetTypes.has('3top') || supportedBetTypes.has('3tod') || supportedBetTypes.has('run_top')) {
+    mergeRequirement(requirements, 'threeTopHits', '3 ตัวบน', 1);
+  }
+
+  if (supportedBetTypes.has('2top') || supportedBetTypes.has('2tod')) {
+    mergeRequirement(requirements, 'twoTopHits', '2 ตัวบน', 1);
+  }
+
+  if (supportedBetTypes.has('2bottom') || supportedBetTypes.has('run_bottom')) {
+    mergeRequirement(requirements, 'twoBottomHits', '2 ตัวล่าง', 1);
+  }
+
+  if (supportedBetTypes.has('3front')) {
+    mergeRequirement(
+      requirements,
+      'threeFrontHits',
+      '3 ตัวหน้า',
+      lotteryType?.code === 'thai_government' ? 2 : 1
+    );
+  }
+
+  if (supportedBetTypes.has('3bottom')) {
+    mergeRequirement(
+      requirements,
+      'threeBottomHits',
+      '3 ตัวล่าง',
+      lotteryType?.code === 'thai_government' ? 2 : 1
+    );
+  }
+
+  return [...requirements.values()];
+};
+
+const buildIncompleteResultError = (lotteryType, missingRequirements) => {
+  const missingLabels = missingRequirements.map((requirement) => (
+    requirement.minCount > 1
+      ? `${requirement.label} อย่างน้อย ${requirement.minCount} รางวัล`
+      : requirement.label
+  ));
+  const error = new Error(
+    `Result payload is incomplete for ${lotteryType?.code || 'unknown'}: missing ${missingLabels.join(', ')}`
+  );
+
+  error.statusCode = 400;
+  error.code = 'INCOMPLETE_RESULT_PAYLOAD';
+  error.details = missingRequirements;
+  return error;
+};
+
+const validatePublishedResultPayload = (lotteryType, normalized) => {
+  const missingRequirements = getPublishedResultRequirements(lotteryType).filter(
+    (requirement) => countNormalizedEntries(normalized[requirement.key]) < requirement.minCount
+  );
+
+  if (missingRequirements.length) {
+    throw buildIncompleteResultError(lotteryType, missingRequirements);
+  }
 };
 
 const checkItemResult = (item, normalizedResult) => {
@@ -183,8 +278,8 @@ const upsertRoundResult = async ({
   }
 
   const normalized = normalizeResultPayload(resultData);
-  if (!normalized.firstPrize && !normalized.twoBottom) {
-    throw new Error('Result payload is incomplete');
+  if (isPublished) {
+    validatePublishedResultPayload(lotteryType, normalized);
   }
 
   const record = await ResultRecord.findOneAndUpdate(
@@ -268,65 +363,146 @@ const syncLegacyThaiGovernmentResult = async (legacyResult, sourceType = 'legacy
 };
 
 const settleRoundById = async (roundId, { force = false } = {}) => {
-  const round = await DrawRound.findById(roundId);
-  if (!round) {
-    throw new Error('Round not found');
+  const session = await mongoose.startSession();
+
+  try {
+    let summary = null;
+
+    await session.withTransaction(async () => {
+      const round = await DrawRound.findById(roundId).session(session);
+      if (!round) {
+        throw new Error('Round not found');
+      }
+
+      const record = await ResultRecord.findOne({ drawRoundId: round._id, isPublished: true }).session(session);
+      if (!record) {
+        throw new Error('Published result not found for this round');
+      }
+
+      const normalized = normalizeResultPayload(record.toObject());
+      const itemFilter = {
+        drawRoundId: round._id,
+        status: 'submitted'
+      };
+
+      if (!force) {
+        itemFilter.isLocked = false;
+      }
+
+      const items = await BetItem.find(itemFilter).session(session);
+      const customerIds = [...new Set(items.map((item) => toIdString(item.customerId)).filter(Boolean))];
+      const customers = await User.find({ _id: { $in: customerIds } }).session(session);
+      const customerMap = new Map(customers.map((customer) => [toIdString(customer), customer]));
+      const settlementGroupId = makeSettlementGroupId(round.code);
+      const payoutUpdatedAt = new Date();
+      const ledgerEntries = [];
+
+      let totalWon = 0;
+      let totalLost = 0;
+      let wonCount = 0;
+      let lostCount = 0;
+      let payoutEntryCount = 0;
+      let payoutNetDelta = 0;
+
+      for (const item of items) {
+        const isWon = checkItemResult(item, normalized);
+        const nextWonAmount = isWon ? toMoney(item.amount) * toMoney(item.payRate) : 0;
+        const previousAppliedAmount = toMoney(item.payoutAppliedAmount);
+        const payoutDelta = nextWonAmount - previousAppliedAmount;
+
+        item.result = isWon ? 'won' : 'lost';
+        item.wonAmount = nextWonAmount;
+        item.isLocked = true;
+
+        if (payoutDelta !== 0) {
+          const customer = customerMap.get(toIdString(item.customerId));
+          if (!customer) {
+            throw new Error(`Customer not found for payout reconciliation (${item.customerId})`);
+          }
+
+          const balanceBefore = toMoney(customer.creditBalance);
+          const balanceAfter = balanceBefore + payoutDelta;
+          customer.creditBalance = balanceAfter;
+
+          ledgerEntries.push({
+            groupId: settlementGroupId,
+            entryType: 'settlement',
+            direction: payoutDelta > 0 ? 'credit' : 'debit',
+            userId: customer._id,
+            counterpartyUserId: null,
+            performedByUserId: null,
+            performedByRole: 'system',
+            amount: Math.abs(payoutDelta),
+            balanceBefore,
+            balanceAfter,
+            reasonCode: payoutDelta > 0 ? 'bet_result_payout' : 'bet_result_reversal',
+            note: payoutDelta > 0
+              ? `Prize payout for round ${round.code}`
+              : `Prize reversal for round ${round.code}`,
+            metadata: {
+              roundId: round._id.toString(),
+              roundCode: round.code,
+              resultRecordId: record._id.toString(),
+              slipId: toIdString(item.slipId),
+              betItemId: item._id.toString(),
+              previousAppliedAmount,
+              nextWonAmount
+            }
+          });
+
+          item.payoutAppliedAmount = nextWonAmount;
+          item.payoutLedgerGroupId = settlementGroupId;
+          item.payoutUpdatedAt = payoutUpdatedAt;
+          payoutEntryCount++;
+          payoutNetDelta += payoutDelta;
+        }
+
+        await item.save({ session });
+
+        if (isWon) {
+          totalWon += item.wonAmount;
+          wonCount++;
+        } else {
+          totalLost += item.amount;
+          lostCount++;
+        }
+      }
+
+      await Promise.all(
+        [...customerMap.values()]
+          .filter((customer) => customer.isModified('creditBalance'))
+          .map((customer) => customer.save({ session }))
+      );
+
+      if (ledgerEntries.length) {
+        await CreditLedgerEntry.insertMany(ledgerEntries, { session });
+      }
+
+      const legacyGovernmentResult = await LotteryResult.findOne({ roundDate: round.code }).session(session);
+      if (legacyGovernmentResult) {
+        legacyGovernmentResult.isCalculated = true;
+        await legacyGovernmentResult.save({ session });
+      }
+
+      summary = {
+        roundId: round._id.toString(),
+        roundCode: round.code,
+        totalItems: items.length,
+        wonCount,
+        lostCount,
+        totalWon,
+        totalLost,
+        netProfit: totalLost - totalWon,
+        payoutEntryCount,
+        payoutNetDelta,
+        payoutGroupId: ledgerEntries.length ? settlementGroupId : ''
+      };
+    });
+
+    return summary;
+  } finally {
+    await session.endSession();
   }
-
-  const record = await ResultRecord.findOne({ drawRoundId: round._id, isPublished: true });
-  if (!record) {
-    throw new Error('Published result not found for this round');
-  }
-
-  const normalized = normalizeResultPayload(record.toObject());
-  const itemFilter = {
-    drawRoundId: round._id,
-    status: 'submitted'
-  };
-
-  if (!force) {
-    itemFilter.isLocked = false;
-  }
-
-  const items = await BetItem.find(itemFilter);
-
-  let totalWon = 0;
-  let totalLost = 0;
-  let wonCount = 0;
-  let lostCount = 0;
-
-  for (const item of items) {
-    const isWon = checkItemResult(item, normalized);
-    item.result = isWon ? 'won' : 'lost';
-    item.wonAmount = isWon ? item.amount * item.payRate : 0;
-    item.isLocked = true;
-    await item.save();
-
-    if (isWon) {
-      totalWon += item.wonAmount;
-      wonCount++;
-    } else {
-      totalLost += item.amount;
-      lostCount++;
-    }
-  }
-
-  const legacyGovernmentResult = await LotteryResult.findOne({ roundDate: round.code });
-  if (legacyGovernmentResult) {
-    legacyGovernmentResult.isCalculated = true;
-    await legacyGovernmentResult.save();
-  }
-
-  return {
-    roundId: round._id.toString(),
-    roundCode: round.code,
-    totalItems: items.length,
-    wonCount,
-    lostCount,
-    totalWon,
-    totalLost,
-    netProfit: totalLost - totalWon
-  };
 };
 
 const settleRoundByCode = async (roundCode, lotteryCode = 'thai_government', options = {}) => {
@@ -384,6 +560,7 @@ module.exports = {
   checkItemResult,
   findRoundByCode,
   normalizeResultPayload,
+  validatePublishedResultPayload,
   upsertRoundResult,
   syncLegacyThaiGovernmentResult,
   settleRoundById,

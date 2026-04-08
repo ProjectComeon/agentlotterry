@@ -206,7 +206,7 @@ const getWalletHistory = async ({
     filter.direction = direction;
   }
 
-  if (entryType && ['transfer', 'adjustment'].includes(entryType)) {
+  if (entryType && ['transfer', 'adjustment', 'settlement'].includes(entryType)) {
     filter.entryType = entryType;
   }
 
