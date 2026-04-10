@@ -15,6 +15,7 @@ import {
   getCatalogOverview,
   getLotterySyncStatus,
   getMarketOverview,
+  getRecentMarketResults,
   reconcileLotteryRoundSettlement,
   rerunLotteryRoundSettlement,
   reverseLotteryRoundSettlement,
@@ -429,6 +430,12 @@ const getCardDisplayDate = (card, fallback) => {
   return fallback;
 };
 
+const getResultDisplayDate = (result, fallback = '-') => {
+  const roundDate = result?.drawAt || result?.roundCode || result?.resultPublishedAt;
+  if (!roundDate) return fallback;
+  return formatRoundLabel(roundDate, { fallback });
+};
+
 const getWarningMarketMatch = (warning, cards) => cards.find((card) => (
   [card?.name, card?.shortName, card?.apiMarket?.name]
     .filter(Boolean)
@@ -473,7 +480,7 @@ const getLatestRecentResult = (recentResultsMap, resultKeys) => {
   return null;
 };
 
-const getRecentHistory = (recentResultsMap, resultKeys) => {
+const getRecentHistory = (recentResultsMap, resultKeys, limit = 6) => {
   const merged = [];
   const seen = new Set();
 
@@ -493,7 +500,7 @@ const getRecentHistory = (recentResultsMap, resultKeys) => {
       const rightDate = new Date(right.resultPublishedAt || right.drawAt || 0).getTime();
       return rightDate - leftDate;
     })
-    .slice(0, 6);
+    .slice(0, limit);
 };
 
 const formatInteger = (value) => new Intl.NumberFormat('th-TH').format(Number(value || 0));
@@ -553,6 +560,7 @@ const AdminLottery = () => {
   const [syncStatus, setSyncStatus] = useState(null);
   const [settlementBusy, setSettlementBusy] = useState('');
   const [settlementFeedback, setSettlementFeedback] = useState(null);
+  const [marketHistoryCache, setMarketHistoryCache] = useState({});
 
   const loadData = async ({ silent = false } = {}) => {
     if (silent) {
@@ -721,16 +729,56 @@ const AdminLottery = () => {
     [displaySections, selectedCode]
   );
 
+  useEffect(() => {
+    const lotteryId = selectedCard?.id;
+    const canLoadMarketHistory = Boolean(lotteryId && lotteryId !== selectedCard?.selectionKey);
+
+    if (!canLoadMarketHistory || marketHistoryCache[lotteryId]) {
+      return undefined;
+    }
+
+    let cancelled = false;
+
+    const loadMarketHistory = async () => {
+      try {
+        const response = await getRecentMarketResults({ lotteryId, limit: 20 });
+        if (!cancelled) {
+          setMarketHistoryCache((current) => ({
+            ...current,
+            [lotteryId]: Array.isArray(response.data) ? response.data : []
+          }));
+        }
+      } catch (error) {
+        console.error(error);
+      }
+    };
+
+    loadMarketHistory();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [marketHistoryCache, selectedCard]);
+
+  const availableSelectedHistory = useMemo(() => {
+    if (!selectedCard) return [];
+
+    const cachedHistory = marketHistoryCache[selectedCard.id];
+    if (cachedHistory?.length) {
+      return cachedHistory;
+    }
+
+    if (!selectedCard.historyKeys?.length) return [];
+    return getRecentHistory(buildRecentResultsMap(catalogOverview), selectedCard.historyKeys, 20);
+  }, [catalogOverview, marketHistoryCache, selectedCard]);
+
   const selectedHistory = useMemo(
-    () => {
-      if (!selectedCard?.historyKeys?.length) return [];
-      return getRecentHistory(buildRecentResultsMap(catalogOverview), selectedCard.historyKeys);
-    },
-    [catalogOverview, selectedCard]
+    () => availableSelectedHistory.slice(0, 6),
+    [availableSelectedHistory]
   );
 
   const selectedResult = useMemo(() => {
-    const candidates = [selectedCard?.latestResult, ...selectedHistory].filter(Boolean);
+    const candidates = [selectedCard?.latestResult, ...availableSelectedHistory].filter(Boolean);
     if (!candidates.length) return null;
     if (!requestedRoundKey) return candidates[0];
 
@@ -747,7 +795,20 @@ const AdminLottery = () => {
         return roundCandidates.includes(requestedRoundKey);
       }) || candidates[0]
     );
-  }, [requestedRoundKey, selectedCard, selectedHistory]);
+  }, [availableSelectedHistory, requestedRoundKey, selectedCard]);
+  const detailDisplayDate = requestedRoundKey && selectedResult
+    ? getResultDisplayDate(selectedResult, getCardDisplayDate(selectedCard, UI.noRound))
+    : getCardDisplayDate(selectedCard, UI.noRound);
+  const detailResolvedDate = requestedRoundKey && selectedResult
+    ? formatThaiDate(
+      selectedResult.drawAt || selectedResult.resultPublishedAt,
+      { fallback: selectedResult.roundCode || UI.noRound }
+    )
+    : (selectedCard?.activeRound?.drawAt
+      ? formatThaiDate(selectedCard.activeRound.drawAt)
+      : (selectedCard?.apiMarket?.resultDate
+        ? formatThaiDate(selectedCard.apiMarket.resultDate, { fallback: selectedCard.apiMarket.resultDate })
+        : UI.noRound));
   const SelectedStatusIcon = selectedCard?.statusIcon || FiAlertCircle;
   const syncSummary = syncStatus?.lastSummary || null;
   const syncCoverage = syncStatus?.mappingCoverage || syncSummary?.mappingCoverage || null;
@@ -1037,11 +1098,9 @@ const AdminLottery = () => {
                   <div className="detail-market-meta">
                     <span className="section-eyebrow">{UI.latestDetailTitle}</span>
                     <h2>{selectedCard.name}</h2>
-                    <div className="detail-market-date">{getCardDisplayDate(selectedCard, UI.noRound)}</div>
+                    <div className="detail-market-date">{detailDisplayDate}</div>
                     <p>
-                      {selectedCard.activeRound?.drawAt
-                        ? formatThaiDate(selectedCard.activeRound.drawAt)
-                        : (selectedCard.apiMarket?.resultDate ? formatThaiDate(selectedCard.apiMarket.resultDate, { fallback: selectedCard.apiMarket.resultDate }) : UI.noRound)}
+                      {detailResolvedDate}
                       {' · '}
                     </p>
                   </div>

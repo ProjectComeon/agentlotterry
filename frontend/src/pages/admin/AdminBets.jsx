@@ -486,10 +486,44 @@ const AdminBets = () => {
               </div>
 
               <div className="ag-bet-card-top-right">
-                <span className={`ag-bet-badge ag-bet-badge-${group.result}`}>
-                  {group.result === 'won' ? ui.statusWon : group.result === 'pending' ? ui.pendingStatus : ui.lostStatus}
-                </span>
-                <small>{ui.itemCount(group.itemCount)}</small>
+                <div className="ag-bet-card-status">
+                  <span className={`ag-bet-badge ag-bet-badge-${group.result}`}>
+                    {group.result === 'won' ? ui.statusWon : group.result === 'pending' ? ui.pendingStatus : ui.lostStatus}
+                  </span>
+                  <small>{ui.itemCount(group.itemCount)}</small>
+                </div>
+
+                <div className="ag-bet-card-actions">
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-sm"
+                    onClick={() => handleOpenRoundResult(group)}
+                  >
+                    <FiExternalLink />
+                    {ui.openResultAction}
+                  </button>
+                  {group.canCancel ? (
+                    <button
+                      type="button"
+                      className="btn btn-danger btn-sm"
+                      onClick={() => handleCancelSlip(group)}
+                      disabled={cancellingSlipId === group.slipId}
+                    >
+                      <FiXCircle />
+                      {cancellingSlipId === group.slipId ? ui.cancellingAction : ui.cancelAction}
+                    </button>
+                  ) : null}
+
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-sm"
+                    onClick={() => handleCopySlipImage(group)}
+                    disabled={copyingSlipId === (group.slipId || group.key)}
+                  >
+                    <FiCopy />
+                    {copyingSlipId === (group.slipId || group.key) ? ui.copyingImageAction : ui.copyImageAction}
+                  </button>
+                </div>
               </div>
             </div>
 
@@ -515,38 +549,6 @@ const AdminBets = () => {
             <div className="ag-bet-card-bottom">
               <div className="ag-bet-card-footnote">
                 {group.result === 'pending' ? ui.openFootnote : ui.closedFootnote}
-              </div>
-
-              <div className="ag-bet-card-actions">
-                <button
-                  type="button"
-                  className="btn btn-secondary btn-sm"
-                  onClick={() => handleOpenRoundResult(group)}
-                >
-                  <FiExternalLink />
-                  {ui.openResultAction}
-                </button>
-                {group.canCancel ? (
-                  <button
-                    type="button"
-                    className="btn btn-danger btn-sm"
-                    onClick={() => handleCancelSlip(group)}
-                    disabled={cancellingSlipId === group.slipId}
-                  >
-                    <FiXCircle />
-                    {cancellingSlipId === group.slipId ? ui.cancellingAction : ui.cancelAction}
-                  </button>
-                ) : null}
-
-                <button
-                  type="button"
-                  className="btn btn-secondary btn-sm"
-                  onClick={() => handleCopySlipImage(group)}
-                  disabled={copyingSlipId === (group.slipId || group.key)}
-                >
-                  <FiCopy />
-                  {copyingSlipId === (group.slipId || group.key) ? ui.copyingImageAction : ui.copyImageAction}
-                </button>
               </div>
             </div>
           </article>
@@ -684,9 +686,17 @@ const AdminBets = () => {
           display: flex;
           flex-direction: column;
           align-items: flex-end;
-          gap: 4px;
+          gap: 8px;
           color: var(--text-muted);
           font-size: 0.78rem;
+          max-width: min(100%, 720px);
+        }
+
+        .ag-bet-card-status {
+          display: flex;
+          flex-direction: column;
+          align-items: flex-end;
+          gap: 4px;
         }
 
         .ag-bet-badge {
@@ -789,7 +799,7 @@ const AdminBets = () => {
         }
 
         .ag-bet-card-actions {
-          display: inline-flex;
+          display: flex;
           flex-wrap: wrap;
           justify-content: flex-end;
           gap: 10px;
@@ -803,7 +813,8 @@ const AdminBets = () => {
             align-items: stretch;
           }
 
-          .ag-bet-card-top-right {
+          .ag-bet-card-top-right,
+          .ag-bet-card-status {
             align-items: flex-start;
           }
 
