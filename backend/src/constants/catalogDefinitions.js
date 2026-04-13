@@ -5,6 +5,7 @@ const STANDARD_BET_TYPES = ['3top', '3tod', '2top', '2bottom', 'run_top', 'run_b
 const LAO_BET_TYPES = [...STANDARD_BET_TYPES, 'lao_set4'];
 const STOCK_BET_TYPES = ['3top', '3tod', '2top', '2bottom', 'run_top', 'run_bottom'];
 const BAAC_BET_TYPES = ['3top', '3tod', '2top', '2bottom'];
+const GSB_BET_TYPES = STANDARD_BET_TYPES;
 
 const DAILY_ALL_DAYS = [0, 1, 2, 3, 4, 5, 6];
 const WEEKDAYS = [1, 2, 3, 4, 5];
@@ -142,6 +143,25 @@ const LOTTERY_TYPES = [
       drawMinute: 15
     },
     supportedBetTypes: BAAC_BET_TYPES
+  }),
+  createLottery({
+    code: 'gsb',
+    leagueCode: 'government',
+    name: 'ออมสิน',
+    shortName: 'ออมสิน',
+    description: 'สลากออมสิน 1 ปี 100 บาท ใช้กติกาตลาดมาตรฐานของระบบ โดยอิงผล 3 ตัวบน 2 ตัวบน และ 2 ตัวล่างจากเว็บทางการ',
+    provider: 'GSB Official',
+    schedule: {
+      type: 'monthly',
+      days: [1, 16],
+      openLeadDays: 3,
+      closeHour: 10,
+      closeMinute: 0,
+      drawHour: 12,
+      drawMinute: 0
+    },
+    supportedBetTypes: GSB_BET_TYPES,
+    resultSource: 'api'
   }),
   createLottery({
     code: 'hnvip',

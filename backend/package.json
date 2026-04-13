@@ -7,6 +7,7 @@
     "start": "node server.js",
     "dev": "node --watch server.js",
     "seed": "node src/seed.js",
+    "catalog:seed": "node src/scripts/seedCatalog.js",
     "production:preflight": "node src/scripts/productionPreflight.js",
     "db:backup": "node src/scripts/backupDatabase.js",
     "db:restore": "node src/scripts/restoreDatabase.js",

@@ -8,11 +8,14 @@ const mongoose = require('mongoose');
 const connectDB = require('./src/config/db');
 const {
   autoSeedAdmin,
+  autoSeedCatalog,
   autoSyncResults,
+  cronSyncToken,
   defaultAdminPassword,
   defaultAdminUsername,
   exposeHealthDetails,
   frontendUrl,
+  isProduction,
   logFormat,
   resultSyncIntervalMs,
   trustProxy,
@@ -70,7 +73,12 @@ const bootstrapApp = async () => {
     validateEnv();
     await connectDB();
     await autoSeed();
-    await ensureCatalogSeed();
+    if (autoSeedCatalog) {
+      await ensureCatalogSeed();
+      console.log('Catalog auto-seed enabled on startup');
+    } else if (isProduction) {
+      console.log('Catalog auto-seed disabled on startup; run `npm run catalog:seed` during deploy');
+    }
     startupComplete = true;
   } catch (error) {
     startupError = error;
@@ -154,6 +162,10 @@ bootstrapApp()
     if (autoSyncResults) {
       startExternalResultAutoSync(resultSyncIntervalMs);
       console.log(`External result auto-sync enabled (${resultSyncIntervalMs} ms)`);
+    } else if (isProduction) {
+      console.log(
+        `External result auto-sync disabled on web startup; use POST /api/lottery/sync-latest/cron${cronSyncToken ? ' with configured token' : ''}`
+      );
     }
 
     app.listen(PORT, () => {

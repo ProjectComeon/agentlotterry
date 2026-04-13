@@ -34,7 +34,8 @@ const trustProxy = parseBoolean(process.env.TRUST_PROXY, isProduction);
 const exposeHealthDetails = parseBoolean(process.env.HEALTH_EXPOSE_DETAILS, !isProduction);
 const backupDir = path.resolve(process.cwd(), toText(process.env.BACKUP_DIR, './backups'));
 const manyCaiFeedBaseUrl = toText(process.env.MANYCAI_FEED_BASE_URL, 'http://vip.manycai.com/K269c291856f58e');
-const autoSyncResults = parseBoolean(process.env.AUTO_SYNC_RESULTS, true);
+const autoSyncResults = parseBoolean(process.env.AUTO_SYNC_RESULTS, !isProduction);
+const autoSeedCatalog = parseBoolean(process.env.AUTO_SEED_CATALOG, !isProduction);
 const resultSyncIntervalMs = Number(process.env.RESULT_SYNC_INTERVAL_MS || 300000);
 const cronSyncToken = toText(process.env.CRON_SYNC_TOKEN);
 
@@ -100,6 +101,7 @@ const getEnvSummary = () => ({
   backupDir,
   manyCaiFeedBaseUrlConfigured: Boolean(manyCaiFeedBaseUrl),
   autoSyncResults,
+  autoSeedCatalog,
   resultSyncIntervalMs,
   cronSyncTokenConfigured: Boolean(cronSyncToken)
 });
@@ -118,6 +120,7 @@ module.exports = {
   backupDir,
   manyCaiFeedBaseUrl,
   autoSyncResults,
+  autoSeedCatalog,
   resultSyncIntervalMs,
   cronSyncToken,
   validateEnv,

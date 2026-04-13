@@ -1,6 +1,12 @@
 const axios = require('axios');
 const LotteryResult = require('../models/LotteryResult');
 const { MANYCAI_FEED_BASE_URL } = require('./externalResultFeedService');
+const {
+  GSB_MARKET_ID,
+  GSB_MARKET_NAME,
+  GSB_PROVIDER_NAME,
+  fetchLatestGsbSnapshot
+} = require('./gsbResultService');
 
 const PROVIDER_NAME = 'manycai';
 const RAW_PROVIDER_KEY = String(process.env.MANYCAI_API_KEY || '').trim();
@@ -53,7 +59,8 @@ const baseSections = [
     description: 'หวยรัฐบาลและสลากออมทรัพย์',
     markets: [
       { id: 'thai-government', name: 'รัฐบาลไทย', provider: PROVIDER_NAME, status: 'waiting', resultDate: '', headline: '', numbers: [], note: 'รอข้อมูลจากผู้ให้บริการ' },
-      { id: 'baac', name: 'สลากออมทรัพย์ ธกส.', provider: PROVIDER_NAME, status: 'waiting', resultDate: '', headline: '', numbers: [], note: 'รอข้อมูลจากผู้ให้บริการ' }
+      { id: 'baac', name: 'สลากออมทรัพย์ ธกส.', provider: PROVIDER_NAME, status: 'waiting', resultDate: '', headline: '', numbers: [], note: 'รอข้อมูลจากผู้ให้บริการ' },
+      { id: GSB_MARKET_ID, name: GSB_MARKET_NAME, provider: GSB_PROVIDER_NAME, status: 'waiting', resultDate: '', headline: '', numbers: [], note: 'รอข้อมูลจากเว็บไซต์ GSB' }
     ]
   },
   {
@@ -173,6 +180,28 @@ const fetchProvider = async (code) => {
   return response.data;
 };
 
+const fetchGsbLatestMarket = async () => {
+  const snapshot = await fetchLatestGsbSnapshot();
+  if (!snapshot) {
+    return null;
+  }
+
+  return buildMarket({
+    id: GSB_MARKET_ID,
+    name: GSB_MARKET_NAME,
+    provider: GSB_PROVIDER_NAME,
+    resultDate: snapshot.roundCode,
+    headline: snapshot.headline,
+    numbers: [
+      { label: '3 ตัวบน', value: snapshot.threeTop },
+      { label: '2 ตัวบน', value: snapshot.twoTop },
+      { label: '2 ตัวล่าง', value: snapshot.twoBottom }
+    ],
+    note: 'ตรวจจับจากเว็บไซต์ GSB และแปลงผลแบบเดียวกับ GOGOLot',
+    sourceUrl: snapshot.sourceUrl
+  });
+};
+
 const extractManyCaiRows = (payload) => {
   if (Array.isArray(payload)) return payload;
   if (Array.isArray(payload?.data)) return payload.data;
@@ -192,7 +221,7 @@ const buildNumbers = (pairs) => pairs
   .filter((pair) => pair && stringValue(pair.value))
   .map((pair) => ({ label: pair.label, value: stringValue(pair.value) }));
 
-const buildMarket = ({ id, name, provider, resultDate, headline, numbers, note }) => ({
+const buildMarket = ({ id, name, provider, resultDate, headline, numbers, note, sourceUrl }) => ({
   id,
   name,
   provider,
@@ -200,6 +229,7 @@ const buildMarket = ({ id, name, provider, resultDate, headline, numbers, note }
   headline: stringValue(headline),
   numbers: buildNumbers(numbers),
   note: stringValue(note),
+  sourceUrl: stringValue(sourceUrl),
   status: marketStatus(headline, numbers)
 });
 
@@ -327,6 +357,16 @@ const applyManyCaiBaacMarket = (sections, config, payload) => {
   return true;
 };
 
+const applyGsbMarket = async (sections) => {
+  const market = await fetchGsbLatestMarket();
+  if (!market) {
+    return false;
+  }
+
+  setMarketData(sections, 'government', market);
+  return true;
+};
+
 const buildSummary = (sections) => {
   const markets = sections.flatMap((section) => section.markets);
   const liveCount = markets.filter((market) => market.status === 'live').length;
@@ -352,6 +392,15 @@ const getMarketOverview = async () => {
 
   if (!hasGovernmentData) {
     warnings.push('ยังไม่มีผลหวยรัฐบาลไทยในระบบฐานข้อมูล');
+  }
+
+  try {
+    const hasGsbData = await applyGsbMarket(sections);
+    if (!hasGsbData) {
+      warnings.push('ยังไม่สามารถแปลงข้อมูลออมสินจากเว็บไซต์ GSB ได้');
+    }
+  } catch (error) {
+    warnings.push('ไม่สามารถดึงข้อมูลออมสินจากเว็บไซต์ GSB ได้');
   }
 
   if (!PROVIDER_KEY) {

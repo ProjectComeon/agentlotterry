@@ -9,6 +9,16 @@ const LOTTERY_VISUALS = {
     accent: '#16a34a',
     background: 'radial-gradient(circle at 30% 30%, #86efac, #15803d 68%)'
   },
+  gsb: {
+    shortLabel: 'ออม',
+    accent: '#dc2626',
+    background: 'radial-gradient(circle at 30% 30%, #fca5a5, #b91c1c 72%)'
+  },
+  'gsb-1year-100': {
+    shortLabel: 'ออม',
+    accent: '#dc2626',
+    background: 'radial-gradient(circle at 30% 30%, #fca5a5, #b91c1c 72%)'
+  },
   'hanoi-vip': {
     shortLabel: 'HN',
     accent: '#dc2626',

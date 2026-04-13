@@ -9,6 +9,10 @@ const BetSlip = require('../models/BetSlip');
 const BetItem = require('../models/BetItem');
 const ResultRecord = require('../models/ResultRecord');
 const CreditLedgerEntry = require('../models/CreditLedgerEntry');
+const DrawRound = require('../models/DrawRound');
+const LotteryLeague = require('../models/LotteryLeague');
+const LotteryType = require('../models/LotteryType');
+const RateProfile = require('../models/RateProfile');
 
 const parseArgs = () => ({
   strict: process.argv.includes('--strict')
@@ -46,14 +50,18 @@ const main = async () => {
     const db = mongoose.connection.db;
     const betsExists = (await db.listCollections({ name: 'bets' }).toArray()).length > 0;
 
-    const [adminCount, agentCount, memberCount, slipCount, itemCount, resultCount, ledgerCount] = await Promise.all([
+    const [adminCount, agentCount, memberCount, slipCount, itemCount, resultCount, ledgerCount, leagueCount, lotteryCount, rateProfileCount, activeRoundCount] = await Promise.all([
       User.countDocuments({ role: 'admin', isActive: true }),
       User.countDocuments({ role: 'agent' }),
       User.countDocuments({ role: 'customer' }),
       BetSlip.countDocuments({}),
       BetItem.countDocuments({}),
       ResultRecord.countDocuments({}),
-      CreditLedgerEntry.countDocuments({})
+      CreditLedgerEntry.countDocuments({}),
+      LotteryLeague.countDocuments({ isActive: true }),
+      LotteryType.countDocuments({ isActive: true }),
+      RateProfile.countDocuments({ isActive: true }),
+      DrawRound.countDocuments({ isActive: true, drawAt: { $gte: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000) } })
     ]);
 
     report.checks.database = {
@@ -68,6 +76,13 @@ const main = async () => {
       legacyBetsCollectionPresent: betsExists
     };
 
+    report.checks.catalog = {
+      leagueCount,
+      lotteryCount,
+      rateProfileCount,
+      activeRoundCount
+    };
+
     if (adminCount === 0) {
       report.errors.push('No active admin account exists');
     }
@@ -78,6 +93,18 @@ const main = async () => {
 
     if (report.env.autoSeedAdmin) {
       report.warnings.push('AUTO_SEED_ADMIN is enabled; disable it before production unless you explicitly need bootstrap seeding');
+    }
+
+    if (report.env.autoSeedCatalog) {
+      report.warnings.push('AUTO_SEED_CATALOG is enabled; disable it in production web instances and run `npm run catalog:seed` during deploy instead');
+    }
+
+    if (leagueCount === 0 || lotteryCount === 0 || rateProfileCount === 0) {
+      report.errors.push('Catalog seed data is missing; run `npm run catalog:seed`');
+    }
+
+    if (activeRoundCount === 0) {
+      report.errors.push('Catalog rounds are missing or stale; run `npm run catalog:seed`');
     }
   } catch (error) {
     report.errors.push(`Database preflight failed: ${error.message}`);

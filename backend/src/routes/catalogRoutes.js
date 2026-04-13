@@ -8,6 +8,10 @@ const {
 } = require('../services/catalogService');
 
 const router = express.Router();
+const getErrorStatus = (error, fallback = 500) => {
+  const statusCode = Number(error?.status || error?.statusCode);
+  return Number.isInteger(statusCode) && statusCode >= 400 ? statusCode : fallback;
+};
 
 router.use(auth);
 
@@ -17,7 +21,7 @@ router.get('/overview', async (req, res) => {
     res.json(overview);
   } catch (error) {
     console.error('Catalog overview error:', error);
-    res.status(500).json({ message: 'Failed to load catalog overview' });
+    res.status(getErrorStatus(error)).json({ message: error.message || 'Failed to load catalog overview' });
   }
 });
 
@@ -27,7 +31,7 @@ router.get('/lotteries', async (req, res) => {
     res.json(items);
   } catch (error) {
     console.error('Catalog lotteries error:', error);
-    res.status(500).json({ message: 'Failed to load lottery options' });
+    res.status(getErrorStatus(error)).json({ message: error.message || 'Failed to load lottery options' });
   }
 });
 
@@ -42,7 +46,7 @@ router.get('/rounds', async (req, res) => {
     res.json(rounds);
   } catch (error) {
     console.error('Catalog rounds error:', error);
-    res.status(500).json({ message: 'Failed to load rounds' });
+    res.status(getErrorStatus(error)).json({ message: error.message || 'Failed to load rounds' });
   }
 });
 
@@ -55,7 +59,7 @@ router.post('/announcements/:announcementId/read', async (req, res) => {
 
     res.json(result);
   } catch (error) {
-    const status = error.message?.includes('not found') ? 404 : 400;
+    const status = error.message?.includes('not found') ? 404 : getErrorStatus(error, 400);
     res.status(status).json({ message: error.message || 'Failed to update announcement state' });
   }
 });

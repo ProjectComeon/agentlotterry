@@ -96,6 +96,7 @@ const BETTING_TOGGLE_UI = {
 const CATALOG_MARKET_ALIASES = {
   thai_government: ['thai-government', 'thai_government'],
   baac: ['baac'],
+  gsb: ['gsb', 'gsb-1year-100'],
   hanoi_special: ['hanoi-special', 'hanoi_special'],
   lao_vip: ['lao-vip', 'lao_vip'],
   dowjones_vip: ['stock-dowjones', 'dowjones_vip'],
@@ -106,6 +107,8 @@ const CATALOG_MARKET_ALIASES = {
 const API_MARKET_RESULT_ALIASES = {
   'thai-government': ['thai_government', 'tgfc'],
   baac: ['baac'],
+  gsb: ['gsb', 'gsb-1year-100'],
+  'gsb-1year-100': ['gsb', 'gsb-1year-100'],
   'hanoi-vip': ['hnvip'],
   'hanoi-special': ['hanoi_special', 'bfhn'],
   'hanoi-specific': ['cqhn'],
@@ -288,7 +291,6 @@ const buildResultItems = (result) => {
 
   const fallbackNumbers = (result.numbers || [])
     .filter((item) => item?.value)
-    .slice(0, 4)
     .map((item) => ({
       label: item.label || 'ผลย่อย',
       value: item.value
@@ -356,7 +358,7 @@ const buildApiResultSnapshot = (apiMarket) => ({
   headline: apiMarket?.headline || '',
   numbers: apiMarket?.numbers || [],
   sourceType: 'api',
-  sourceUrl: '',
+  sourceUrl: apiMarket?.sourceUrl || '',
   resultPublishedAt: apiMarket?.resultDate || null,
   drawAt: apiMarket?.resultDate || null
 });
@@ -515,12 +517,40 @@ const getRecentHistory = (recentResultsMap, resultKeys, limit = 6) => {
 
   return merged
     .sort((left, right) => {
-      const leftDate = new Date(left.resultPublishedAt || left.drawAt || 0).getTime();
-      const rightDate = new Date(right.resultPublishedAt || right.drawAt || 0).getTime();
+      const leftDate = getResultChronologyTime(left);
+      const rightDate = getResultChronologyTime(right);
       return rightDate - leftDate;
     })
     .slice(0, limit);
 };
+
+const getResultChronologyTime = (result) => {
+  const drawAt = result?.drawAt ? new Date(result.drawAt).getTime() : 0;
+  if (Number.isFinite(drawAt) && drawAt > 0) {
+    return drawAt;
+  }
+
+  const roundCodeMatch = String(result?.roundCode || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (roundCodeMatch) {
+    return Date.UTC(
+      Number(roundCodeMatch[1]),
+      Number(roundCodeMatch[2]) - 1,
+      Number(roundCodeMatch[3]),
+      12,
+      0,
+      0
+    );
+  }
+
+  const publishedAt = result?.resultPublishedAt ? new Date(result.resultPublishedAt).getTime() : 0;
+  return Number.isFinite(publishedAt) ? publishedAt : 0;
+};
+
+const sortResultsByLatestFirst = (results = []) => [...results].sort((left, right) => {
+  const leftDate = getResultChronologyTime(left);
+  const rightDate = getResultChronologyTime(right);
+  return rightDate - leftDate;
+});
 
 const formatInteger = (value) => new Intl.NumberFormat('th-TH').format(Number(value || 0));
 
@@ -829,11 +859,11 @@ const AdminLottery = ({ viewerRole = 'admin' }) => {
 
     const cachedHistory = marketHistoryCache[selectedCard.id];
     if (cachedHistory?.length) {
-      return cachedHistory;
+      return sortResultsByLatestFirst(cachedHistory);
     }
 
     if (!selectedCard.historyKeys?.length) return [];
-    return getRecentHistory(buildRecentResultsMap(catalogOverview), selectedCard.historyKeys, 20);
+    return sortResultsByLatestFirst(getRecentHistory(buildRecentResultsMap(catalogOverview), selectedCard.historyKeys, 20));
   }, [catalogOverview, marketHistoryCache, selectedCard]);
 
   const selectedHistory = useMemo(

@@ -1,6 +1,8 @@
 const LEGACY_MARKET_CODE_MAP = {
   'thai-government': 'thai_government',
   baac: 'baac',
+  gsb: 'gsb',
+  'gsb-1year-100': 'gsb',
   'hanoi-special': 'hanoi_special',
   'lao-vip': 'lao_vip',
   'dowjones-vip': 'dowjones_vip',

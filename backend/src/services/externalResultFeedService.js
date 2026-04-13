@@ -4,6 +4,7 @@ const LotteryType = require('../models/LotteryType');
 const MarketFeedResult = require('../models/MarketFeedResult');
 const { createBangkokDate } = require('../utils/bangkokTime');
 const { ensureRoundForLottery, settleRoundById, upsertRoundResult } = require('./resultService');
+const { fetchGsbSnapshots } = require('./gsbResultService');
 
 const legacyBaseUrl = (process.env.MANYCAI_BASE_URL || 'http://vip.manycai.com').replace(/\/$/, '');
 const legacyApiKey = String(process.env.MANYCAI_API_KEY || '').trim();
@@ -13,6 +14,7 @@ const MANYCAI_FEED_BASE_URL = (
 ).replace(/\/$/, '');
 const RESULT_SYNC_TIMEOUT_MS = Number(process.env.RESULT_SYNC_TIMEOUT_MS || 12000);
 const STRICT_FEED_MAPPING = String(process.env.STRICT_FEED_MAPPING || '1') !== '0';
+const GSB_SYNC_LIMIT = Number(process.env.GSB_SYNC_LIMIT || 6);
 
 const defaultMappedDigits = (value) => String(value || '').replace(/\D/g, '');
 const defaultMappedList = (value) => {
@@ -137,17 +139,35 @@ const FEED_CONFIGS = [
   { feedCode: 'ynma', lotteryCode: 'ynma', marketName: 'มาเลย์', parser: 'simple', syncToResults: true }
 ];
 
-const getFeedMappingMode = (feedCode) => EXPLICIT_FEED_MAPPINGS[feedCode] ? 'explicit' : 'legacy-fallback';
+const EXTRA_SYNC_CONFIGS = [
+  { feedCode: 'gsb', lotteryCode: 'gsb', marketName: 'ออมสิน', parser: 'gsb', syncToResults: true, provider: 'gsb' }
+];
+
+const SYNC_CONFIGS = [...FEED_CONFIGS, ...EXTRA_SYNC_CONFIGS];
+const isConfigMappingCovered = (config) => Boolean(config?.provider === 'gsb' || EXPLICIT_FEED_MAPPINGS[config?.feedCode]);
+
+const getFeedMappingMode = (configOrFeedCode) => {
+  const config = typeof configOrFeedCode === 'string'
+    ? SYNC_CONFIGS.find((item) => item.feedCode === configOrFeedCode) || { feedCode: configOrFeedCode }
+    : configOrFeedCode || {};
+
+  if (config.provider === 'gsb') {
+    return 'official-page';
+  }
+
+  return EXPLICIT_FEED_MAPPINGS[config.feedCode] ? 'explicit' : 'legacy-fallback';
+};
 
 const getMappingCoverageSummary = () => {
-  const configuredFeedCodes = FEED_CONFIGS.map((config) => config.feedCode);
-  const explicitFeedCodes = configuredFeedCodes.filter((feedCode) => Boolean(EXPLICIT_FEED_MAPPINGS[feedCode]));
-  const missingFeedCodes = configuredFeedCodes.filter((feedCode) => !EXPLICIT_FEED_MAPPINGS[feedCode]);
+  const coveredConfigs = SYNC_CONFIGS.filter((config) => isConfigMappingCovered(config));
+  const missingFeedCodes = SYNC_CONFIGS
+    .filter((config) => !isConfigMappingCovered(config))
+    .map((config) => config.feedCode);
 
   return {
     strictMode: STRICT_FEED_MAPPING,
-    configuredCount: configuredFeedCodes.length,
-    explicitCount: explicitFeedCodes.length,
+    configuredCount: SYNC_CONFIGS.length,
+    explicitCount: coveredConfigs.length,
     missingCount: missingFeedCodes.length,
     missingFeedCodes
   };
@@ -439,7 +459,20 @@ const fetchFeedRows = async (feedCode) => {
   return response.data;
 };
 
+const fetchSyncRows = async (config) => {
+  if (config.provider === 'gsb') {
+    const snapshots = await fetchGsbSnapshots({ limit: GSB_SYNC_LIMIT });
+    return snapshots.map((snapshot) => ({ __snapshot: snapshot }));
+  }
+
+  return fetchFeedRows(config.feedCode);
+};
+
 const buildSnapshot = (config, row, { strict = STRICT_FEED_MAPPING } = {}) => {
+  if (config.provider === 'gsb') {
+    return row?.__snapshot || null;
+  }
+
   const mapping = EXPLICIT_FEED_MAPPINGS[config.feedCode];
   if (!mapping && strict) {
     throw new Error(`Missing explicit mapping for feed ${config.feedCode}`);
@@ -565,7 +598,7 @@ const syncLatestExternalResults = async () => {
 
   try {
     const lotteryTypes = await LotteryType.find({
-      code: { $in: FEED_CONFIGS.map((config) => config.lotteryCode) }
+      code: { $in: SYNC_CONFIGS.map((config) => config.lotteryCode) }
     });
     const lotteryByCode = new Map(lotteryTypes.map((item) => [item.code, item]));
     const summary = {
@@ -581,13 +614,13 @@ const syncLatestExternalResults = async () => {
       feedSummaries: []
     };
 
-    for (const config of FEED_CONFIGS) {
+    for (const config of SYNC_CONFIGS) {
       const feedSummary = {
         feedCode: config.feedCode,
         lotteryCode: config.lotteryCode,
         marketName: config.marketName,
         parser: config.parser,
-        mappingMode: getFeedMappingMode(config.feedCode),
+        mappingMode: getFeedMappingMode(config),
         syncToResults: Boolean(config.syncToResults),
         fetchedRows: 0,
         processedRounds: 0,
@@ -601,7 +634,7 @@ const syncLatestExternalResults = async () => {
       summary.feedSummaries.push(feedSummary);
 
       try {
-        const rows = await fetchFeedRows(config.feedCode);
+        const rows = await fetchSyncRows(config);
         feedSummary.fetchedRows = rows.length;
         if (!rows.length) {
           summary.skipped++;
@@ -721,13 +754,14 @@ const getExternalSyncState = () => ({
   feedBaseUrl: MANYCAI_FEED_BASE_URL,
   strictMapping: STRICT_FEED_MAPPING,
   mappingCoverage: getMappingCoverageSummary(),
-  feeds: FEED_CONFIGS.map((config) => ({
+  feeds: SYNC_CONFIGS.map((config) => ({
     feedCode: config.feedCode,
     lotteryCode: config.lotteryCode,
     marketName: config.marketName,
     parser: config.parser,
     syncToResults: Boolean(config.syncToResults),
-    mappingMode: getFeedMappingMode(config.feedCode)
+    provider: config.provider || 'manycai',
+    mappingMode: getFeedMappingMode(config)
   }))
 });
 
@@ -766,6 +800,7 @@ const fetchThaiGovernmentResultByRoundCode = async (roundCode) => {
 module.exports = {
   MANYCAI_FEED_BASE_URL,
   FEED_CONFIGS,
+  SYNC_CONFIGS,
   EXPLICIT_FEED_MAPPINGS,
   STRICT_FEED_MAPPING,
   buildSnapshot,

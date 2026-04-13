@@ -24,6 +24,7 @@ const {
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 let catalogSeedPromise = null;
+let catalogReadinessPromise = null;
 const toIdString = (value) => value?._id?.toString?.() || value?.toString?.() || '';
 const normalizeBettingOverride = (value) => (value === 'open' || value === 'closed' ? value : 'auto');
 const normalizeRateMap = (value = {}, fallbackRates = {}) =>
@@ -234,12 +235,61 @@ const runCatalogSeed = async () => {
   }
 };
 
-const ensureCatalogSeed = async ({ force = false } = {}) => {
-  if (!catalogSeedPromise || force) {
-    catalogSeedPromise = runCatalogSeed().catch((error) => {
-      catalogSeedPromise = null;
+const createCatalogUnavailableError = (message) => {
+  const error = new Error(message);
+  error.status = 503;
+  return error;
+};
+
+const verifyCatalogSeeded = async () => {
+  const [leagueCount, lotteryCount, rateProfileCount, announcementCount, activeRoundCount] = await Promise.all([
+    LotteryLeague.countDocuments({ isActive: true }),
+    LotteryType.countDocuments({ isActive: true }),
+    RateProfile.countDocuments({ isActive: true }),
+    Announcement.countDocuments({ isActive: true }),
+    DrawRound.countDocuments({ isActive: true, drawAt: { $gte: new Date(Date.now() - 5 * DAY_MS) } })
+  ]);
+
+  if (!leagueCount || !lotteryCount || !rateProfileCount) {
+    throw createCatalogUnavailableError('Catalog seed is missing. Run `npm run catalog:seed` before serving requests.');
+  }
+
+  if (!announcementCount) {
+    throw createCatalogUnavailableError('Catalog announcements are missing. Run `npm run catalog:seed` before serving requests.');
+  }
+
+  if (!activeRoundCount) {
+    throw createCatalogUnavailableError('Catalog rounds are stale or missing. Run `npm run catalog:seed` before serving requests.');
+  }
+
+  return {
+    leagueCount,
+    lotteryCount,
+    rateProfileCount,
+    announcementCount,
+    activeRoundCount
+  };
+};
+
+const ensureCatalogReady = async ({ force = false } = {}) => {
+  if (!catalogReadinessPromise || force) {
+    catalogReadinessPromise = verifyCatalogSeeded().catch((error) => {
+      catalogReadinessPromise = null;
       throw error;
     });
+  }
+
+  return catalogReadinessPromise;
+};
+
+const ensureCatalogSeed = async ({ force = false } = {}) => {
+  if (!catalogSeedPromise || force) {
+    catalogSeedPromise = runCatalogSeed()
+      .then(() => ensureCatalogReady({ force: true }))
+      .catch((error) => {
+        catalogSeedPromise = null;
+        throw error;
+      });
   }
 
   return catalogSeedPromise;
@@ -275,6 +325,28 @@ const mapLegacyResult = (legacyResult, lotteryType) => {
     sourceType: 'legacy',
     sourceUrl: ''
   };
+};
+
+const getResultChronologyTime = (item) => {
+  const drawAt = item?.drawAt ? new Date(item.drawAt).getTime() : 0;
+  if (Number.isFinite(drawAt) && drawAt > 0) {
+    return drawAt;
+  }
+
+  const roundCodeMatch = String(item?.roundCode || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (roundCodeMatch) {
+    return createBangkokDate(
+      Number(roundCodeMatch[1]),
+      Number(roundCodeMatch[2]),
+      Number(roundCodeMatch[3]),
+      12,
+      0,
+      0
+    ).getTime();
+  }
+
+  const publishedAt = item?.resultPublishedAt ? new Date(item.resultPublishedAt).getTime() : 0;
+  return Number.isFinite(publishedAt) ? publishedAt : 0;
 };
 
 const getRecentResults = async ({ lotteryId = null, limit = 50 } = {}) => {
@@ -322,8 +394,8 @@ const getRecentResults = async ({ lotteryId = null, limit = 50 } = {}) => {
   });
 
   mapped.sort((left, right) => {
-    const leftDate = new Date(left.resultPublishedAt || left.drawAt || 0).getTime();
-    const rightDate = new Date(right.resultPublishedAt || right.drawAt || 0).getTime();
+    const leftDate = getResultChronologyTime(left);
+    const rightDate = getResultChronologyTime(right);
     return rightDate - leftDate;
   });
 
@@ -355,7 +427,7 @@ const getAnnouncementFilter = (viewer = null) => {
 };
 
 const getCatalogOverview = async (viewer = null) => {
-  await ensureCatalogSeed();
+  await ensureCatalogReady();
 
   const [leagues, lotteries, rounds, announcements, recentResults] = await Promise.all([
     LotteryLeague.find({ isActive: true }).sort({ sortOrder: 1, name: 1 }),
@@ -515,7 +587,7 @@ const getCatalogOverview = async (viewer = null) => {
 };
 
 const markAnnouncementRead = async ({ viewer, announcementId }) => {
-  await ensureCatalogSeed();
+  await ensureCatalogReady();
 
   const announcement = await Announcement.findOne({
     _id: announcementId,
@@ -563,7 +635,7 @@ const getLotteryOptions = async (viewer = null) => {
 };
 
 const getRoundsByLottery = async (lotteryId, viewer = null) => {
-  await ensureCatalogSeed();
+  await ensureCatalogReady();
 
   if (viewer?.role === 'customer') {
     const lotteries = await LotteryType.find({ _id: lotteryId, isActive: true })
@@ -604,6 +676,7 @@ const getRoundsByLottery = async (lotteryId, viewer = null) => {
 
 module.exports = {
   ensureCatalogSeed,
+  ensureCatalogReady,
   getCatalogOverview,
   getLotteryOptions,
   getRoundsByLottery,

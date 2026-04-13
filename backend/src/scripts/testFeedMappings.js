@@ -1,15 +1,15 @@
 const assert = require('assert');
 
 const {
-  FEED_CONFIGS,
+  SYNC_CONFIGS,
   EXPLICIT_FEED_MAPPINGS,
   STRICT_FEED_MAPPING,
   buildSnapshot
 } = require('../services/externalResultFeedService');
 
 const findConfig = (feedCode) => {
-  const config = FEED_CONFIGS.find((item) => item.feedCode === feedCode);
-  assert(config, `Missing FEED_CONFIGS entry for ${feedCode}`);
+  const config = SYNC_CONFIGS.find((item) => item.feedCode === feedCode);
+  assert(config, `Missing sync config entry for ${feedCode}`);
   return config;
 };
 
@@ -79,6 +79,32 @@ const baacFixture = {
   opendate: '2026-04-08 16:00:00',
   code: {
     code: '123456'
+  }
+};
+
+const gsbFixture = {
+  __snapshot: {
+    lotteryCode: 'gsb',
+    feedCode: 'gsb',
+    marketName: 'ออมสิน',
+    roundCode: '2026-04-08',
+    headline: '395',
+    firstPrize: '',
+    threeTop: '395',
+    threeFront: '',
+    twoTop: '95',
+    twoBottom: '68',
+    threeBottom: '',
+    threeTopHits: ['395'],
+    twoTopHits: ['95'],
+    twoBottomHits: ['68'],
+    threeFrontHits: [],
+    threeBottomHits: [],
+    runTop: ['3', '9', '5'],
+    runBottom: ['6', '8'],
+    resultPublishedAt: new Date('2026-04-08T05:00:00.000Z'),
+    isSettlementSafe: true,
+    sourceUrl: 'https://psc.gsb.or.th/resultsalak/salak-1year-100/08042026'
   }
 };
 
@@ -176,21 +202,37 @@ const scenarios = [
       assert.strictEqual(snapshot.twoTop, '56');
       assert.strictEqual(snapshot.twoBottom, '34');
     }
+  },
+  {
+    name: 'gsb mapping',
+    feedCodes: ['gsb'],
+    row: gsbFixture,
+    verify(snapshot) {
+      assert.strictEqual(snapshot.roundCode, '2026-04-08');
+      assert.strictEqual(snapshot.threeTop, '395');
+      assert.strictEqual(snapshot.twoTop, '95');
+      assert.strictEqual(snapshot.twoBottom, '68');
+      assert.deepStrictEqual(snapshot.runTop, ['3', '9', '5']);
+      assert.deepStrictEqual(snapshot.runBottom, ['6', '8']);
+      assert.strictEqual(snapshot.sourceUrl, 'https://psc.gsb.or.th/resultsalak/salak-1year-100/08042026');
+    }
   }
 ];
 
 const coveredFeedCodes = new Set(scenarios.flatMap((scenario) => scenario.feedCodes));
-const configuredFeedCodes = FEED_CONFIGS.map((item) => item.feedCode);
-const explicitFeedCodes = Object.keys(EXPLICIT_FEED_MAPPINGS);
+const configuredFeedCodes = SYNC_CONFIGS.map((item) => item.feedCode);
+const mappedFeedCodes = SYNC_CONFIGS
+  .filter((item) => item.provider === 'gsb' || EXPLICIT_FEED_MAPPINGS[item.feedCode])
+  .map((item) => item.feedCode);
 assert.deepStrictEqual(
   [...coveredFeedCodes].sort(),
   [...configuredFeedCodes].sort(),
   'Feed mapping fixtures must cover every configured feed code'
 );
 assert.deepStrictEqual(
-  [...explicitFeedCodes].sort(),
+  [...mappedFeedCodes].sort(),
   [...configuredFeedCodes].sort(),
-  'Explicit feed mappings must cover every configured feed code'
+  'Every configured feed must be covered by an explicit mapping or provider-specific parser'
 );
 assert.strictEqual(STRICT_FEED_MAPPING, true, 'STRICT_FEED_MAPPING should stay enabled');
 
