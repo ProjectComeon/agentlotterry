@@ -108,6 +108,41 @@ const gsbFixture = {
   }
 };
 
+const laosPathanaFixture = {
+  __snapshot: {
+    lotteryCode: 'lao_pathana',
+    feedCode: 'lao_pathana',
+    marketName: 'ลาวพัฒนา',
+    roundCode: '2026-04-13',
+    headline: '568',
+    firstPrize: '27568',
+    threeTop: '568',
+    threeFront: '',
+    twoTop: '68',
+    twoBottom: '75',
+    threeBottom: '',
+    threeTopHits: ['568'],
+    twoTopHits: ['68'],
+    twoBottomHits: ['75'],
+    threeFrontHits: [],
+    threeBottomHits: [],
+    runTop: ['5', '6', '8'],
+    runBottom: ['7', '5'],
+    resultPublishedAt: new Date('2026-04-13T13:15:00.000Z'),
+    isSettlementSafe: true,
+    sourceUrl: 'https://laospathana.com/',
+    rawPayload: {
+      currentMatch: {
+        MATCH_ID: 361,
+        M_DATE: '2026-04-13'
+      },
+      currentResult: {
+        RESULT_1: '27568'
+      }
+    }
+  }
+};
+
 const scenarios = [
   {
     name: 'government feed mapping',
@@ -216,13 +251,28 @@ const scenarios = [
       assert.deepStrictEqual(snapshot.runBottom, ['6', '8']);
       assert.strictEqual(snapshot.sourceUrl, 'https://psc.gsb.or.th/resultsalak/salak-1year-100/08042026');
     }
+  },
+  {
+    name: 'laos pathana mapping',
+    feedCodes: ['lao_pathana'],
+    row: laosPathanaFixture,
+    verify(snapshot) {
+      assert.strictEqual(snapshot.roundCode, '2026-04-13');
+      assert.strictEqual(snapshot.firstPrize, '27568');
+      assert.strictEqual(snapshot.threeTop, '568');
+      assert.strictEqual(snapshot.twoTop, '68');
+      assert.strictEqual(snapshot.twoBottom, '75');
+      assert.deepStrictEqual(snapshot.runTop, ['5', '6', '8']);
+      assert.deepStrictEqual(snapshot.runBottom, ['7', '5']);
+      assert.strictEqual(snapshot.sourceUrl, 'https://laospathana.com/');
+    }
   }
 ];
 
 const coveredFeedCodes = new Set(scenarios.flatMap((scenario) => scenario.feedCodes));
 const configuredFeedCodes = SYNC_CONFIGS.map((item) => item.feedCode);
 const mappedFeedCodes = SYNC_CONFIGS
-  .filter((item) => item.provider === 'gsb' || EXPLICIT_FEED_MAPPINGS[item.feedCode])
+  .filter((item) => item.provider === 'gsb' || item.provider === 'laospathana' || EXPLICIT_FEED_MAPPINGS[item.feedCode])
   .map((item) => item.feedCode);
 assert.deepStrictEqual(
   [...coveredFeedCodes].sort(),

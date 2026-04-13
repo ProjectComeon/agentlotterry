@@ -54,6 +54,16 @@ const LOTTERY_VISUALS = {
     accent: '#0891b2',
     background: 'radial-gradient(circle at 30% 30%, #67e8f9, #0f766e 72%)'
   },
+  lao_pathana: {
+    shortLabel: 'LP',
+    accent: '#0f766e',
+    background: 'radial-gradient(circle at 30% 30%, #86efac, #0f766e 72%)'
+  },
+  'lao-pathana': {
+    shortLabel: 'LP',
+    accent: '#0f766e',
+    background: 'radial-gradient(circle at 30% 30%, #86efac, #0f766e 72%)'
+  },
   'hanoi-normal': {
     shortLabel: 'YN',
     accent: '#e11d48',

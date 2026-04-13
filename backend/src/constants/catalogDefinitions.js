@@ -227,6 +227,22 @@ const LOTTERY_TYPES = [
     supportedBetTypes: LAO_BET_TYPES
   }),
   createLottery({
+    code: 'lao_pathana',
+    leagueCode: 'daily',
+    name: 'à¸¥à¸²à¸§à¸žà¸±à¸’à¸™à¸²',
+    shortName: 'à¸žà¸±à¸’à¸™à¸²',
+    description: 'à¸«à¸§à¸¢à¸¥à¸²à¸§à¸žà¸±à¸’à¸™à¸² à¹ƒà¸Šà¹‰à¸à¸•à¸´à¸à¸²à¸•à¸¥à¸²à¸”à¸¡à¸²à¸•à¸£à¸à¸²à¸™à¸‚à¸­à¸‡à¸£à¸°à¸šà¸š à¹‚à¸”à¸¢à¸­à¸´à¸‡à¸œà¸¥ 3 à¸•à¸±à¸§à¸šà¸™ 2 à¸•à¸±à¸§à¸šà¸™ à¹à¸¥à¸° 2 à¸•à¸±à¸§à¸¥à¹ˆà¸²à¸‡à¸ˆà¸²à¸à¹€à¸§à¹‡à¸šà¸—à¸²à¸‡à¸à¸²à¸£',
+    provider: 'Lao Pathana Official',
+    schedule: createDailySchedule({
+      closeHour: 20,
+      closeMinute: 20,
+      drawHour: 20,
+      drawMinute: 20
+    }),
+    supportedBetTypes: STANDARD_BET_TYPES,
+    resultSource: 'api'
+  }),
+  createLottery({
     code: 'ynhn',
     leagueCode: 'daily',
     name: 'ฮานอยธรรมดา',
@@ -487,6 +503,17 @@ const LOTTERY_TYPES = [
   })
 ];
 
+const NORMALIZED_LOTTERY_TYPES = LOTTERY_TYPES.map((lottery) => (
+  lottery.code === 'lao_pathana'
+    ? {
+        ...lottery,
+        name: '\u0e25\u0e32\u0e27\u0e1e\u0e31\u0e12\u0e19\u0e32',
+        shortName: '\u0e1e\u0e31\u0e12\u0e19\u0e32',
+        description: 'Lao Pathana uses the standard project betting rules with 3 top, 2 top, and 2 bottom derived from the official result.'
+      }
+    : lottery
+));
+
 const DEFAULT_ANNOUNCEMENTS = [
   {
     code: 'phase1-launch',
@@ -499,6 +526,6 @@ const DEFAULT_ANNOUNCEMENTS = [
 module.exports = {
   DEFAULT_RATE_TIERS,
   LOTTERY_LEAGUES,
-  LOTTERY_TYPES,
+  LOTTERY_TYPES: NORMALIZED_LOTTERY_TYPES,
   DEFAULT_ANNOUNCEMENTS
 };

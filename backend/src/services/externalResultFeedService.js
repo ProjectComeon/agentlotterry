@@ -5,6 +5,7 @@ const MarketFeedResult = require('../models/MarketFeedResult');
 const { createBangkokDate } = require('../utils/bangkokTime');
 const { ensureRoundForLottery, settleRoundById, upsertRoundResult } = require('./resultService');
 const { fetchGsbSnapshots } = require('./gsbResultService');
+const { fetchLaosPathanaSnapshots } = require('./laosPathanaResultService');
 
 const legacyBaseUrl = (process.env.MANYCAI_BASE_URL || 'http://vip.manycai.com').replace(/\/$/, '');
 const legacyApiKey = String(process.env.MANYCAI_API_KEY || '').trim();
@@ -15,6 +16,7 @@ const MANYCAI_FEED_BASE_URL = (
 const RESULT_SYNC_TIMEOUT_MS = Number(process.env.RESULT_SYNC_TIMEOUT_MS || 12000);
 const STRICT_FEED_MAPPING = String(process.env.STRICT_FEED_MAPPING || '1') !== '0';
 const GSB_SYNC_LIMIT = Number(process.env.GSB_SYNC_LIMIT || 6);
+const LAOS_PATHANA_SYNC_LIMIT = Number(process.env.LAOS_PATHANA_SYNC_LIMIT || 10);
 
 const defaultMappedDigits = (value) => String(value || '').replace(/\D/g, '');
 const defaultMappedList = (value) => {
@@ -143,15 +145,28 @@ const EXTRA_SYNC_CONFIGS = [
   { feedCode: 'gsb', lotteryCode: 'gsb', marketName: 'ออมสิน', parser: 'gsb', syncToResults: true, provider: 'gsb' }
 ];
 
+EXTRA_SYNC_CONFIGS.push({
+  feedCode: 'lao_pathana',
+  lotteryCode: 'lao_pathana',
+  marketName: '\u0e25\u0e32\u0e27\u0e1e\u0e31\u0e12\u0e19\u0e32',
+  parser: 'laospathana',
+  syncToResults: true,
+  provider: 'laospathana'
+});
+
 const SYNC_CONFIGS = [...FEED_CONFIGS, ...EXTRA_SYNC_CONFIGS];
-const isConfigMappingCovered = (config) => Boolean(config?.provider === 'gsb' || EXPLICIT_FEED_MAPPINGS[config?.feedCode]);
+const isConfigMappingCovered = (config) => Boolean(
+  config?.provider === 'gsb'
+  || config?.provider === 'laospathana'
+  || EXPLICIT_FEED_MAPPINGS[config?.feedCode]
+);
 
 const getFeedMappingMode = (configOrFeedCode) => {
   const config = typeof configOrFeedCode === 'string'
     ? SYNC_CONFIGS.find((item) => item.feedCode === configOrFeedCode) || { feedCode: configOrFeedCode }
     : configOrFeedCode || {};
 
-  if (config.provider === 'gsb') {
+  if (config.provider === 'gsb' || config.provider === 'laospathana') {
     return 'official-page';
   }
 
@@ -465,11 +480,16 @@ const fetchSyncRows = async (config) => {
     return snapshots.map((snapshot) => ({ __snapshot: snapshot }));
   }
 
+  if (config.provider === 'laospathana') {
+    const snapshots = await fetchLaosPathanaSnapshots({ limit: LAOS_PATHANA_SYNC_LIMIT });
+    return snapshots.map((snapshot) => ({ __snapshot: snapshot }));
+  }
+
   return fetchFeedRows(config.feedCode);
 };
 
 const buildSnapshot = (config, row, { strict = STRICT_FEED_MAPPING } = {}) => {
-  if (config.provider === 'gsb') {
+  if (config.provider === 'gsb' || config.provider === 'laospathana') {
     return row?.__snapshot || null;
   }
 

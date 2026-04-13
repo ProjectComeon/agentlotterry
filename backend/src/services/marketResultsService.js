@@ -7,6 +7,12 @@ const {
   GSB_PROVIDER_NAME,
   fetchLatestGsbSnapshot
 } = require('./gsbResultService');
+const {
+  LAOS_PATHANA_MARKET_ID,
+  LAOS_PATHANA_MARKET_NAME,
+  LAOS_PATHANA_PROVIDER_NAME,
+  fetchLatestLaosPathanaSnapshot
+} = require('./laosPathanaResultService');
 
 const PROVIDER_NAME = 'manycai';
 const RAW_PROVIDER_KEY = String(process.env.MANYCAI_API_KEY || '').trim();
@@ -17,6 +23,12 @@ const PROVIDER_BASE_URL = (
     : MANYCAI_FEED_BASE_URL
 ).replace(/\/$/, '');
 const CACHE_TTL_MS = Number(process.env.MARKET_RESULTS_CACHE_MS || 60000);
+const LAOS_PATHANA_NOTE = '\u0e15\u0e23\u0e27\u0e08\u0e08\u0e31\u0e1a\u0e08\u0e32\u0e01\u0e40\u0e27\u0e47\u0e1a\u0e44\u0e0b\u0e15\u0e4c Lao Pathana \u0e41\u0e25\u0e30\u0e41\u0e1b\u0e25\u0e07\u0e1c\u0e25\u0e41\u0e1a\u0e1a\u0e40\u0e14\u0e35\u0e22\u0e27\u0e01\u0e31\u0e1a GOGOLot';
+const LAOS_PATHANA_NUMBER_LABELS = {
+  threeTop: '\u0033 \u0e15\u0e31\u0e27\u0e1a\u0e19',
+  twoTop: '\u0032 \u0e15\u0e31\u0e27\u0e1a\u0e19',
+  twoBottom: '\u0032 \u0e15\u0e31\u0e27\u0e25\u0e48\u0e32\u0e07'
+};
 
 const cache = {
   data: null,
@@ -102,6 +114,17 @@ const baseSections = [
     ]
   }
 ];
+
+baseSections.find((section) => section.id === 'international')?.markets.splice(5, 0, {
+  id: 'lao-pathana',
+  name: LAOS_PATHANA_MARKET_NAME,
+  provider: LAOS_PATHANA_PROVIDER_NAME,
+  status: 'waiting',
+  resultDate: '',
+  headline: '',
+  numbers: [],
+  note: 'รอข้อมูลจากเว็บไซต์ Lao Pathana'
+});
 
 const cloneSections = () => baseSections.map((section) => ({
   ...section,
@@ -198,6 +221,50 @@ const fetchGsbLatestMarket = async () => {
       { label: '2 ตัวล่าง', value: snapshot.twoBottom }
     ],
     note: 'ตรวจจับจากเว็บไซต์ GSB และแปลงผลแบบเดียวกับ GOGOLot',
+    sourceUrl: snapshot.sourceUrl
+  });
+};
+
+const fetchLatestLaosPathanaMarket = async () => {
+  const snapshot = await fetchLatestLaosPathanaSnapshot();
+  if (!snapshot) {
+    return null;
+  }
+
+  return buildMarket({
+    id: 'lao-pathana',
+    name: LAOS_PATHANA_MARKET_NAME,
+    provider: LAOS_PATHANA_PROVIDER_NAME,
+    resultDate: snapshot.roundCode,
+    headline: snapshot.threeTop,
+    numbers: [
+      { label: '3 à¸•à¸±à¸§à¸šà¸™', value: snapshot.threeTop },
+      { label: '2 à¸•à¸±à¸§à¸šà¸™', value: snapshot.twoTop },
+      { label: '2 à¸•à¸±à¸§à¸¥à¹ˆà¸²à¸‡', value: snapshot.twoBottom }
+    ],
+    note: 'à¸•à¸£à¸§à¸ˆà¸ˆà¸±à¸šà¸ˆà¸²à¸à¹€à¸§à¹‡à¸šà¹„à¸‹à¸•à¹Œ Lao Pathana à¹à¸¥à¸°à¹à¸›à¸¥à¸‡à¸œà¸¥à¹à¸šà¸šà¹€à¸”à¸µà¸¢à¸§à¸à¸±à¸š GOGOLot',
+    sourceUrl: snapshot.sourceUrl
+  });
+};
+
+const fetchLatestLaosPathanaMarketNormalized = async () => {
+  const snapshot = await fetchLatestLaosPathanaSnapshot();
+  if (!snapshot) {
+    return null;
+  }
+
+  return buildMarket({
+    id: 'lao-pathana',
+    name: LAOS_PATHANA_MARKET_NAME,
+    provider: LAOS_PATHANA_PROVIDER_NAME,
+    resultDate: snapshot.roundCode,
+    headline: snapshot.threeTop,
+    numbers: [
+      { label: LAOS_PATHANA_NUMBER_LABELS.threeTop, value: snapshot.threeTop },
+      { label: LAOS_PATHANA_NUMBER_LABELS.twoTop, value: snapshot.twoTop },
+      { label: LAOS_PATHANA_NUMBER_LABELS.twoBottom, value: snapshot.twoBottom }
+    ],
+    note: LAOS_PATHANA_NOTE,
     sourceUrl: snapshot.sourceUrl
   });
 };
@@ -367,6 +434,16 @@ const applyGsbMarket = async (sections) => {
   return true;
 };
 
+const applyLaosPathanaMarket = async (sections) => {
+  const market = await fetchLatestLaosPathanaMarketNormalized();
+  if (!market) {
+    return false;
+  }
+
+  setMarketData(sections, 'international', market);
+  return true;
+};
+
 const buildSummary = (sections) => {
   const markets = sections.flatMap((section) => section.markets);
   const liveCount = markets.filter((market) => market.status === 'live').length;
@@ -401,6 +478,15 @@ const getMarketOverview = async () => {
     }
   } catch (error) {
     warnings.push('ไม่สามารถดึงข้อมูลออมสินจากเว็บไซต์ GSB ได้');
+  }
+
+  try {
+    const hasLaosPathanaData = await applyLaosPathanaMarket(sections);
+    if (!hasLaosPathanaData) {
+      warnings.push('ยังไม่สามารถแปลงข้อมูลลาวพัฒนาจากเว็บไซต์ Lao Pathana ได้');
+    }
+  } catch (error) {
+    warnings.push('ไม่สามารถดึงข้อมูลลาวพัฒนาจากเว็บไซต์ Lao Pathana ได้');
   }
 
   if (!PROVIDER_KEY) {

@@ -3,6 +3,7 @@ const LEGACY_MARKET_CODE_MAP = {
   baac: 'baac',
   gsb: 'gsb',
   'gsb-1year-100': 'gsb',
+  'lao-pathana': 'lao_pathana',
   'hanoi-special': 'hanoi_special',
   'lao-vip': 'lao_vip',
   'dowjones-vip': 'dowjones_vip',
