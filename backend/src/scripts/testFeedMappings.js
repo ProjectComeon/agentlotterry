@@ -143,6 +143,158 @@ const laosPathanaFixture = {
   }
 };
 
+const laosRedcrossFixture = {
+  __snapshot: {
+    lotteryCode: 'lao_redcross',
+    feedCode: 'lao_redcross',
+    marketName: 'ลาวกาชาด',
+    roundCode: '2026-04-13',
+    headline: '254',
+    firstPrize: '30254',
+    threeTop: '254',
+    threeFront: '',
+    twoTop: '54',
+    twoBottom: '30',
+    threeBottom: '',
+    threeTopHits: ['254'],
+    twoTopHits: ['54'],
+    twoBottomHits: ['30'],
+    threeFrontHits: [],
+    threeBottomHits: [],
+    runTop: ['2', '5', '4'],
+    runBottom: ['3', '0'],
+    resultPublishedAt: new Date('2026-04-13T16:30:00.000Z'),
+    isSettlementSafe: true,
+    sourceUrl: 'https://api.lao-redcross.com/result',
+    rawPayload: {
+      status: 'success',
+      data: {
+        lotto_date: '2026-04-13',
+        results: {
+          digit5: '30254',
+          digit3: '254',
+          digit2_top: '54',
+          digit2_bottom: '30'
+        }
+      }
+    }
+  }
+};
+
+const laosTvFixture = {
+  __snapshot: {
+    lotteryCode: 'lao_tv',
+    feedCode: 'lao_tv',
+    marketName: '\u0e25\u0e32\u0e27 TV',
+    roundCode: '2026-04-14',
+    headline: '927',
+    firstPrize: '95927',
+    threeTop: '927',
+    threeFront: '',
+    twoTop: '27',
+    twoBottom: '95',
+    threeBottom: '',
+    threeTopHits: ['927'],
+    twoTopHits: ['27'],
+    twoBottomHits: ['95'],
+    threeFrontHits: [],
+    threeBottomHits: [],
+    runTop: ['9', '2', '7'],
+    runBottom: ['9', '5'],
+    resultPublishedAt: new Date('2026-04-14T03:30:00.000Z'),
+    isSettlementSafe: true,
+    sourceUrl: 'https://lao-tv.com/',
+    rawPayload: {
+      status: 'success',
+      data: {
+        lotto_date: '2026-04-14',
+        results: {
+          digit5: '95927',
+          digit3: '927',
+          digit2_top: '27',
+          digit2_bottom: '95'
+        }
+      }
+    }
+  }
+};
+
+const laosHdFixture = {
+  __snapshot: {
+    lotteryCode: 'lao_hd',
+    feedCode: 'lao_hd',
+    marketName: '\u0e25\u0e32\u0e27 HD',
+    roundCode: '2026-04-14',
+    headline: '900',
+    firstPrize: '47900',
+    threeTop: '900',
+    threeFront: '',
+    twoTop: '00',
+    twoBottom: '47',
+    threeBottom: '',
+    threeTopHits: ['900'],
+    twoTopHits: ['00'],
+    twoBottomHits: ['47'],
+    threeFrontHits: [],
+    threeBottomHits: [],
+    runTop: ['9', '0'],
+    runBottom: ['4', '7'],
+    resultPublishedAt: new Date('2026-04-14T06:45:00.000Z'),
+    isSettlementSafe: true,
+    sourceUrl: 'https://laoshd.com/',
+    rawPayload: {
+      status: 'success',
+      data: {
+        lotto_date: '2026-04-14',
+        results: {
+          digit5: '47900',
+          digit3: '900',
+          digit2_top: '00',
+          digit2_bottom: '47'
+        }
+      }
+    }
+  }
+};
+
+const laosExtraFixture = {
+  __snapshot: {
+    lotteryCode: 'lao_extra',
+    feedCode: 'lao_extra',
+    marketName: '\u0e25\u0e32\u0e27 Extra',
+    roundCode: '2026-04-14',
+    headline: '323',
+    firstPrize: '17323',
+    threeTop: '323',
+    threeFront: '',
+    twoTop: '23',
+    twoBottom: '17',
+    threeBottom: '',
+    threeTopHits: ['323'],
+    twoTopHits: ['23'],
+    twoBottomHits: ['17'],
+    threeFrontHits: [],
+    threeBottomHits: [],
+    runTop: ['3', '2'],
+    runBottom: ['1', '7'],
+    resultPublishedAt: new Date('2026-04-14T01:30:00.000Z'),
+    isSettlementSafe: true,
+    sourceUrl: 'https://laoextra.com/',
+    rawPayload: {
+      status: 'success',
+      data: {
+        lotto_date: '2026-04-14',
+        results: {
+          digit5: '17323',
+          digit3: '323',
+          digit2_top: '23',
+          digit2_bottom: '17'
+        }
+      }
+    }
+  }
+};
+
 const scenarios = [
   {
     name: 'government feed mapping',
@@ -266,13 +418,73 @@ const scenarios = [
       assert.deepStrictEqual(snapshot.runBottom, ['7', '5']);
       assert.strictEqual(snapshot.sourceUrl, 'https://laospathana.com/');
     }
+  },
+  {
+    name: 'laos redcross mapping',
+    feedCodes: ['lao_redcross'],
+    row: laosRedcrossFixture,
+    verify(snapshot) {
+      assert.strictEqual(snapshot.roundCode, '2026-04-13');
+      assert.strictEqual(snapshot.firstPrize, '30254');
+      assert.strictEqual(snapshot.threeTop, '254');
+      assert.strictEqual(snapshot.twoTop, '54');
+      assert.strictEqual(snapshot.twoBottom, '30');
+      assert.deepStrictEqual(snapshot.runTop, ['2', '5', '4']);
+      assert.deepStrictEqual(snapshot.runBottom, ['3', '0']);
+      assert.strictEqual(snapshot.sourceUrl, 'https://api.lao-redcross.com/result');
+    }
+  },
+  {
+    name: 'laos tv mapping',
+    feedCodes: ['lao_tv'],
+    row: laosTvFixture,
+    verify(snapshot) {
+      assert.strictEqual(snapshot.roundCode, '2026-04-14');
+      assert.strictEqual(snapshot.firstPrize, '95927');
+      assert.strictEqual(snapshot.threeTop, '927');
+      assert.strictEqual(snapshot.twoTop, '27');
+      assert.strictEqual(snapshot.twoBottom, '95');
+      assert.deepStrictEqual(snapshot.runTop, ['9', '2', '7']);
+      assert.deepStrictEqual(snapshot.runBottom, ['9', '5']);
+      assert.strictEqual(snapshot.sourceUrl, 'https://lao-tv.com/');
+    }
+  },
+  {
+    name: 'laos hd mapping',
+    feedCodes: ['lao_hd'],
+    row: laosHdFixture,
+    verify(snapshot) {
+      assert.strictEqual(snapshot.roundCode, '2026-04-14');
+      assert.strictEqual(snapshot.firstPrize, '47900');
+      assert.strictEqual(snapshot.threeTop, '900');
+      assert.strictEqual(snapshot.twoTop, '00');
+      assert.strictEqual(snapshot.twoBottom, '47');
+      assert.deepStrictEqual(snapshot.runTop, ['9', '0']);
+      assert.deepStrictEqual(snapshot.runBottom, ['4', '7']);
+      assert.strictEqual(snapshot.sourceUrl, 'https://laoshd.com/');
+    }
+  },
+  {
+    name: 'laos extra mapping',
+    feedCodes: ['lao_extra'],
+    row: laosExtraFixture,
+    verify(snapshot) {
+      assert.strictEqual(snapshot.roundCode, '2026-04-14');
+      assert.strictEqual(snapshot.firstPrize, '17323');
+      assert.strictEqual(snapshot.threeTop, '323');
+      assert.strictEqual(snapshot.twoTop, '23');
+      assert.strictEqual(snapshot.twoBottom, '17');
+      assert.deepStrictEqual(snapshot.runTop, ['3', '2']);
+      assert.deepStrictEqual(snapshot.runBottom, ['1', '7']);
+      assert.strictEqual(snapshot.sourceUrl, 'https://laoextra.com/');
+    }
   }
 ];
 
 const coveredFeedCodes = new Set(scenarios.flatMap((scenario) => scenario.feedCodes));
 const configuredFeedCodes = SYNC_CONFIGS.map((item) => item.feedCode);
 const mappedFeedCodes = SYNC_CONFIGS
-  .filter((item) => item.provider === 'gsb' || item.provider === 'laospathana' || EXPLICIT_FEED_MAPPINGS[item.feedCode])
+  .filter((item) => item.provider === 'gsb' || item.provider === 'laosredcross' || item.provider === 'laospathana' || item.provider === 'laostv' || item.provider === 'laoshd' || item.provider === 'laoextra' || EXPLICIT_FEED_MAPPINGS[item.feedCode])
   .map((item) => item.feedCode);
 assert.deepStrictEqual(
   [...coveredFeedCodes].sort(),

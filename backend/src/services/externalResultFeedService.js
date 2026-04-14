@@ -5,7 +5,11 @@ const MarketFeedResult = require('../models/MarketFeedResult');
 const { createBangkokDate } = require('../utils/bangkokTime');
 const { ensureRoundForLottery, settleRoundById, upsertRoundResult } = require('./resultService');
 const { fetchGsbSnapshots } = require('./gsbResultService');
+const { fetchLaosRedcrossSnapshots } = require('./laosRedcrossResultService');
 const { fetchLaosPathanaSnapshots } = require('./laosPathanaResultService');
+const { fetchLaosTvSnapshots } = require('./laosTvResultService');
+const { fetchLaosHdSnapshots } = require('./laosHdResultService');
+const { fetchLaosExtraSnapshots } = require('./laosExtraResultService');
 
 const legacyBaseUrl = (process.env.MANYCAI_BASE_URL || 'http://vip.manycai.com').replace(/\/$/, '');
 const legacyApiKey = String(process.env.MANYCAI_API_KEY || '').trim();
@@ -16,7 +20,11 @@ const MANYCAI_FEED_BASE_URL = (
 const RESULT_SYNC_TIMEOUT_MS = Number(process.env.RESULT_SYNC_TIMEOUT_MS || 12000);
 const STRICT_FEED_MAPPING = String(process.env.STRICT_FEED_MAPPING || '1') !== '0';
 const GSB_SYNC_LIMIT = Number(process.env.GSB_SYNC_LIMIT || 6);
+const LAOS_REDCROSS_SYNC_LIMIT = Number(process.env.LAOS_REDCROSS_SYNC_LIMIT || 10);
 const LAOS_PATHANA_SYNC_LIMIT = Number(process.env.LAOS_PATHANA_SYNC_LIMIT || 10);
+const LAOS_TV_SYNC_LIMIT = Number(process.env.LAOS_TV_SYNC_LIMIT || 10);
+const LAOS_HD_SYNC_LIMIT = Number(process.env.LAOS_HD_SYNC_LIMIT || 10);
+const LAOS_EXTRA_SYNC_LIMIT = Number(process.env.LAOS_EXTRA_SYNC_LIMIT || 10);
 
 const defaultMappedDigits = (value) => String(value || '').replace(/\D/g, '');
 const defaultMappedList = (value) => {
@@ -146,6 +154,15 @@ const EXTRA_SYNC_CONFIGS = [
 ];
 
 EXTRA_SYNC_CONFIGS.push({
+  feedCode: 'lao_redcross',
+  lotteryCode: 'lao_redcross',
+  marketName: '\u0e25\u0e32\u0e27\u0e01\u0e32\u0e0a\u0e32\u0e14',
+  parser: 'laosredcross',
+  syncToResults: true,
+  provider: 'laosredcross'
+});
+
+EXTRA_SYNC_CONFIGS.push({
   feedCode: 'lao_pathana',
   lotteryCode: 'lao_pathana',
   marketName: '\u0e25\u0e32\u0e27\u0e1e\u0e31\u0e12\u0e19\u0e32',
@@ -154,10 +171,41 @@ EXTRA_SYNC_CONFIGS.push({
   provider: 'laospathana'
 });
 
+EXTRA_SYNC_CONFIGS.push({
+  feedCode: 'lao_tv',
+  lotteryCode: 'lao_tv',
+  marketName: '\u0e25\u0e32\u0e27 TV',
+  parser: 'laostv',
+  syncToResults: true,
+  provider: 'laostv'
+});
+
+EXTRA_SYNC_CONFIGS.push({
+  feedCode: 'lao_hd',
+  lotteryCode: 'lao_hd',
+  marketName: '\u0e25\u0e32\u0e27 HD',
+  parser: 'laoshd',
+  syncToResults: true,
+  provider: 'laoshd'
+});
+
+EXTRA_SYNC_CONFIGS.push({
+  feedCode: 'lao_extra',
+  lotteryCode: 'lao_extra',
+  marketName: '\u0e25\u0e32\u0e27 Extra',
+  parser: 'laoextra',
+  syncToResults: true,
+  provider: 'laoextra'
+});
+
 const SYNC_CONFIGS = [...FEED_CONFIGS, ...EXTRA_SYNC_CONFIGS];
 const isConfigMappingCovered = (config) => Boolean(
   config?.provider === 'gsb'
+  || config?.provider === 'laosredcross'
   || config?.provider === 'laospathana'
+  || config?.provider === 'laostv'
+  || config?.provider === 'laoshd'
+  || config?.provider === 'laoextra'
   || EXPLICIT_FEED_MAPPINGS[config?.feedCode]
 );
 
@@ -166,7 +214,7 @@ const getFeedMappingMode = (configOrFeedCode) => {
     ? SYNC_CONFIGS.find((item) => item.feedCode === configOrFeedCode) || { feedCode: configOrFeedCode }
     : configOrFeedCode || {};
 
-  if (config.provider === 'gsb' || config.provider === 'laospathana') {
+  if (config.provider === 'gsb' || config.provider === 'laosredcross' || config.provider === 'laospathana' || config.provider === 'laostv' || config.provider === 'laoshd' || config.provider === 'laoextra') {
     return 'official-page';
   }
 
@@ -480,8 +528,28 @@ const fetchSyncRows = async (config) => {
     return snapshots.map((snapshot) => ({ __snapshot: snapshot }));
   }
 
+  if (config.provider === 'laosredcross') {
+    const snapshots = await fetchLaosRedcrossSnapshots({ limit: LAOS_REDCROSS_SYNC_LIMIT });
+    return snapshots.map((snapshot) => ({ __snapshot: snapshot }));
+  }
+
   if (config.provider === 'laospathana') {
     const snapshots = await fetchLaosPathanaSnapshots({ limit: LAOS_PATHANA_SYNC_LIMIT });
+    return snapshots.map((snapshot) => ({ __snapshot: snapshot }));
+  }
+
+  if (config.provider === 'laostv') {
+    const snapshots = await fetchLaosTvSnapshots({ limit: LAOS_TV_SYNC_LIMIT });
+    return snapshots.map((snapshot) => ({ __snapshot: snapshot }));
+  }
+
+  if (config.provider === 'laoshd') {
+    const snapshots = await fetchLaosHdSnapshots({ limit: LAOS_HD_SYNC_LIMIT });
+    return snapshots.map((snapshot) => ({ __snapshot: snapshot }));
+  }
+
+  if (config.provider === 'laoextra') {
+    const snapshots = await fetchLaosExtraSnapshots({ limit: LAOS_EXTRA_SYNC_LIMIT });
     return snapshots.map((snapshot) => ({ __snapshot: snapshot }));
   }
 
@@ -489,7 +557,7 @@ const fetchSyncRows = async (config) => {
 };
 
 const buildSnapshot = (config, row, { strict = STRICT_FEED_MAPPING } = {}) => {
-  if (config.provider === 'gsb' || config.provider === 'laospathana') {
+  if (config.provider === 'gsb' || config.provider === 'laosredcross' || config.provider === 'laospathana' || config.provider === 'laostv' || config.provider === 'laoshd' || config.provider === 'laoextra') {
     return row?.__snapshot || null;
   }
 

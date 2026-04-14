@@ -243,6 +243,70 @@ const LOTTERY_TYPES = [
     resultSource: 'api'
   }),
   createLottery({
+    code: 'lao_redcross',
+    leagueCode: 'daily',
+    name: '\u0e25\u0e32\u0e27\u0e01\u0e32\u0e0a\u0e32\u0e14',
+    shortName: '\u0e01\u0e32\u0e0a\u0e32\u0e14',
+    description: 'Lao Red Cross uses the standard project betting rules with 3 top, 2 top, and 2 bottom from the official API.',
+    provider: 'Lao Red Cross Official',
+    schedule: createDailySchedule({
+      closeHour: 23,
+      closeMinute: 25,
+      drawHour: 23,
+      drawMinute: 30
+    }),
+    supportedBetTypes: STANDARD_BET_TYPES,
+    resultSource: 'api'
+  }),
+  createLottery({
+    code: 'lao_tv',
+    leagueCode: 'daily',
+    name: '\u0e25\u0e32\u0e27 TV',
+    shortName: 'TV',
+    description: 'Lao TV uses the standard project betting rules with 3 top, 2 top, and 2 bottom from the official API.',
+    provider: 'Lao TV Official',
+    schedule: createDailySchedule({
+      closeHour: 10,
+      closeMinute: 25,
+      drawHour: 10,
+      drawMinute: 30
+    }),
+    supportedBetTypes: STANDARD_BET_TYPES,
+    resultSource: 'api'
+  }),
+  createLottery({
+    code: 'lao_hd',
+    leagueCode: 'daily',
+    name: '\u0e25\u0e32\u0e27 HD',
+    shortName: 'HD',
+    description: 'Lao HD uses the standard project betting rules with 3 top, 2 top, and 2 bottom from the official API.',
+    provider: 'Lao HD Official',
+    schedule: createDailySchedule({
+      closeHour: 13,
+      closeMinute: 40,
+      drawHour: 13,
+      drawMinute: 45
+    }),
+    supportedBetTypes: STANDARD_BET_TYPES,
+    resultSource: 'api'
+  }),
+  createLottery({
+    code: 'lao_extra',
+    leagueCode: 'daily',
+    name: '\u0e25\u0e32\u0e27 Extra',
+    shortName: 'Extra',
+    description: 'Lao Extra uses the standard project betting rules with 3 top, 2 top, and 2 bottom from the official API.',
+    provider: 'Lao Extra Official',
+    schedule: createDailySchedule({
+      closeHour: 8,
+      closeMinute: 25,
+      drawHour: 8,
+      drawMinute: 30
+    }),
+    supportedBetTypes: STANDARD_BET_TYPES,
+    resultSource: 'api'
+  }),
+  createLottery({
     code: 'ynhn',
     leagueCode: 'daily',
     name: 'ฮานอยธรรมดา',
@@ -511,6 +575,34 @@ const NORMALIZED_LOTTERY_TYPES = LOTTERY_TYPES.map((lottery) => (
         shortName: '\u0e1e\u0e31\u0e12\u0e19\u0e32',
         description: 'Lao Pathana uses the standard project betting rules with 3 top, 2 top, and 2 bottom derived from the official result.'
       }
+    : lottery.code === 'lao_redcross'
+      ? {
+          ...lottery,
+          name: '\u0e25\u0e32\u0e27\u0e01\u0e32\u0e0a\u0e32\u0e14',
+          shortName: '\u0e01\u0e32\u0e0a\u0e32\u0e14',
+          description: 'Lao Red Cross uses the standard project betting rules with 3 top, 2 top, and 2 bottom from the official API.'
+        }
+      : lottery.code === 'lao_tv'
+        ? {
+            ...lottery,
+            name: '\u0e25\u0e32\u0e27 TV',
+            shortName: 'TV',
+            description: 'Lao TV uses the standard project betting rules with 3 top, 2 top, and 2 bottom from the official API.'
+          }
+        : lottery.code === 'lao_hd'
+          ? {
+              ...lottery,
+              name: '\u0e25\u0e32\u0e27 HD',
+              shortName: 'HD',
+              description: 'Lao HD uses the standard project betting rules with 3 top, 2 top, and 2 bottom from the official API.'
+            }
+          : lottery.code === 'lao_extra'
+            ? {
+                ...lottery,
+                name: '\u0e25\u0e32\u0e27 Extra',
+                shortName: 'Extra',
+                description: 'Lao Extra uses the standard project betting rules with 3 top, 2 top, and 2 bottom from the official API.'
+              }
     : lottery
 ));
 
