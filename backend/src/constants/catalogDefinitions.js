@@ -113,7 +113,7 @@ const LOTTERY_TYPES = [
     name: 'รัฐบาลไทย',
     shortName: 'ไทย',
     description: 'หวยรัฐบาลไทย งวดวันที่ 1 และ 16 ของเดือน',
-    provider: 'Internal Feed',
+    provider: 'GLO Official',
     schedule: {
       type: 'monthly',
       days: [1, 16],
@@ -124,7 +124,7 @@ const LOTTERY_TYPES = [
       drawMinute: 0
     },
     supportedBetTypes: GOVERNMENT_BET_TYPES,
-    resultSource: 'legacy'
+    resultSource: 'api'
   }),
   createLottery({
     code: 'baac',
@@ -132,7 +132,7 @@ const LOTTERY_TYPES = [
     name: 'ธกส',
     shortName: 'ธกส',
     description: 'สลากออมทรัพย์ ธ.ก.ส. รอบเช้าสำหรับตลาดรัฐบาล',
-    provider: 'Internal Feed',
+    provider: 'BAAC Official',
     schedule: {
       type: 'monthly',
       days: [1, 16],
@@ -142,7 +142,8 @@ const LOTTERY_TYPES = [
       drawHour: 12,
       drawMinute: 15
     },
-    supportedBetTypes: BAAC_BET_TYPES
+    supportedBetTypes: BAAC_BET_TYPES,
+    resultSource: 'api'
   }),
   createLottery({
     code: 'gsb',
@@ -200,31 +201,163 @@ const LOTTERY_TYPES = [
     })
   }),
   createLottery({
-    code: 'tlzc',
-    leagueCode: 'daily',
-    name: 'หวยลาว',
-    shortName: 'ลาว',
-    description: 'หวยลาวรายวัน รองรับหวยชุดลาว 4 ตัว',
+    code: 'hanoi_extra',
+    leagueCode: 'foreign',
+    name: 'ฮานอย Extra',
+    shortName: 'HN Extra',
+    description: 'ฮานอย Extra ใช้รางวัลพิเศษ 5 ตัวจาก xosoextra.com โดยแปลงเป็น 3 ตัวบน 2 ตัวบน และ 2 ตัวล่างตามกติกามาตรฐานของระบบ',
+    provider: 'Xoso Extra Official',
     schedule: createDailySchedule({
-      closeHour: 21,
-      closeMinute: 20,
-      drawHour: 21,
+      closeHour: 22,
+      closeMinute: 10,
+      drawHour: 22,
       drawMinute: 30
     }),
-    supportedBetTypes: LAO_BET_TYPES
+    supportedBetTypes: STANDARD_BET_TYPES,
+    resultSource: 'api'
+  }),
+  createLottery({
+    code: 'hanoi_star',
+    leagueCode: 'foreign',
+    name: 'ฮานอยสตาร์',
+    shortName: 'HN Star',
+    description: 'ฮานอยสตาร์ใช้ผล 5 ตัวจาก minhngocstar.com โดยแปลงเป็น 3 ตัวบน 2 ตัวบน และ 2 ตัวล่างตามกติกามาตรฐานของระบบ',
+    provider: 'Minh Ngoc Star Official',
+    schedule: createDailySchedule({
+      closeHour: 12,
+      closeMinute: 10,
+      drawHour: 12,
+      drawMinute: 30
+    }),
+    supportedBetTypes: STANDARD_BET_TYPES,
+    resultSource: 'api'
+  }),
+  createLottery({
+    code: 'hanoi_develop',
+    leagueCode: 'foreign',
+    name: 'ฮานอยพัฒนา',
+    shortName: 'HN Dev',
+    description: 'ฮานอยพัฒนาใช้ผล 5 ตัวจาก xosodevelop.com โดยแปลงเป็น 3 ตัวบน 2 ตัวบน และ 2 ตัวล่างตามกติกามาตรฐานของระบบ',
+    provider: 'Xoso Develop Official',
+    schedule: createDailySchedule({
+      closeHour: 19,
+      closeMinute: 10,
+      drawHour: 19,
+      drawMinute: 30
+    }),
+    supportedBetTypes: STANDARD_BET_TYPES,
+    resultSource: 'api'
+  }),
+  createLottery({
+    code: 'hanoi_hd',
+    leagueCode: 'foreign',
+    name: 'ฮานอย HD',
+    shortName: 'HN HD',
+    description: 'ฮานอย HD ใช้ผล 5 ตัวจาก xosohd.com โดยแปลงเป็น 3 ตัวบน 2 ตัวบน และ 2 ตัวล่างตามกติกามาตรฐานของระบบ',
+    provider: 'Xoso HD Official',
+    schedule: createDailySchedule({
+      closeHour: 11,
+      closeMinute: 10,
+      drawHour: 11,
+      drawMinute: 30
+    }),
+    supportedBetTypes: STANDARD_BET_TYPES,
+    resultSource: 'api'
+  }),
+    createLottery({
+      code: 'hanoi_tv',
+      leagueCode: 'foreign',
+      name: 'ฮานอย TV',
+      shortName: 'HN TV',
+    description: 'ฮานอย TV ใช้ผล 5 ตัวจาก minhngoctv.com โดยแปลงเป็น 3 ตัวบน 2 ตัวบน และ 2 ตัวล่างตามกติกามาตรฐานของระบบ',
+    provider: 'Minh Ngoc TV Official',
+    schedule: createDailySchedule({
+      closeHour: 14,
+      closeMinute: 5,
+      drawHour: 14,
+      drawMinute: 30
+      }),
+      supportedBetTypes: STANDARD_BET_TYPES,
+      resultSource: 'api'
+    }),
+    createLottery({
+      code: 'hanoi_redcross',
+      leagueCode: 'foreign',
+      name: 'ฮานอยกาชาด',
+      shortName: 'HN RC',
+      description: 'ฮานอยกาชาดใช้ผล 5 ตัวจาก xosoredcross.com โดยแปลงเป็น 3 ตัวบน 2 ตัวบน และ 2 ตัวล่างตามกติกามาตรฐานของระบบ',
+      provider: 'Xoso Redcross Official',
+      schedule: createDailySchedule({
+        closeHour: 16,
+        closeMinute: 0,
+        drawHour: 16,
+        drawMinute: 30
+      }),
+      supportedBetTypes: STANDARD_BET_TYPES,
+      resultSource: 'api'
+    }),
+    createLottery({
+      code: 'hanoi_union',
+      leagueCode: 'foreign',
+      name: 'ฮานอยสามัคคี',
+      shortName: 'HN UN',
+      description: 'ฮานอยสามัคคีใช้ผล 5 ตัวจาก xosounion.com โดยแปลงเป็น 3 ตัวบน 2 ตัวบน และ 2 ตัวล่างตามกติกามาตรฐานของระบบ',
+      provider: 'Xoso Union Official',
+      schedule: createDailySchedule({
+        closeHour: 17,
+        closeMinute: 10,
+        drawHour: 17,
+        drawMinute: 30
+      }),
+      supportedBetTypes: STANDARD_BET_TYPES,
+      resultSource: 'api'
+    }),
+    createLottery({
+      code: 'hanoi_asean',
+      leagueCode: 'foreign',
+      name: 'ฮานอยอาเซียน',
+      shortName: 'HN AS',
+      description: 'ฮานอยอาเซียนใช้ผล 5 ตัวจาก hanoiasean.com โดยแปลงเป็น 3 ตัวบน 2 ตัวบน และ 2 ตัวล่างตามกติกามาตรฐานของระบบ',
+      provider: 'Hanoi ASEAN Official',
+      schedule: createDailySchedule({
+        closeHour: 9,
+        closeMinute: 10,
+        drawHour: 9,
+        drawMinute: 30
+      }),
+      supportedBetTypes: STANDARD_BET_TYPES,
+      resultSource: 'api'
+    }),
+    createLottery({
+      code: 'tlzc',
+      leagueCode: 'daily',
+      name: 'หวยลาว',
+    shortName: 'ลาว',
+    description: 'หวยลาวรายวัน รองรับหวยชุดลาว 4 ตัว',
+    provider: 'Huay Lao Official',
+    schedule: createDailySchedule({
+      closeHour: 20,
+      closeMinute: 20,
+      drawHour: 20,
+      drawMinute: 30
+    }),
+    supportedBetTypes: LAO_BET_TYPES,
+    resultSource: 'api'
   }),
   createLottery({
     code: 'lao_vip',
     leagueCode: 'daily',
     name: 'ลาว VIP',
     description: 'หวยลาว VIP รายวัน รองรับหวยชุดลาว 4 ตัว',
+    provider: 'Lao VIP Official',
     schedule: createDailySchedule({
-      closeHour: 20,
-      closeMinute: 15,
-      drawHour: 20,
+      closeHour: 21,
+      closeMinute: 20,
+      drawHour: 21,
       drawMinute: 30
     }),
-    supportedBetTypes: LAO_BET_TYPES
+    supportedBetTypes: LAO_BET_TYPES,
+    resultSource: 'api'
   }),
   createLottery({
     code: 'lao_pathana',

@@ -4,9 +4,8 @@ const authorize = require('../middleware/rbac');
 const cronAuth = require('../middleware/cronAuth');
 const DrawRound = require('../models/DrawRound');
 const LotteryType = require('../models/LotteryType');
-const LotteryResult = require('../models/LotteryResult');
 const { getExternalSyncState, syncLatestExternalResults } = require('../services/externalResultFeedService');
-const { fetchLotteryResult, saveLotteryResult, getLatestResult } = require('../services/lotteryService');
+const { fetchLotteryResult, saveLotteryResult, getLatestResult, getRecentResults } = require('../services/lotteryService');
 const { getMarketOverview } = require('../services/marketResultsService');
 const { createAuditLog } = require('../middleware/auditLog');
 const { BET_TYPES } = require('../constants/betting');
@@ -39,7 +38,7 @@ router.get('/latest', auth, async (req, res) => {
 
 router.get('/results', auth, async (req, res) => {
   try {
-    const results = await LotteryResult.find().sort({ roundDate: -1 }).limit(20);
+    const results = await getRecentResults(20);
     res.json(results);
   } catch (error) {
     res.status(500).json({ message: 'Server error' });

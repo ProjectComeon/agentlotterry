@@ -29,10 +29,90 @@ const LOTTERY_VISUALS = {
     accent: '#dc2626',
     background: 'radial-gradient(circle at 30% 30%, #fb7185, #b91c1c 70%)'
   },
+  hanoi_extra: {
+    shortLabel: 'HX',
+    accent: '#f97316',
+    background: 'radial-gradient(circle at 30% 30%, #fdba74, #ea580c 72%)'
+  },
+  hanoi_star: {
+    shortLabel: 'HST',
+    accent: '#2563eb',
+    background: 'radial-gradient(circle at 30% 30%, #93c5fd, #1d4ed8 72%)'
+  },
+  hanoi_develop: {
+    shortLabel: 'HDV',
+    accent: '#8b5cf6',
+    background: 'radial-gradient(circle at 30% 30%, #c4b5fd, #7c3aed 72%)'
+  },
+  hanoi_hd: {
+    shortLabel: 'HHD',
+    accent: '#fb7185',
+    background: 'radial-gradient(circle at 30% 30%, #fda4af, #e11d48 72%)'
+  },
+  hanoi_tv: {
+    shortLabel: 'HTV',
+    accent: '#06b6d4',
+    background: 'radial-gradient(circle at 30% 30%, #67e8f9, #0f766e 72%)'
+  },
+  hanoi_redcross: {
+    shortLabel: 'HRC',
+    accent: '#dc2626',
+    background: 'radial-gradient(circle at 30% 30%, #fca5a5, #991b1b 72%)'
+  },
+  hanoi_union: {
+    shortLabel: 'HUN',
+    accent: '#16a34a',
+    background: 'radial-gradient(circle at 30% 30%, #86efac, #166534 72%)'
+  },
+  hanoi_asean: {
+    shortLabel: 'HAS',
+    accent: '#2563eb',
+    background: 'radial-gradient(circle at 30% 30%, #93c5fd, #1e3a8a 72%)'
+  },
   'hanoi-special': {
     shortLabel: 'ฮน',
     accent: '#dc2626',
     background: 'radial-gradient(circle at 30% 30%, #fb7185, #b91c1c 70%)'
+  },
+  'hanoi-extra': {
+    shortLabel: 'HX',
+    accent: '#f97316',
+    background: 'radial-gradient(circle at 30% 30%, #fdba74, #ea580c 72%)'
+  },
+  'hanoi-star': {
+    shortLabel: 'HST',
+    accent: '#2563eb',
+    background: 'radial-gradient(circle at 30% 30%, #93c5fd, #1d4ed8 72%)'
+  },
+  'hanoi-develop': {
+    shortLabel: 'HDV',
+    accent: '#8b5cf6',
+    background: 'radial-gradient(circle at 30% 30%, #c4b5fd, #7c3aed 72%)'
+  },
+  'hanoi-hd': {
+    shortLabel: 'HHD',
+    accent: '#fb7185',
+    background: 'radial-gradient(circle at 30% 30%, #fda4af, #e11d48 72%)'
+  },
+  'hanoi-tv': {
+    shortLabel: 'HTV',
+    accent: '#06b6d4',
+    background: 'radial-gradient(circle at 30% 30%, #67e8f9, #0f766e 72%)'
+  },
+  'hanoi-redcross': {
+    shortLabel: 'HRC',
+    accent: '#dc2626',
+    background: 'radial-gradient(circle at 30% 30%, #fca5a5, #991b1b 72%)'
+  },
+  'hanoi-union': {
+    shortLabel: 'HUN',
+    accent: '#16a34a',
+    background: 'radial-gradient(circle at 30% 30%, #86efac, #166534 72%)'
+  },
+  'hanoi-asean': {
+    shortLabel: 'HAS',
+    accent: '#2563eb',
+    background: 'radial-gradient(circle at 30% 30%, #93c5fd, #1e3a8a 72%)'
   },
   'hanoi-specific': {
     shortLabel: 'CQ',

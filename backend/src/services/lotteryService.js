@@ -1,161 +1,205 @@
-const axios = require('axios');
 const LotteryResult = require('../models/LotteryResult');
-const { fetchThaiGovernmentResultByRoundCode } = require('./externalResultFeedService');
-const { settleRoundById, syncLegacyThaiGovernmentResult } = require('./resultService');
+const LotteryType = require('../models/LotteryType');
+const DrawRound = require('../models/DrawRound');
+const ResultRecord = require('../models/ResultRecord');
+const {
+  fetchLatestThaiGovernmentSnapshot,
+  fetchThaiGovernmentSnapshotByRoundCode
+} = require('./thaiGovernmentResultService');
+const {
+  ensureRoundForLottery,
+  settleRoundById,
+  upsertRoundResult
+} = require('./resultService');
 
-const THAI_LOTTO_LATEST_URL = (process.env.THAI_LOTTO_API_URL || 'https://lotto.api.rayriffy.com').replace(/\/$/, '');
+const THAI_GOV_LOTTERY_CODE = 'thai_government';
 
-const formatRayriffyId = (roundDate) => {
-  const [year, month, day] = String(roundDate).split('-').map((value) => Number(value));
-  if (!year || !month || !day) {
-    throw new Error('Invalid round date format for Rayriffy API');
-  }
+const toUniqueDigits = (values) => [...new Set((values || []).map((value) => String(value || '').replace(/\D/g, '')).filter(Boolean))];
+const tailDigits = (value, length) => String(value || '').replace(/\D/g, '').slice(-length);
 
-  return `${String(day).padStart(2, '0')}${String(month).padStart(2, '0')}${year + 543}`;
-};
-
-const parseRayriffyResponse = (payload, roundDate) => {
-  const response = payload?.response;
-  const prizes = Array.isArray(response?.prizes) ? response.prizes : [];
-  const runningNumbers = Array.isArray(response?.runningNumbers) ? response.runningNumbers : [];
-  const firstPrize = prizes.find((item) => item.id === 'prizeFirst')?.number?.[0] || '';
-  const frontThree = runningNumbers.find((item) => item.id === 'runningNumberFrontThree')?.number || [];
-  const backThree = runningNumbers.find((item) => item.id === 'runningNumberBackThree')?.number || [];
-  const backTwo = runningNumbers.find((item) => item.id === 'runningNumberBackTwo')?.number?.[0] || '';
-
-  if (!firstPrize && !backTwo) {
-    throw new Error('Rayriffy API returned incomplete lottery data');
-  }
+const normalizeLegacyPayload = (resultData = {}) => {
+  const firstPrize = String(resultData.firstPrize || '').replace(/\D/g, '');
+  const roundDate = String(resultData.roundDate || '').trim();
+  const twoBottom = String(resultData.twoBottom || '').replace(/\D/g, '') || tailDigits(firstPrize, 2);
+  const threeTopList = toUniqueDigits(resultData.threeTopList || []);
+  const threeBotList = toUniqueDigits(resultData.threeBotList || []);
+  const runTop = toUniqueDigits(resultData.runTop || (firstPrize ? firstPrize.slice(-3).split('') : []));
+  const runBottom = toUniqueDigits(resultData.runBottom || (twoBottom ? twoBottom.split('') : []));
 
   return {
     roundDate,
     firstPrize,
-    threeTopList: frontThree,
-    threeBotList: backThree,
-    twoBottom: backTwo,
-    runTop: firstPrize ? [...new Set(firstPrize.slice(-3).split(''))] : [],
-    runBottom: backTwo ? [...new Set(backTwo.split(''))] : [],
-    fetchedAt: new Date()
+    threeTopList,
+    threeBotList,
+    twoBottom,
+    runTop,
+    runBottom,
+    fetchedAt: resultData.fetchedAt || new Date(),
+    sourceType: resultData.sourceType || 'manual',
+    sourceUrl: String(resultData.sourceUrl || '').trim()
   };
 };
 
-/**
- * ดึงผลหวยไทยจาก API
- * ใช้ API: https://lotto.api.advicefree.com หรือ alternative
- */
-const fetchLotteryResult = async (roundDate) => {
-  try {
-    const manyCaiResult = await fetchThaiGovernmentResultByRoundCode(roundDate);
-    if (manyCaiResult?.firstPrize) {
-      return manyCaiResult;
-    }
-  } catch (manyCaiError) {
-    console.error('ManyCai government fetch error:', manyCaiError.message);
+const snapshotToLegacyPayload = (snapshot) => {
+  if (!snapshot?.roundCode || !snapshot?.firstPrize) {
+    return null;
   }
 
-  try {
-    const response = await axios.get(`https://lotto.api.advicefree.com/lotto/date/${roundDate}`, {
-      timeout: 10000
-    });
-
-    if (response.data && response.data.status === 'success') {
-      const data = response.data.response;
-      
-      const result = {
-        roundDate: roundDate,
-        firstPrize: '',
-        threeTopList: [],
-        threeBotList: [],
-        twoBottom: '',
-        runTop: [],
-        runBottom: [],
-        fetchedAt: new Date()
-      };
-
-      // Parse results from API
-      if (data && data.data) {
-        for (const item of data.data) {
-          switch (item.id) {
-            case 'prizefirst':
-              result.firstPrize = item.number?.[0] || '';
-              break;
-            case 'runningnumbersfronttop':
-              result.threeTopList = item.number || [];
-              break;
-            case 'runningnumbersbackbottom':
-              result.threeBotList = item.number || [];
-              break;
-            case 'prizetwobottom':
-              result.twoBottom = item.number?.[0] || '';
-              break;
-            case 'runningnumberstop':
-              result.runTop = item.number || [];
-              break;
-            case 'runningnumbersbottom':
-              result.runBottom = item.number || [];
-              break;
-          }
-        }
-      }
-
-      // Derive run numbers from first prize if not available
-      if (result.firstPrize && result.runTop.length === 0) {
-        result.runTop = [result.firstPrize.charAt(result.firstPrize.length - 1)];
-      }
-
-      return result;
-    }
-
-    throw new Error('API returned no data');
-  } catch (error) {
-    try {
-      const rayriffyId = formatRayriffyId(roundDate);
-      const response = await axios.get(`${THAI_LOTTO_LATEST_URL}/lotto/${rayriffyId}`, {
-        timeout: 10000
-      });
-
-      if (response.data?.status === 'success') {
-        return parseRayriffyResponse(response.data, roundDate);
-      }
-
-      throw new Error('Rayriffy API returned no data');
-    } catch (fallbackError) {
-      console.error('Lottery API error:', error.message);
-      console.error('Rayriffy fallback error:', fallbackError.message);
-      throw new Error(`Failed to fetch lottery results: ${fallbackError.message}`);
-    }
-  }
+  return normalizeLegacyPayload({
+    roundDate: snapshot.roundCode,
+    firstPrize: snapshot.firstPrize,
+    threeTopList: snapshot.threeFrontHits || [],
+    threeBotList: snapshot.threeBottomHits || [],
+    twoBottom: snapshot.twoBottom,
+    runTop: snapshot.runTop || [],
+    runBottom: snapshot.runBottom || [],
+    fetchedAt: snapshot.resultPublishedAt || new Date(),
+    sourceType: 'api',
+    sourceUrl: snapshot.sourceUrl || ''
+  });
 };
 
-/**
- * บันทึกผลหวยลง DB
- */
-const saveLotteryResult = async (resultData) => {
-  const existing = await LotteryResult.findOne({ roundDate: resultData.roundDate });
-  let savedResult = null;
-
+const upsertLegacyLotteryResult = async (payload) => {
+  const existing = await LotteryResult.findOne({ roundDate: payload.roundDate });
   if (existing) {
-    Object.assign(existing, resultData);
-    savedResult = await existing.save();
-  } else {
-    savedResult = await LotteryResult.create(resultData);
+    Object.assign(existing, payload);
+    return existing.save();
   }
 
-  const syncedResult = await syncLegacyThaiGovernmentResult(savedResult, resultData.sourceType || 'legacy');
-  const settlement = syncedResult ? await settleRoundById(syncedResult.round._id, { force: true }) : null;
+  return LotteryResult.create(payload);
+};
+
+const buildOfficialResultData = (payload) => ({
+  headline: payload.firstPrize || payload.twoBottom,
+  firstPrize: payload.firstPrize,
+  threeTop: tailDigits(payload.firstPrize, 3),
+  twoTop: tailDigits(payload.firstPrize, 2),
+  twoBottom: payload.twoBottom,
+  threeFront: payload.threeTopList[0] || '',
+  threeFrontHits: payload.threeTopList,
+  threeBottom: payload.threeBotList[0] || '',
+  threeBottomHits: payload.threeBotList,
+  runTop: payload.runTop,
+  runBottom: payload.runBottom
+});
+
+const loadThaiGovernmentLottery = async () => {
+  const lotteryType = await LotteryType.findOne({ code: THAI_GOV_LOTTERY_CODE });
+  if (!lotteryType) {
+    const error = new Error('Thai government lottery type not found');
+    error.statusCode = 404;
+    throw error;
+  }
+
+  return lotteryType;
+};
+
+const fetchLotteryResult = async (roundDate) => {
+  const snapshot = await fetchThaiGovernmentSnapshotByRoundCode(roundDate);
+  if (!snapshot) {
+    const error = new Error(`No official Thai government result found for ${roundDate}`);
+    error.statusCode = 404;
+    throw error;
+  }
+
+  return snapshotToLegacyPayload(snapshot);
+};
+
+const saveLotteryResult = async (resultData) => {
+  const payload = normalizeLegacyPayload(resultData);
+  if (!payload.roundDate || !payload.firstPrize) {
+    const error = new Error('Round date and first prize are required');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const lotteryType = await loadThaiGovernmentLottery();
+  const round = await ensureRoundForLottery(lotteryType, payload.roundDate);
+
+  if (!round) {
+    const error = new Error(`Round not found for ${payload.roundDate}`);
+    error.statusCode = 404;
+    throw error;
+  }
+
+  const savedLegacy = await upsertLegacyLotteryResult(payload);
+  const syncedResult = await upsertRoundResult({
+    roundId: round._id,
+    lotteryTypeId: lotteryType._id,
+    resultData: buildOfficialResultData(payload),
+    sourceType: payload.sourceType || 'manual',
+    sourceUrl: payload.sourceUrl || '',
+    isPublished: true
+  });
+  const settlement = await settleRoundById(round._id, { force: true });
 
   return {
-    result: savedResult,
+    result: savedLegacy,
     syncedResult,
     settlement
   };
 };
 
-/**
- * ดึงผลหวยล่าสุด
- */
-const getLatestResult = async () => {
-  return await LotteryResult.findOne().sort({ roundDate: -1 });
+const mapResultRecordToLegacy = (record, round) => {
+  if (!record || !round?.code) return null;
+
+  return {
+    roundDate: round.code,
+    firstPrize: record.firstPrize || '',
+    threeTopList: toUniqueDigits(record.threeFrontHits || []),
+    threeBotList: toUniqueDigits(record.threeBottomHits || []),
+    twoBottom: record.twoBottom || '',
+    runTop: toUniqueDigits(record.runTop || []),
+    runBottom: toUniqueDigits(record.runBottom || []),
+    isCalculated: true,
+    fetchedAt: record.updatedAt || record.createdAt || new Date(),
+    sourceType: record.sourceType || 'api',
+    sourceUrl: record.sourceUrl || ''
+  };
 };
 
-module.exports = { fetchLotteryResult, saveLotteryResult, getLatestResult };
+const loadThaiGovernmentResultRecords = async (limit = 20) => {
+  const lotteryType = await loadThaiGovernmentLottery();
+  const rounds = await DrawRound.find({
+    lotteryTypeId: lotteryType._id,
+    resultPublishedAt: { $ne: null }
+  }).sort({ code: -1 }).limit(Math.max(1, Number(limit) || 1)).lean();
+  const roundIds = rounds.map((round) => round._id);
+  const records = await ResultRecord.find({
+    drawRoundId: { $in: roundIds },
+    isPublished: true
+  }).lean();
+  const recordMap = new Map(records.map((record) => [String(record.drawRoundId), record]));
+
+  return rounds
+    .map((round) => ({
+      round,
+      record: recordMap.get(String(round._id)) || null
+    }))
+    .filter((item) => item.record);
+};
+
+const getLatestResult = async () => {
+  const [latest] = await loadThaiGovernmentResultRecords(1);
+  if (latest) {
+    return mapResultRecordToLegacy(latest.record, latest.round);
+  }
+
+  const latestSnapshot = await fetchLatestThaiGovernmentSnapshot().catch(() => null);
+  return latestSnapshot ? snapshotToLegacyPayload(latestSnapshot) : null;
+};
+
+const getRecentResults = async (limit = 20) => {
+  const entries = await loadThaiGovernmentResultRecords(limit);
+  return entries
+    .map(({ record, round }) => mapResultRecordToLegacy(record, round))
+    .filter(Boolean)
+    .slice(0, Math.max(1, Number(limit) || 1));
+};
+
+module.exports = {
+  fetchLotteryResult,
+  saveLotteryResult,
+  getLatestResult,
+  getRecentResults
+};

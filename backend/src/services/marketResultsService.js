@@ -8,6 +8,28 @@ const {
   fetchLatestGsbSnapshot
 } = require('./gsbResultService');
 const {
+  THAI_GOV_MARKET_ID,
+  THAI_GOV_MARKET_NAME,
+  THAI_GOV_PROVIDER_NAME,
+  fetchLatestThaiGovernmentSnapshot
+} = require('./thaiGovernmentResultService');
+const {
+  BAAC_MARKET_ID,
+  BAAC_MARKET_NAME,
+  BAAC_PROVIDER_NAME,
+  fetchLatestBaacSnapshot
+} = require('./baacResultService');
+const {
+  LAOS_MARKET_NAME,
+  LAOS_PROVIDER_NAME,
+  fetchLatestLaosSnapshot
+} = require('./laosResultService');
+const {
+  LAOS_VIP_MARKET_NAME,
+  LAOS_VIP_PROVIDER_NAME,
+  fetchLatestLaosVipSnapshot
+} = require('./laosVipResultService');
+const {
   LAOS_PATHANA_MARKET_ID,
   LAOS_PATHANA_MARKET_NAME,
   LAOS_PATHANA_PROVIDER_NAME,
@@ -67,6 +89,54 @@ const {
   LAOS_ASEAN_PROVIDER_NAME,
   fetchLatestLaosAseanSnapshot
 } = require('./laosAseanResultService');
+const {
+  HANOI_EXTRA_MARKET_ID,
+  HANOI_EXTRA_MARKET_NAME,
+  HANOI_EXTRA_PROVIDER_NAME,
+  fetchLatestHanoiExtraSnapshot
+} = require('./hanoiExtraResultService');
+const {
+  HANOI_STAR_MARKET_ID,
+  HANOI_STAR_MARKET_NAME,
+  HANOI_STAR_PROVIDER_NAME,
+  fetchLatestHanoiStarSnapshot
+} = require('./hanoiStarResultService');
+const {
+  HANOI_DEVELOP_MARKET_ID,
+  HANOI_DEVELOP_MARKET_NAME,
+  HANOI_DEVELOP_PROVIDER_NAME,
+  fetchLatestHanoiDevelopSnapshot
+} = require('./hanoiDevelopResultService');
+const {
+  HANOI_HD_MARKET_ID,
+  HANOI_HD_MARKET_NAME,
+  HANOI_HD_PROVIDER_NAME,
+  fetchLatestHanoiHdSnapshot
+} = require('./hanoiHdResultService');
+const {
+  HANOI_TV_MARKET_ID,
+  HANOI_TV_MARKET_NAME,
+  HANOI_TV_PROVIDER_NAME,
+  fetchLatestHanoiTvSnapshot
+} = require('./hanoiTvResultService');
+const {
+  HANOI_REDCROSS_MARKET_ID,
+  HANOI_REDCROSS_MARKET_NAME,
+  HANOI_REDCROSS_PROVIDER_NAME,
+  fetchLatestHanoiRedcrossSnapshot
+} = require('./hanoiRedcrossResultService');
+const {
+  HANOI_UNION_MARKET_ID,
+  HANOI_UNION_MARKET_NAME,
+  HANOI_UNION_PROVIDER_NAME,
+  fetchLatestHanoiUnionSnapshot
+} = require('./hanoiUnionResultService');
+const {
+  HANOI_ASEAN_MARKET_ID,
+  HANOI_ASEAN_MARKET_NAME,
+  HANOI_ASEAN_PROVIDER_NAME,
+  fetchLatestHanoiAseanSnapshot
+} = require('./hanoiAseanResultService');
 
 const PROVIDER_NAME = 'manycai';
 const RAW_PROVIDER_KEY = String(process.env.MANYCAI_API_KEY || '').trim();
@@ -77,6 +147,13 @@ const PROVIDER_BASE_URL = (
     : MANYCAI_FEED_BASE_URL
 ).replace(/\/$/, '');
 const CACHE_TTL_MS = Number(process.env.MARKET_RESULTS_CACHE_MS || 60000);
+const LAOS_NOTE = 'ตรวจจับจาก Huay Lao Official และแปลงผลแบบลาว 4 ตัวของระบบ';
+const LAOS_VIP_NOTE = 'ตรวจจับจาก Lao VIP Official และแปลงผลแบบลาว VIP ของระบบ';
+const LAOS_NUMBER_LABELS = {
+  threeTop: '3 ตัวบน',
+  twoTop: '2 ตัวบน',
+  twoBottom: '2 ตัวล่าง'
+};
 const LAOS_PATHANA_NOTE = '\u0e15\u0e23\u0e27\u0e08\u0e08\u0e31\u0e1a\u0e08\u0e32\u0e01\u0e40\u0e27\u0e47\u0e1a\u0e44\u0e0b\u0e15\u0e4c Lao Pathana \u0e41\u0e25\u0e30\u0e41\u0e1b\u0e25\u0e07\u0e1c\u0e25\u0e41\u0e1a\u0e1a\u0e40\u0e14\u0e35\u0e22\u0e27\u0e01\u0e31\u0e1a GOGOLot';
 const LAOS_PATHANA_NUMBER_LABELS = {
   threeTop: '\u0033 \u0e15\u0e31\u0e27\u0e1a\u0e19',
@@ -137,6 +214,54 @@ const LAOS_ASEAN_NUMBER_LABELS = {
   twoTop: '\u0032 \u0e15\u0e31\u0e27\u0e1a\u0e19',
   twoBottom: '\u0032 \u0e15\u0e31\u0e27\u0e25\u0e48\u0e32\u0e07'
 };
+const HANOI_EXTRA_NOTE = '\u0e15\u0e23\u0e27\u0e08\u0e08\u0e31\u0e1a\u0e08\u0e32\u0e01 API Xoso Extra \u0e42\u0e14\u0e22\u0e43\u0e0a\u0e49\u0e23\u0e32\u0e07\u0e27\u0e31\u0e25\u0e1e\u0e34\u0e40\u0e28\u0e29 5 \u0e15\u0e31\u0e27\u0e40\u0e1b\u0e47\u0e19\u0e10\u0e32\u0e19\u0e43\u0e19\u0e01\u0e32\u0e23\u0e41\u0e1b\u0e25\u0e07 3 \u0e15\u0e31\u0e27\u0e1a\u0e19 2 \u0e15\u0e31\u0e27\u0e1a\u0e19 \u0e41\u0e25\u0e30 2 \u0e15\u0e31\u0e27\u0e25\u0e48\u0e32\u0e07';
+const HANOI_EXTRA_NUMBER_LABELS = {
+  threeTop: '\u0033 \u0e15\u0e31\u0e27\u0e1a\u0e19',
+  twoTop: '\u0032 \u0e15\u0e31\u0e27\u0e1a\u0e19',
+  twoBottom: '\u0032 \u0e15\u0e31\u0e27\u0e25\u0e48\u0e32\u0e07'
+};
+const HANOI_STAR_NOTE = '\u0e15\u0e23\u0e27\u0e08\u0e08\u0e31\u0e1a\u0e08\u0e32\u0e01 API Minh Ngoc Star \u0e42\u0e14\u0e22\u0e43\u0e0a\u0e49\u0e1c\u0e25 5 \u0e15\u0e31\u0e27\u0e08\u0e32\u0e01 prize 1 \u0e41\u0e25\u0e30 prize 2 \u0e21\u0e32\u0e41\u0e1b\u0e25\u0e07\u0e40\u0e1b\u0e47\u0e19 3 \u0e15\u0e31\u0e27\u0e1a\u0e19 2 \u0e15\u0e31\u0e27\u0e1a\u0e19 \u0e41\u0e25\u0e30 2 \u0e15\u0e31\u0e27\u0e25\u0e48\u0e32\u0e07 \u0e15\u0e32\u0e21\u0e01\u0e15\u0e34\u0e01\u0e32 Hanoi \u0e02\u0e2d\u0e07\u0e23\u0e30\u0e1a\u0e1a';
+const HANOI_STAR_NUMBER_LABELS = {
+  threeTop: '\u0033 \u0e15\u0e31\u0e27\u0e1a\u0e19',
+  twoTop: '\u0032 \u0e15\u0e31\u0e27\u0e1a\u0e19',
+  twoBottom: '\u0032 \u0e15\u0e31\u0e27\u0e25\u0e48\u0e32\u0e07'
+};
+const HANOI_DEVELOP_NOTE = '\u0e15\u0e23\u0e27\u0e08\u0e08\u0e31\u0e1a\u0e08\u0e32\u0e01 API Xoso Develop \u0e42\u0e14\u0e22\u0e43\u0e0a\u0e49\u0e1c\u0e25 5 \u0e15\u0e31\u0e27\u0e08\u0e32\u0e01 prize 1 \u0e41\u0e25\u0e30 prize 2 \u0e21\u0e32\u0e41\u0e1b\u0e25\u0e07\u0e40\u0e1b\u0e47\u0e19 3 \u0e15\u0e31\u0e27\u0e1a\u0e19 2 \u0e15\u0e31\u0e27\u0e1a\u0e19 \u0e41\u0e25\u0e30 2 \u0e15\u0e31\u0e27\u0e25\u0e48\u0e32\u0e07 \u0e15\u0e32\u0e21\u0e01\u0e15\u0e34\u0e01\u0e32 Hanoi \u0e02\u0e2d\u0e07\u0e23\u0e30\u0e1a\u0e1a';
+const HANOI_DEVELOP_NUMBER_LABELS = {
+  threeTop: '\u0033 \u0e15\u0e31\u0e27\u0e1a\u0e19',
+  twoTop: '\u0032 \u0e15\u0e31\u0e27\u0e1a\u0e19',
+  twoBottom: '\u0032 \u0e15\u0e31\u0e27\u0e25\u0e48\u0e32\u0e07'
+};
+const HANOI_HD_NOTE = '\u0e15\u0e23\u0e27\u0e08\u0e08\u0e31\u0e1a\u0e08\u0e32\u0e01 API Xoso HD \u0e42\u0e14\u0e22\u0e43\u0e0a\u0e49\u0e1c\u0e25 5 \u0e15\u0e31\u0e27\u0e08\u0e32\u0e01 prize 1 \u0e41\u0e25\u0e30 prize 2 \u0e21\u0e32\u0e41\u0e1b\u0e25\u0e07\u0e40\u0e1b\u0e47\u0e19 3 \u0e15\u0e31\u0e27\u0e1a\u0e19 2 \u0e15\u0e31\u0e27\u0e1a\u0e19 \u0e41\u0e25\u0e30 2 \u0e15\u0e31\u0e27\u0e25\u0e48\u0e32\u0e07 \u0e15\u0e32\u0e21\u0e01\u0e15\u0e34\u0e01\u0e32 Hanoi \u0e02\u0e2d\u0e07\u0e23\u0e30\u0e1a\u0e1a';
+const HANOI_HD_NUMBER_LABELS = {
+  threeTop: '\u0033 \u0e15\u0e31\u0e27\u0e1a\u0e19',
+  twoTop: '\u0032 \u0e15\u0e31\u0e27\u0e1a\u0e19',
+  twoBottom: '\u0032 \u0e15\u0e31\u0e27\u0e25\u0e48\u0e32\u0e07'
+};
+const HANOI_TV_NOTE = '\u0e15\u0e23\u0e27\u0e08\u0e08\u0e31\u0e1a\u0e08\u0e32\u0e01 API Minh Ngoc TV \u0e42\u0e14\u0e22\u0e43\u0e0a\u0e49\u0e1c\u0e25 5 \u0e15\u0e31\u0e27\u0e08\u0e32\u0e01 prize 1 \u0e41\u0e25\u0e30 prize 2 \u0e21\u0e32\u0e41\u0e1b\u0e25\u0e07\u0e40\u0e1b\u0e47\u0e19 3 \u0e15\u0e31\u0e27\u0e1a\u0e19 2 \u0e15\u0e31\u0e27\u0e1a\u0e19 \u0e41\u0e25\u0e30 2 \u0e15\u0e31\u0e27\u0e25\u0e48\u0e32\u0e07 \u0e15\u0e32\u0e21\u0e01\u0e15\u0e34\u0e01\u0e32 Hanoi \u0e02\u0e2d\u0e07\u0e23\u0e30\u0e1a\u0e1a';
+const HANOI_TV_NUMBER_LABELS = {
+  threeTop: '\u0033 \u0e15\u0e31\u0e27\u0e1a\u0e19',
+  twoTop: '\u0032 \u0e15\u0e31\u0e27\u0e1a\u0e19',
+  twoBottom: '\u0032 \u0e15\u0e31\u0e27\u0e25\u0e48\u0e32\u0e07'
+};
+const HANOI_REDCROSS_NOTE = '\u0e15\u0e23\u0e27\u0e08\u0e08\u0e31\u0e1a\u0e08\u0e32\u0e01 API Xoso Redcross \u0e42\u0e14\u0e22\u0e43\u0e0a\u0e49\u0e1c\u0e25 5 \u0e15\u0e31\u0e27\u0e08\u0e32\u0e01 prize 1 \u0e41\u0e25\u0e30 prize 2 \u0e21\u0e32\u0e41\u0e1b\u0e25\u0e07\u0e40\u0e1b\u0e47\u0e19 3 \u0e15\u0e31\u0e27\u0e1a\u0e19 2 \u0e15\u0e31\u0e27\u0e1a\u0e19 \u0e41\u0e25\u0e30 2 \u0e15\u0e31\u0e27\u0e25\u0e48\u0e32\u0e07 \u0e15\u0e32\u0e21\u0e01\u0e15\u0e34\u0e01\u0e32 Hanoi \u0e02\u0e2d\u0e07\u0e23\u0e30\u0e1a\u0e1a';
+const HANOI_REDCROSS_NUMBER_LABELS = {
+  threeTop: '\u0033 \u0e15\u0e31\u0e27\u0e1a\u0e19',
+  twoTop: '\u0032 \u0e15\u0e31\u0e27\u0e1a\u0e19',
+  twoBottom: '\u0032 \u0e15\u0e31\u0e27\u0e25\u0e48\u0e32\u0e07'
+};
+const HANOI_UNION_NOTE = '\u0e15\u0e23\u0e27\u0e08\u0e08\u0e31\u0e1a\u0e08\u0e32\u0e01 API Xoso Union \u0e42\u0e14\u0e22\u0e43\u0e0a\u0e49\u0e1c\u0e25 5 \u0e15\u0e31\u0e27\u0e08\u0e32\u0e01 prize 1 \u0e41\u0e25\u0e30 prize 2 \u0e21\u0e32\u0e41\u0e1b\u0e25\u0e07\u0e40\u0e1b\u0e47\u0e19 3 \u0e15\u0e31\u0e27\u0e1a\u0e19 2 \u0e15\u0e31\u0e27\u0e1a\u0e19 \u0e41\u0e25\u0e30 2 \u0e15\u0e31\u0e27\u0e25\u0e48\u0e32\u0e07 \u0e15\u0e32\u0e21\u0e01\u0e15\u0e34\u0e01\u0e32 Hanoi \u0e02\u0e2d\u0e07\u0e23\u0e30\u0e1a\u0e1a';
+const HANOI_UNION_NUMBER_LABELS = {
+  threeTop: '\u0033 \u0e15\u0e31\u0e27\u0e1a\u0e19',
+  twoTop: '\u0032 \u0e15\u0e31\u0e27\u0e1a\u0e19',
+  twoBottom: '\u0032 \u0e15\u0e31\u0e27\u0e25\u0e48\u0e32\u0e07'
+};
+const HANOI_ASEAN_NOTE = '\u0e15\u0e23\u0e27\u0e08\u0e08\u0e31\u0e1a\u0e08\u0e32\u0e01 API Hanoi ASEAN \u0e42\u0e14\u0e22\u0e43\u0e0a\u0e49\u0e1c\u0e25 5 \u0e15\u0e31\u0e27\u0e08\u0e32\u0e01 prize 1 \u0e41\u0e25\u0e30 prize 2 \u0e21\u0e32\u0e41\u0e1b\u0e25\u0e07\u0e40\u0e1b\u0e47\u0e19 3 \u0e15\u0e31\u0e27\u0e1a\u0e19 2 \u0e15\u0e31\u0e27\u0e1a\u0e19 \u0e41\u0e25\u0e30 2 \u0e15\u0e31\u0e27\u0e25\u0e48\u0e32\u0e07 \u0e15\u0e32\u0e21\u0e01\u0e15\u0e34\u0e01\u0e32 Hanoi \u0e02\u0e2d\u0e07\u0e23\u0e30\u0e1a\u0e1a';
+const HANOI_ASEAN_NUMBER_LABELS = {
+  threeTop: '\u0033 \u0e15\u0e31\u0e27\u0e1a\u0e19',
+  twoTop: '\u0032 \u0e15\u0e31\u0e27\u0e1a\u0e19',
+  twoBottom: '\u0032 \u0e15\u0e31\u0e27\u0e25\u0e48\u0e32\u0e07'
+};
 
 const cache = {
   data: null,
@@ -144,8 +269,6 @@ const cache = {
 };
 
 const MANYCAI_MARKETS = [
-  { code: 'tgfc', marketId: 'thai-government', name: 'รัฐบาลไทย', sectionId: 'government', type: 'standard' },
-  { code: 'baac', marketId: 'baac', name: 'สลากออมทรัพย์ ธกส.', sectionId: 'government', type: 'baac' },
   { code: 'hnvip', marketId: 'hanoi-vip', name: 'ฮานอย VIP', sectionId: 'international', type: 'standard' },
   { code: 'bfhn', marketId: 'hanoi-special', name: 'ฮานอยพิเศษ', sectionId: 'international', type: 'standard' },
   { code: 'cqhn', marketId: 'hanoi-specific', name: 'ฮานอยเฉพาะกิจ', sectionId: 'international', type: 'standard' },
@@ -172,14 +295,18 @@ const MANYCAI_MARKETS = [
   { code: 'gsus', marketId: 'stock-dowjones', name: 'หุ้นดาวโจนส์', sectionId: 'stocks', type: 'stock' }
 ];
 
+const ACTIVE_MANYCAI_MARKETS = MANYCAI_MARKETS.filter(
+  (market) => !['tlzc', 'zcvip'].includes(market.code)
+);
+
 const baseSections = [
   {
     id: 'government',
     title: 'รัฐบาล',
     description: 'หวยรัฐบาลและสลากออมทรัพย์',
     markets: [
-      { id: 'thai-government', name: 'รัฐบาลไทย', provider: PROVIDER_NAME, status: 'waiting', resultDate: '', headline: '', numbers: [], note: 'รอข้อมูลจากผู้ให้บริการ' },
-      { id: 'baac', name: 'สลากออมทรัพย์ ธกส.', provider: PROVIDER_NAME, status: 'waiting', resultDate: '', headline: '', numbers: [], note: 'รอข้อมูลจากผู้ให้บริการ' },
+      { id: THAI_GOV_MARKET_ID, name: THAI_GOV_MARKET_NAME, provider: THAI_GOV_PROVIDER_NAME, status: 'waiting', resultDate: '', headline: '', numbers: [], note: 'รอข้อมูลจาก GLO Official' },
+      { id: BAAC_MARKET_ID, name: BAAC_MARKET_NAME, provider: BAAC_PROVIDER_NAME, status: 'waiting', resultDate: '', headline: '', numbers: [], note: 'รอข้อมูลจาก BAAC Official' },
       { id: GSB_MARKET_ID, name: GSB_MARKET_NAME, provider: GSB_PROVIDER_NAME, status: 'waiting', resultDate: '', headline: '', numbers: [], note: 'รอข้อมูลจากเว็บไซต์ GSB' }
     ]
   },
@@ -224,6 +351,94 @@ const baseSections = [
 ];
 
 baseSections.find((section) => section.id === 'international')?.markets.splice(5, 0, {
+  id: 'hanoi-extra',
+  name: HANOI_EXTRA_MARKET_NAME,
+  provider: HANOI_EXTRA_PROVIDER_NAME,
+  status: 'waiting',
+  resultDate: '',
+  headline: '',
+  numbers: [],
+  note: '\u0e23\u0e2d\u0e02\u0e49\u0e2d\u0e21\u0e39\u0e25\u0e08\u0e32\u0e01 API Xoso Extra'
+});
+
+baseSections.find((section) => section.id === 'international')?.markets.splice(6, 0, {
+  id: 'hanoi-star',
+  name: HANOI_STAR_MARKET_NAME,
+  provider: HANOI_STAR_PROVIDER_NAME,
+  status: 'waiting',
+  resultDate: '',
+  headline: '',
+  numbers: [],
+  note: '\u0e23\u0e2d\u0e02\u0e49\u0e2d\u0e21\u0e39\u0e25\u0e08\u0e32\u0e01 API Minh Ngoc Star'
+});
+
+baseSections.find((section) => section.id === 'international')?.markets.splice(7, 0, {
+  id: 'hanoi-develop',
+  name: HANOI_DEVELOP_MARKET_NAME,
+  provider: HANOI_DEVELOP_PROVIDER_NAME,
+  status: 'waiting',
+  resultDate: '',
+  headline: '',
+  numbers: [],
+  note: '\u0e23\u0e2d\u0e02\u0e49\u0e2d\u0e21\u0e39\u0e25\u0e08\u0e32\u0e01 API Xoso Develop'
+});
+
+baseSections.find((section) => section.id === 'international')?.markets.splice(8, 0, {
+  id: 'hanoi-hd',
+  name: HANOI_HD_MARKET_NAME,
+  provider: HANOI_HD_PROVIDER_NAME,
+  status: 'waiting',
+  resultDate: '',
+  headline: '',
+  numbers: [],
+  note: '\u0e23\u0e2d\u0e02\u0e49\u0e2d\u0e21\u0e39\u0e25\u0e08\u0e32\u0e01 API Xoso HD'
+});
+
+baseSections.find((section) => section.id === 'international')?.markets.splice(9, 0, {
+  id: 'hanoi-tv',
+  name: HANOI_TV_MARKET_NAME,
+  provider: HANOI_TV_PROVIDER_NAME,
+  status: 'waiting',
+  resultDate: '',
+  headline: '',
+  numbers: [],
+  note: '\u0e23\u0e2d\u0e02\u0e49\u0e2d\u0e21\u0e39\u0e25\u0e08\u0e32\u0e01 API Minh Ngoc TV'
+});
+
+baseSections.find((section) => section.id === 'international')?.markets.splice(10, 0, {
+  id: 'hanoi-redcross',
+  name: HANOI_REDCROSS_MARKET_NAME,
+  provider: HANOI_REDCROSS_PROVIDER_NAME,
+  status: 'waiting',
+  resultDate: '',
+  headline: '',
+  numbers: [],
+  note: '\u0e23\u0e2d\u0e02\u0e49\u0e2d\u0e21\u0e39\u0e25\u0e08\u0e32\u0e01 API Xoso Redcross'
+});
+
+baseSections.find((section) => section.id === 'international')?.markets.splice(11, 0, {
+  id: 'hanoi-union',
+  name: HANOI_UNION_MARKET_NAME,
+  provider: HANOI_UNION_PROVIDER_NAME,
+  status: 'waiting',
+  resultDate: '',
+  headline: '',
+  numbers: [],
+  note: '\u0e23\u0e2d\u0e02\u0e49\u0e2d\u0e21\u0e39\u0e25\u0e08\u0e32\u0e01 API Xoso Union'
+});
+
+baseSections.find((section) => section.id === 'international')?.markets.splice(12, 0, {
+  id: 'hanoi-asean',
+  name: HANOI_ASEAN_MARKET_NAME,
+  provider: HANOI_ASEAN_PROVIDER_NAME,
+  status: 'waiting',
+  resultDate: '',
+  headline: '',
+  numbers: [],
+  note: '\u0e23\u0e2d\u0e02\u0e49\u0e2d\u0e21\u0e39\u0e25\u0e08\u0e32\u0e01 API Hanoi ASEAN'
+});
+
+baseSections.find((section) => section.id === 'international')?.markets.splice(6, 0, {
   id: 'lao-pathana',
   name: LAOS_PATHANA_MARKET_NAME,
   provider: LAOS_PATHANA_PROVIDER_NAME,
@@ -369,6 +584,21 @@ baseSections.find((section) => section.id === 'international')?.markets.splice(5
   });
 }
 
+{
+  const internationalSection = baseSections.find((section) => section.id === 'international');
+  const laoMarket = internationalSection?.markets.find((market) => market.id === 'lao');
+  if (laoMarket) {
+    laoMarket.provider = LAOS_PROVIDER_NAME;
+    laoMarket.note = 'รอข้อมูลจาก Huay Lao Official';
+  }
+
+  const laoVipMarket = internationalSection?.markets.find((market) => market.id === 'lao-vip');
+  if (laoVipMarket) {
+    laoVipMarket.provider = LAOS_VIP_PROVIDER_NAME;
+    laoVipMarket.note = 'รอข้อมูลจาก Lao VIP Official';
+  }
+}
+
 const cloneSections = () => baseSections.map((section) => ({
   ...section,
   markets: section.markets.map((market) => ({
@@ -464,6 +694,96 @@ const fetchGsbLatestMarket = async () => {
       { label: '2 ตัวล่าง', value: snapshot.twoBottom }
     ],
     note: 'ตรวจจับจากเว็บไซต์ GSB และแปลงผลแบบเดียวกับ GOGOLot',
+    sourceUrl: snapshot.sourceUrl
+  });
+};
+
+const fetchLatestThaiGovernmentMarket = async () => {
+  const snapshot = await fetchLatestThaiGovernmentSnapshot();
+  if (!snapshot) {
+    return null;
+  }
+
+  return buildMarket({
+    id: THAI_GOV_MARKET_ID,
+    name: THAI_GOV_MARKET_NAME,
+    provider: THAI_GOV_PROVIDER_NAME,
+    resultDate: snapshot.roundCode,
+    headline: snapshot.firstPrize,
+    numbers: [
+      { label: '3 ตัวบน', value: snapshot.threeTop },
+      { label: '2 ตัวบน', value: snapshot.twoTop },
+      { label: '3 ตัวหน้า', value: mergeUniqueValues(snapshot.threeFrontHits || []).join(' / ') },
+      { label: '3 ตัวล่าง', value: mergeUniqueValues(snapshot.threeBottomHits || []).join(' / ') },
+      { label: '2 ตัวล่าง', value: snapshot.twoBottom }
+    ],
+    note: 'ตรวจจับจาก GLO Official และใช้ผลรางวัลตามประกาศทางการ',
+    sourceUrl: snapshot.sourceUrl
+  });
+};
+
+const fetchLatestBaacMarket = async () => {
+  const snapshot = await fetchLatestBaacSnapshot();
+  if (!snapshot) {
+    return null;
+  }
+
+  return buildMarket({
+    id: BAAC_MARKET_ID,
+    name: BAAC_MARKET_NAME,
+    provider: BAAC_PROVIDER_NAME,
+    resultDate: snapshot.roundCode,
+    headline: snapshot.firstPrize,
+    numbers: [
+      { label: '3 ตัวบน', value: snapshot.threeTop },
+      { label: '2 ตัวบน', value: snapshot.twoTop },
+      { label: '2 ตัวล่าง', value: snapshot.twoBottom }
+    ],
+    note: 'ตรวจจับจากผลสลากออมทรัพย์ ธ.ก.ส. ทางการ',
+    sourceUrl: snapshot.sourceUrl
+  });
+};
+
+const fetchLatestLaosMarket = async () => {
+  const snapshot = await fetchLatestLaosSnapshot();
+  if (!snapshot) {
+    return null;
+  }
+
+  return buildMarket({
+    id: 'lao',
+    name: LAOS_MARKET_NAME,
+    provider: LAOS_PROVIDER_NAME,
+    resultDate: snapshot.roundCode,
+    headline: snapshot.threeTop,
+    numbers: [
+      { label: LAOS_NUMBER_LABELS.threeTop, value: snapshot.threeTop },
+      { label: LAOS_NUMBER_LABELS.twoTop, value: snapshot.twoTop },
+      { label: LAOS_NUMBER_LABELS.twoBottom, value: snapshot.twoBottom }
+    ],
+    note: LAOS_NOTE,
+    sourceUrl: snapshot.sourceUrl
+  });
+};
+
+const fetchLatestLaosVipMarket = async () => {
+  const snapshot = await fetchLatestLaosVipSnapshot();
+  if (!snapshot) {
+    return null;
+  }
+
+  return buildMarket({
+    id: 'lao-vip',
+    name: LAOS_VIP_MARKET_NAME,
+    provider: LAOS_VIP_PROVIDER_NAME,
+    resultDate: snapshot.roundCode,
+    headline: snapshot.threeTop,
+    numbers: [
+      { label: LAOS_NUMBER_LABELS.threeTop, value: snapshot.threeTop },
+      { label: LAOS_NUMBER_LABELS.twoTop, value: snapshot.twoTop },
+      { label: LAOS_NUMBER_LABELS.twoBottom, value: snapshot.twoBottom }
+    ],
+    note: LAOS_VIP_NOTE,
     sourceUrl: snapshot.sourceUrl
   });
 };
@@ -710,6 +1030,182 @@ const fetchLatestLaosAseanMarket = async () => {
   });
 };
 
+const fetchLatestHanoiExtraMarket = async () => {
+  const snapshot = await fetchLatestHanoiExtraSnapshot();
+  if (!snapshot) {
+    return null;
+  }
+
+  return buildMarket({
+    id: 'hanoi-extra',
+    name: HANOI_EXTRA_MARKET_NAME,
+    provider: HANOI_EXTRA_PROVIDER_NAME,
+    resultDate: snapshot.roundCode,
+    headline: snapshot.threeTop,
+    numbers: [
+      { label: HANOI_EXTRA_NUMBER_LABELS.threeTop, value: snapshot.threeTop },
+      { label: HANOI_EXTRA_NUMBER_LABELS.twoTop, value: snapshot.twoTop },
+      { label: HANOI_EXTRA_NUMBER_LABELS.twoBottom, value: snapshot.twoBottom }
+    ],
+    note: HANOI_EXTRA_NOTE,
+    sourceUrl: snapshot.sourceUrl
+  });
+};
+
+const fetchLatestHanoiStarMarket = async () => {
+  const snapshot = await fetchLatestHanoiStarSnapshot();
+  if (!snapshot) {
+    return null;
+  }
+
+  return buildMarket({
+    id: 'hanoi-star',
+    name: HANOI_STAR_MARKET_NAME,
+    provider: HANOI_STAR_PROVIDER_NAME,
+    resultDate: snapshot.roundCode,
+    headline: snapshot.threeTop,
+    numbers: [
+      { label: HANOI_STAR_NUMBER_LABELS.threeTop, value: snapshot.threeTop },
+      { label: HANOI_STAR_NUMBER_LABELS.twoTop, value: snapshot.twoTop },
+      { label: HANOI_STAR_NUMBER_LABELS.twoBottom, value: snapshot.twoBottom }
+    ],
+    note: HANOI_STAR_NOTE,
+    sourceUrl: snapshot.sourceUrl
+  });
+};
+
+const fetchLatestHanoiDevelopMarket = async () => {
+  const snapshot = await fetchLatestHanoiDevelopSnapshot();
+  if (!snapshot) {
+    return null;
+  }
+
+  return buildMarket({
+    id: 'hanoi-develop',
+    name: HANOI_DEVELOP_MARKET_NAME,
+    provider: HANOI_DEVELOP_PROVIDER_NAME,
+    resultDate: snapshot.roundCode,
+    headline: snapshot.threeTop,
+    numbers: [
+      { label: HANOI_DEVELOP_NUMBER_LABELS.threeTop, value: snapshot.threeTop },
+      { label: HANOI_DEVELOP_NUMBER_LABELS.twoTop, value: snapshot.twoTop },
+      { label: HANOI_DEVELOP_NUMBER_LABELS.twoBottom, value: snapshot.twoBottom }
+    ],
+    note: HANOI_DEVELOP_NOTE,
+    sourceUrl: snapshot.sourceUrl
+  });
+};
+
+const fetchLatestHanoiHdMarket = async () => {
+  const snapshot = await fetchLatestHanoiHdSnapshot();
+  if (!snapshot) {
+    return null;
+  }
+
+  return buildMarket({
+    id: 'hanoi-hd',
+    name: HANOI_HD_MARKET_NAME,
+    provider: HANOI_HD_PROVIDER_NAME,
+    resultDate: snapshot.roundCode,
+    headline: snapshot.threeTop,
+    numbers: [
+      { label: HANOI_HD_NUMBER_LABELS.threeTop, value: snapshot.threeTop },
+      { label: HANOI_HD_NUMBER_LABELS.twoTop, value: snapshot.twoTop },
+      { label: HANOI_HD_NUMBER_LABELS.twoBottom, value: snapshot.twoBottom }
+    ],
+    note: HANOI_HD_NOTE,
+    sourceUrl: snapshot.sourceUrl
+  });
+};
+
+const fetchLatestHanoiTvMarket = async () => {
+  const snapshot = await fetchLatestHanoiTvSnapshot();
+  if (!snapshot) {
+    return null;
+  }
+
+  return buildMarket({
+    id: 'hanoi-tv',
+    name: HANOI_TV_MARKET_NAME,
+    provider: HANOI_TV_PROVIDER_NAME,
+    resultDate: snapshot.roundCode,
+    headline: snapshot.threeTop,
+    numbers: [
+      { label: HANOI_TV_NUMBER_LABELS.threeTop, value: snapshot.threeTop },
+      { label: HANOI_TV_NUMBER_LABELS.twoTop, value: snapshot.twoTop },
+      { label: HANOI_TV_NUMBER_LABELS.twoBottom, value: snapshot.twoBottom }
+    ],
+    note: HANOI_TV_NOTE,
+    sourceUrl: snapshot.sourceUrl
+  });
+};
+
+const fetchLatestHanoiRedcrossMarket = async () => {
+  const snapshot = await fetchLatestHanoiRedcrossSnapshot();
+  if (!snapshot) {
+    return null;
+  }
+
+  return buildMarket({
+    id: 'hanoi-redcross',
+    name: HANOI_REDCROSS_MARKET_NAME,
+    provider: HANOI_REDCROSS_PROVIDER_NAME,
+    resultDate: snapshot.roundCode,
+    headline: snapshot.threeTop,
+    numbers: [
+      { label: HANOI_REDCROSS_NUMBER_LABELS.threeTop, value: snapshot.threeTop },
+      { label: HANOI_REDCROSS_NUMBER_LABELS.twoTop, value: snapshot.twoTop },
+      { label: HANOI_REDCROSS_NUMBER_LABELS.twoBottom, value: snapshot.twoBottom }
+    ],
+    note: HANOI_REDCROSS_NOTE,
+    sourceUrl: snapshot.sourceUrl
+  });
+};
+
+const fetchLatestHanoiUnionMarket = async () => {
+  const snapshot = await fetchLatestHanoiUnionSnapshot();
+  if (!snapshot) {
+    return null;
+  }
+
+  return buildMarket({
+    id: 'hanoi-union',
+    name: HANOI_UNION_MARKET_NAME,
+    provider: HANOI_UNION_PROVIDER_NAME,
+    resultDate: snapshot.roundCode,
+    headline: snapshot.threeTop,
+    numbers: [
+      { label: HANOI_UNION_NUMBER_LABELS.threeTop, value: snapshot.threeTop },
+      { label: HANOI_UNION_NUMBER_LABELS.twoTop, value: snapshot.twoTop },
+      { label: HANOI_UNION_NUMBER_LABELS.twoBottom, value: snapshot.twoBottom }
+    ],
+    note: HANOI_UNION_NOTE,
+    sourceUrl: snapshot.sourceUrl
+  });
+};
+
+const fetchLatestHanoiAseanMarket = async () => {
+  const snapshot = await fetchLatestHanoiAseanSnapshot();
+  if (!snapshot) {
+    return null;
+  }
+
+  return buildMarket({
+    id: 'hanoi-asean',
+    name: HANOI_ASEAN_MARKET_NAME,
+    provider: HANOI_ASEAN_PROVIDER_NAME,
+    resultDate: snapshot.roundCode,
+    headline: snapshot.threeTop,
+    numbers: [
+      { label: HANOI_ASEAN_NUMBER_LABELS.threeTop, value: snapshot.threeTop },
+      { label: HANOI_ASEAN_NUMBER_LABELS.twoTop, value: snapshot.twoTop },
+      { label: HANOI_ASEAN_NUMBER_LABELS.twoBottom, value: snapshot.twoBottom }
+    ],
+    note: HANOI_ASEAN_NOTE,
+    sourceUrl: snapshot.sourceUrl
+  });
+};
+
 const extractManyCaiRows = (payload) => {
   if (Array.isArray(payload)) return payload;
   if (Array.isArray(payload?.data)) return payload.data;
@@ -761,6 +1257,46 @@ const applyGovernmentFromLocal = async (sections) => {
     note: latest.isCalculated ? 'ผลในระบบคำนวณแล้ว' : 'ผลในระบบพร้อมใช้งาน'
   }));
 
+  return true;
+};
+
+const applyThaiGovernmentMarket = async (sections) => {
+  const market = await fetchLatestThaiGovernmentMarket();
+  if (!market) {
+    return false;
+  }
+
+  setMarketData(sections, 'government', market);
+  return true;
+};
+
+const applyBaacMarket = async (sections) => {
+  const market = await fetchLatestBaacMarket();
+  if (!market) {
+    return false;
+  }
+
+  setMarketData(sections, 'government', market);
+  return true;
+};
+
+const applyLaosMarket = async (sections) => {
+  const market = await fetchLatestLaosMarket();
+  if (!market) {
+    return false;
+  }
+
+  setMarketData(sections, 'international', market);
+  return true;
+};
+
+const applyLaosVipMarket = async (sections) => {
+  const market = await fetchLatestLaosVipMarket();
+  if (!market) {
+    return false;
+  }
+
+  setMarketData(sections, 'international', market);
   return true;
 };
 
@@ -975,6 +1511,86 @@ const applyLaosAseanMarket = async (sections) => {
   return true;
 };
 
+const applyHanoiExtraMarket = async (sections) => {
+  const market = await fetchLatestHanoiExtraMarket();
+  if (!market) {
+    return false;
+  }
+
+  setMarketData(sections, 'international', market);
+  return true;
+};
+
+const applyHanoiStarMarket = async (sections) => {
+  const market = await fetchLatestHanoiStarMarket();
+  if (!market) {
+    return false;
+  }
+
+  setMarketData(sections, 'international', market);
+  return true;
+};
+
+const applyHanoiDevelopMarket = async (sections) => {
+  const market = await fetchLatestHanoiDevelopMarket();
+  if (!market) {
+    return false;
+  }
+
+  setMarketData(sections, 'international', market);
+  return true;
+};
+
+const applyHanoiHdMarket = async (sections) => {
+  const market = await fetchLatestHanoiHdMarket();
+  if (!market) {
+    return false;
+  }
+
+  setMarketData(sections, 'international', market);
+  return true;
+};
+
+const applyHanoiTvMarket = async (sections) => {
+  const market = await fetchLatestHanoiTvMarket();
+  if (!market) {
+    return false;
+  }
+
+  setMarketData(sections, 'international', market);
+  return true;
+};
+
+const applyHanoiRedcrossMarket = async (sections) => {
+  const market = await fetchLatestHanoiRedcrossMarket();
+  if (!market) {
+    return false;
+  }
+
+  setMarketData(sections, 'international', market);
+  return true;
+};
+
+const applyHanoiUnionMarket = async (sections) => {
+  const market = await fetchLatestHanoiUnionMarket();
+  if (!market) {
+    return false;
+  }
+
+  setMarketData(sections, 'international', market);
+  return true;
+};
+
+const applyHanoiAseanMarket = async (sections) => {
+  const market = await fetchLatestHanoiAseanMarket();
+  if (!market) {
+    return false;
+  }
+
+  setMarketData(sections, 'international', market);
+  return true;
+};
+
 const buildSummary = (sections) => {
   const markets = sections.flatMap((section) => section.markets);
   const liveCount = markets.filter((market) => market.status === 'live').length;
@@ -996,10 +1612,30 @@ const getMarketOverview = async () => {
 
   const sections = cloneSections();
   const warnings = [];
-  const hasGovernmentData = await applyGovernmentFromLocal(sections);
+  let hasGovernmentData = false;
+
+  try {
+    hasGovernmentData = await applyThaiGovernmentMarket(sections);
+  } catch (error) {
+    hasGovernmentData = false;
+  }
 
   if (!hasGovernmentData) {
-    warnings.push('ยังไม่มีผลหวยรัฐบาลไทยในระบบฐานข้อมูล');
+    const hasGovernmentFallback = await applyGovernmentFromLocal(sections);
+    if (!hasGovernmentFallback) {
+      warnings.push('ยังไม่มีผลหวยรัฐบาลไทยในระบบฐานข้อมูล');
+    } else {
+      warnings.push('ไม่สามารถดึงข้อมูลรัฐบาลไทยจาก GLO Official ได้ จึงใช้ผลในระบบแทน');
+    }
+  }
+
+  try {
+    const hasBaacData = await applyBaacMarket(sections);
+    if (!hasBaacData) {
+      warnings.push('ยังไม่สามารถแปลงข้อมูล ธ.ก.ส. จากหน้า BAAC ทางการได้');
+    }
+  } catch (error) {
+    warnings.push('ไม่สามารถดึงข้อมูล ธ.ก.ส. จาก BAAC Official ได้');
   }
 
   try {
@@ -1009,6 +1645,24 @@ const getMarketOverview = async () => {
     }
   } catch (error) {
     warnings.push('ไม่สามารถดึงข้อมูลออมสินจากเว็บไซต์ GSB ได้');
+  }
+
+  try {
+    const hasLaosData = await applyLaosMarket(sections);
+    if (!hasLaosData) {
+      warnings.push('ยังไม่สามารถแปลงข้อมูลหวยลาวจาก Huay Lao Official ได้');
+    }
+  } catch (error) {
+    warnings.push('ไม่สามารถดึงข้อมูลหวยลาวจาก Huay Lao Official ได้');
+  }
+
+  try {
+    const hasLaosVipData = await applyLaosVipMarket(sections);
+    if (!hasLaosVipData) {
+      warnings.push('ยังไม่สามารถแปลงข้อมูลลาว VIP จาก Lao VIP Official ได้');
+    }
+  } catch (error) {
+    warnings.push('ไม่สามารถดึงข้อมูลลาว VIP จาก Lao VIP Official ได้');
   }
 
   try {
@@ -1101,16 +1755,88 @@ const getMarketOverview = async () => {
     warnings.push('\u0e44\u0e21\u0e48\u0e2a\u0e32\u0e21\u0e32\u0e23\u0e16\u0e14\u0e36\u0e07\u0e02\u0e49\u0e2d\u0e21\u0e39\u0e25\u0e25\u0e32\u0e27\u0e2d\u0e32\u0e40\u0e0b\u0e35\u0e22\u0e19 \u0e08\u0e32\u0e01 API Lao ASEAN \u0e44\u0e14\u0e49');
   }
 
+  try {
+    const hasHanoiExtraData = await applyHanoiExtraMarket(sections);
+    if (!hasHanoiExtraData) {
+      warnings.push('\u0e22\u0e31\u0e07\u0e44\u0e21\u0e48\u0e2a\u0e32\u0e21\u0e32\u0e23\u0e16\u0e41\u0e1b\u0e25\u0e07\u0e02\u0e49\u0e2d\u0e21\u0e39\u0e25\u0e2e\u0e32\u0e19\u0e2d\u0e22 Extra \u0e08\u0e32\u0e01 API Xoso Extra \u0e44\u0e14\u0e49');
+    }
+  } catch (error) {
+    warnings.push('\u0e44\u0e21\u0e48\u0e2a\u0e32\u0e21\u0e32\u0e23\u0e16\u0e14\u0e36\u0e07\u0e02\u0e49\u0e2d\u0e21\u0e39\u0e25\u0e2e\u0e32\u0e19\u0e2d\u0e22 Extra \u0e08\u0e32\u0e01 API Xoso Extra \u0e44\u0e14\u0e49');
+  }
+
+  try {
+    const hasHanoiStarData = await applyHanoiStarMarket(sections);
+    if (!hasHanoiStarData) {
+      warnings.push('\u0e22\u0e31\u0e07\u0e44\u0e21\u0e48\u0e2a\u0e32\u0e21\u0e32\u0e23\u0e16\u0e41\u0e1b\u0e25\u0e07\u0e02\u0e49\u0e2d\u0e21\u0e39\u0e25\u0e2e\u0e32\u0e19\u0e2d\u0e22\u0e2a\u0e15\u0e32\u0e23\u0e4c \u0e08\u0e32\u0e01 API Minh Ngoc Star \u0e44\u0e14\u0e49');
+    }
+  } catch (error) {
+    warnings.push('\u0e44\u0e21\u0e48\u0e2a\u0e32\u0e21\u0e32\u0e23\u0e16\u0e14\u0e36\u0e07\u0e02\u0e49\u0e2d\u0e21\u0e39\u0e25\u0e2e\u0e32\u0e19\u0e2d\u0e22\u0e2a\u0e15\u0e32\u0e23\u0e4c \u0e08\u0e32\u0e01 API Minh Ngoc Star \u0e44\u0e14\u0e49');
+  }
+
+  try {
+    const hasHanoiDevelopData = await applyHanoiDevelopMarket(sections);
+    if (!hasHanoiDevelopData) {
+      warnings.push('\u0e22\u0e31\u0e07\u0e44\u0e21\u0e48\u0e2a\u0e32\u0e21\u0e32\u0e23\u0e16\u0e41\u0e1b\u0e25\u0e07\u0e02\u0e49\u0e2d\u0e21\u0e39\u0e25\u0e2e\u0e32\u0e19\u0e2d\u0e22\u0e1e\u0e31\u0e12\u0e19\u0e32 \u0e08\u0e32\u0e01 API Xoso Develop \u0e44\u0e14\u0e49');
+    }
+  } catch (error) {
+    warnings.push('\u0e44\u0e21\u0e48\u0e2a\u0e32\u0e21\u0e32\u0e23\u0e16\u0e14\u0e36\u0e07\u0e02\u0e49\u0e2d\u0e21\u0e39\u0e25\u0e2e\u0e32\u0e19\u0e2d\u0e22\u0e1e\u0e31\u0e12\u0e19\u0e32 \u0e08\u0e32\u0e01 API Xoso Develop \u0e44\u0e14\u0e49');
+  }
+
+  try {
+    const hasHanoiHdData = await applyHanoiHdMarket(sections);
+    if (!hasHanoiHdData) {
+      warnings.push('\u0e22\u0e31\u0e07\u0e44\u0e21\u0e48\u0e2a\u0e32\u0e21\u0e32\u0e23\u0e16\u0e41\u0e1b\u0e25\u0e07\u0e02\u0e49\u0e2d\u0e21\u0e39\u0e25\u0e2e\u0e32\u0e19\u0e2d\u0e22 HD \u0e08\u0e32\u0e01 API Xoso HD \u0e44\u0e14\u0e49');
+    }
+  } catch (error) {
+    warnings.push('\u0e44\u0e21\u0e48\u0e2a\u0e32\u0e21\u0e32\u0e23\u0e16\u0e14\u0e36\u0e07\u0e02\u0e49\u0e2d\u0e21\u0e39\u0e25\u0e2e\u0e32\u0e19\u0e2d\u0e22 HD \u0e08\u0e32\u0e01 API Xoso HD \u0e44\u0e14\u0e49');
+  }
+
+    try {
+      const hasHanoiTvData = await applyHanoiTvMarket(sections);
+      if (!hasHanoiTvData) {
+        warnings.push('\u0e22\u0e31\u0e07\u0e44\u0e21\u0e48\u0e2a\u0e32\u0e21\u0e32\u0e23\u0e16\u0e41\u0e1b\u0e25\u0e07\u0e02\u0e49\u0e2d\u0e21\u0e39\u0e25\u0e2e\u0e32\u0e19\u0e2d\u0e22 TV \u0e08\u0e32\u0e01 API Minh Ngoc TV \u0e44\u0e14\u0e49');
+      }
+    } catch (error) {
+      warnings.push('\u0e44\u0e21\u0e48\u0e2a\u0e32\u0e21\u0e32\u0e23\u0e16\u0e14\u0e36\u0e07\u0e02\u0e49\u0e2d\u0e21\u0e39\u0e25\u0e2e\u0e32\u0e19\u0e2d\u0e22 TV \u0e08\u0e32\u0e01 API Minh Ngoc TV \u0e44\u0e14\u0e49');
+    }
+
+    try {
+      const hasHanoiRedcrossData = await applyHanoiRedcrossMarket(sections);
+      if (!hasHanoiRedcrossData) {
+        warnings.push('\u0e22\u0e31\u0e07\u0e44\u0e21\u0e48\u0e2a\u0e32\u0e21\u0e32\u0e23\u0e16\u0e41\u0e1b\u0e25\u0e07\u0e02\u0e49\u0e2d\u0e21\u0e39\u0e25\u0e2e\u0e32\u0e19\u0e2d\u0e22\u0e01\u0e32\u0e0a\u0e32\u0e14 \u0e08\u0e32\u0e01 API Xoso Redcross \u0e44\u0e14\u0e49');
+      }
+    } catch (error) {
+      warnings.push('\u0e44\u0e21\u0e48\u0e2a\u0e32\u0e21\u0e32\u0e23\u0e16\u0e14\u0e36\u0e07\u0e02\u0e49\u0e2d\u0e21\u0e39\u0e25\u0e2e\u0e32\u0e19\u0e2d\u0e22\u0e01\u0e32\u0e0a\u0e32\u0e14 \u0e08\u0e32\u0e01 API Xoso Redcross \u0e44\u0e14\u0e49');
+    }
+
+    try {
+      const hasHanoiUnionData = await applyHanoiUnionMarket(sections);
+      if (!hasHanoiUnionData) {
+        warnings.push('\u0e22\u0e31\u0e07\u0e44\u0e21\u0e48\u0e2a\u0e32\u0e21\u0e32\u0e23\u0e16\u0e41\u0e1b\u0e25\u0e07\u0e02\u0e49\u0e2d\u0e21\u0e39\u0e25\u0e2e\u0e32\u0e19\u0e2d\u0e22\u0e2a\u0e32\u0e21\u0e31\u0e04\u0e04\u0e35 \u0e08\u0e32\u0e01 API Xoso Union \u0e44\u0e14\u0e49');
+      }
+    } catch (error) {
+      warnings.push('\u0e44\u0e21\u0e48\u0e2a\u0e32\u0e21\u0e32\u0e23\u0e16\u0e14\u0e36\u0e07\u0e02\u0e49\u0e2d\u0e21\u0e39\u0e25\u0e2e\u0e32\u0e19\u0e2d\u0e22\u0e2a\u0e32\u0e21\u0e31\u0e04\u0e04\u0e35 \u0e08\u0e32\u0e01 API Xoso Union \u0e44\u0e14\u0e49');
+    }
+
+    try {
+      const hasHanoiAseanData = await applyHanoiAseanMarket(sections);
+      if (!hasHanoiAseanData) {
+        warnings.push('\u0e22\u0e31\u0e07\u0e44\u0e21\u0e48\u0e2a\u0e32\u0e21\u0e32\u0e23\u0e16\u0e41\u0e1b\u0e25\u0e07\u0e02\u0e49\u0e2d\u0e21\u0e39\u0e25\u0e2e\u0e32\u0e19\u0e2d\u0e22\u0e2d\u0e32\u0e40\u0e0b\u0e35\u0e22\u0e19 \u0e08\u0e32\u0e01 API Hanoi ASEAN \u0e44\u0e14\u0e49');
+      }
+    } catch (error) {
+      warnings.push('\u0e44\u0e21\u0e48\u0e2a\u0e32\u0e21\u0e32\u0e23\u0e16\u0e14\u0e36\u0e07\u0e02\u0e49\u0e2d\u0e21\u0e39\u0e25\u0e2e\u0e32\u0e19\u0e2d\u0e22\u0e2d\u0e32\u0e40\u0e0b\u0e35\u0e22\u0e19 \u0e08\u0e32\u0e01 API Hanoi ASEAN \u0e44\u0e14\u0e49');
+    }
+
   if (!PROVIDER_KEY) {
     warnings.push('ยังไม่ได้ตั้งค่า MANYCAI_API_KEY บน backend ตลาดที่ใช้ ManyCai จะแสดงเป็นรอเชื่อมต่อ');
 
     warnings.push('Using ManyCai feed fallback because MANYCAI_API_KEY is not configured');
   }
 
-  const requests = await Promise.allSettled(MANYCAI_MARKETS.map((market) => fetchProvider(market.code)));
+  const requests = await Promise.allSettled(ACTIVE_MANYCAI_MARKETS.map((market) => fetchProvider(market.code)));
 
   requests.forEach((result, index) => {
-    const market = MANYCAI_MARKETS[index];
+    const market = ACTIVE_MANYCAI_MARKETS[index];
     if (!market) {
       return;
     }

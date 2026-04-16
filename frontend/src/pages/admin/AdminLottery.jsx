@@ -106,9 +106,16 @@ const CATALOG_MARKET_ALIASES = {
   lao_union: ['lao-union', 'lao_union'],
   lao_union_vip: ['lao-union-vip', 'lao_union_vip'],
   lao_asean: ['lao-asean', 'lao_asean'],
+  tlzc: ['lao', 'tlzc'],
+  hanoi_extra: ['hanoi-extra', 'hanoi_extra'],
+  hanoi_star: ['hanoi-star', 'hanoi_star'],
+  hanoi_develop: ['hanoi-develop', 'hanoi_develop'],
+  hanoi_hd: ['hanoi-hd', 'hanoi_hd'],
+  hanoi_tv: ['hanoi-tv', 'hanoi_tv'],
+  hanoi_redcross: ['hanoi-redcross', 'hanoi_redcross'],
   lao_pathana: ['lao-pathana', 'lao_pathana'],
   hanoi_special: ['hanoi-special', 'hanoi_special'],
-  lao_vip: ['lao-vip', 'lao_vip'],
+  lao_vip: ['lao-vip', 'lao_vip', 'zcvip'],
   dowjones_vip: ['stock-dowjones', 'dowjones_vip'],
   nikkei_morning: ['stock-nikkei-morning', 'nikkei_morning'],
   china_afternoon: ['stock-china-afternoon', 'china_afternoon']
@@ -121,6 +128,12 @@ const API_MARKET_RESULT_ALIASES = {
   'gsb-1year-100': ['gsb', 'gsb-1year-100'],
   'hanoi-vip': ['hnvip'],
   'hanoi-special': ['hanoi_special', 'bfhn'],
+  'hanoi-extra': ['hanoi_extra'],
+  'hanoi-star': ['hanoi_star'],
+  'hanoi-develop': ['hanoi_develop'],
+  'hanoi-hd': ['hanoi_hd'],
+  'hanoi-tv': ['hanoi_tv'],
+  'hanoi-redcross': ['hanoi_redcross'],
   'hanoi-specific': ['cqhn'],
   lao: ['tlzc'],
   'lao-vip': ['lao_vip', 'zcvip'],
@@ -144,6 +157,12 @@ const API_MARKET_RESULT_ALIASES = {
   'lao-union-vip': ['lao_union_vip'],
   lao_asean: ['lao_asean', 'lao-asean'],
   'lao-asean': ['lao_asean'],
+  hanoi_extra: ['hanoi_extra', 'hanoi-extra'],
+  hanoi_star: ['hanoi_star', 'hanoi-star'],
+  hanoi_develop: ['hanoi_develop', 'hanoi-develop'],
+  hanoi_hd: ['hanoi_hd', 'hanoi-hd'],
+  hanoi_tv: ['hanoi_tv', 'hanoi-tv'],
+  hanoi_redcross: ['hanoi_redcross', 'hanoi-redcross'],
   lao_pathana: ['lao_pathana', 'lao-pathana'],
   'lao-pathana': ['lao_pathana'],
   'hanoi-normal': ['ynhn'],
@@ -222,7 +241,8 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 const SYNTHETIC_ROUND_SCHEDULES = {
   'hanoi-vip': { weekdays: [0, 1, 2, 3, 4, 5, 6], closeHour: 20, closeMinute: 20, drawHour: 20, drawMinute: 30, roundDateOffsetDays: 0 },
   'hanoi-specific': { weekdays: [0, 1, 2, 3, 4, 5, 6], closeHour: 17, closeMinute: 20, drawHour: 17, drawMinute: 30, roundDateOffsetDays: 0 },
-  lao: { weekdays: [0, 1, 2, 3, 4, 5, 6], closeHour: 21, closeMinute: 20, drawHour: 21, drawMinute: 30, roundDateOffsetDays: 0 },
+  lao: { weekdays: [0, 1, 2, 3, 4, 5, 6], closeHour: 20, closeMinute: 20, drawHour: 20, drawMinute: 30, roundDateOffsetDays: 0 },
+  'lao-vip': { weekdays: [0, 1, 2, 3, 4, 5, 6], closeHour: 21, closeMinute: 20, drawHour: 21, drawMinute: 30, roundDateOffsetDays: 0 },
   'hanoi-normal': { weekdays: [0, 1, 2, 3, 4, 5, 6], closeHour: 19, closeMinute: 20, drawHour: 19, drawMinute: 30, roundDateOffsetDays: 0 },
   malay: { weekdays: [0, 1, 2, 3, 4, 5, 6], closeHour: 19, closeMinute: 50, drawHour: 20, drawMinute: 0, roundDateOffsetDays: 0 },
   'yeekee-vip': { weekdays: [0, 1, 2, 3, 4, 5, 6], closeHour: 22, closeMinute: 50, drawHour: 23, drawMinute: 0, roundDateOffsetDays: 0 },
@@ -456,6 +476,14 @@ const buildSyntheticRound = (marketId, now = new Date()) => {
 };
 
 const getCardDisplayDate = (card, fallback) => {
+  const latestRoundDate = card?.latestResult?.drawAt
+    || card?.latestResult?.roundCode
+    || card?.latestResult?.resultPublishedAt
+    || card?.apiMarket?.resultDate;
+  if (latestRoundDate) {
+    return formatRoundLabel(latestRoundDate, { fallback });
+  }
+
   if (card?.activeRound?.displayDate) {
     return formatLotteryDisplayDate(card.activeRound.displayDate, fallback);
   }
@@ -467,17 +495,6 @@ const getCardDisplayDate = (card, fallback) => {
   const roundLabel = formatRoundLabel(card?.activeRound?.title, { fallback: '' });
   if (roundLabel) {
     return roundLabel;
-  }
-
-  if (card?.apiMarket?.resultDate) {
-    return formatThaiDate(card.apiMarket.resultDate, { fallback: card.apiMarket.resultDate });
-  }
-
-  const latestRoundDate = card?.latestResult?.drawAt
-    || card?.latestResult?.roundCode
-    || card?.latestResult?.resultPublishedAt;
-  if (latestRoundDate) {
-    return formatRoundLabel(latestRoundDate, { fallback });
   }
 
   return fallback;
@@ -925,7 +942,7 @@ const AdminLottery = ({ viewerRole = 'admin' }) => {
   const detailDisplayDate = requestedRoundKey && selectedResult
     ? getResultDisplayDate(selectedResult, getCardDisplayDate(selectedCard, UI.noRound))
     : getCardDisplayDate(selectedCard, UI.noRound);
-  const detailResolvedDate = requestedRoundKey && selectedResult
+  const detailResolvedDate = selectedResult
     ? formatThaiDate(
       selectedResult.drawAt || selectedResult.resultPublishedAt,
       { fallback: selectedResult.roundCode || UI.noRound }

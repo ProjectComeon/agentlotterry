@@ -404,8 +404,15 @@ const getRecentResults = async ({ lotteryId = null, limit = 50 } = {}) => {
   const thaiGov = await LotteryType.findOne({ code: 'thai_government' });
   const legacyLatest = await LotteryResult.findOne().sort({ updatedAt: -1, roundDate: -1 });
   const legacyMapped = mapLegacyResult(legacyLatest, thaiGov);
+  const hasOfficialThaiGov = mapped.some(
+    (item) => item.lotteryCode === 'thai_government' && item.sourceType !== 'legacy'
+  );
 
-  if (legacyMapped && !mapped.find((item) => item.roundCode === legacyMapped.roundCode && item.lotteryCode === legacyMapped.lotteryCode)) {
+  if (
+    legacyMapped
+    && !hasOfficialThaiGov
+    && !mapped.find((item) => item.roundCode === legacyMapped.roundCode && item.lotteryCode === legacyMapped.lotteryCode)
+  ) {
     mapped.unshift(legacyMapped);
   }
 
@@ -460,7 +467,12 @@ const getCatalogOverview = async (viewer = null) => {
 
   const resultsByLottery = recentResults.reduce((acc, result) => {
     if (!result.lotteryTypeId) return acc;
-    if (!acc[result.lotteryTypeId]) acc[result.lotteryTypeId] = result;
+
+    const current = acc[result.lotteryTypeId];
+    if (!current || getResultChronologyTime(result) > getResultChronologyTime(current)) {
+      acc[result.lotteryTypeId] = result;
+    }
+
     return acc;
   }, {});
   const announcementReads = viewer?._id && announcements.length

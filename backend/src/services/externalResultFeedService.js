@@ -5,6 +5,14 @@ const MarketFeedResult = require('../models/MarketFeedResult');
 const { createBangkokDate } = require('../utils/bangkokTime');
 const { ensureRoundForLottery, settleRoundById, upsertRoundResult } = require('./resultService');
 const { fetchGsbSnapshots } = require('./gsbResultService');
+const {
+  fetchLatestThaiGovernmentSnapshot,
+  fetchThaiGovernmentSnapshotByRoundCode,
+  fetchThaiGovernmentSnapshots
+} = require('./thaiGovernmentResultService');
+const { fetchBaacSnapshots } = require('./baacResultService');
+const { fetchLaosSnapshots } = require('./laosResultService');
+const { fetchLaosVipSnapshots } = require('./laosVipResultService');
 const { fetchLaosRedcrossSnapshots } = require('./laosRedcrossResultService');
 const { fetchLaosPathanaSnapshots } = require('./laosPathanaResultService');
 const { fetchLaosTvSnapshots } = require('./laosTvResultService');
@@ -15,6 +23,14 @@ const { fetchLaosStarsVipSnapshots } = require('./laosStarsVipResultService');
 const { fetchLaosUnionSnapshots } = require('./laosUnionResultService');
 const { fetchLaosUnionVipSnapshots } = require('./laosUnionVipResultService');
 const { fetchLaosAseanSnapshots } = require('./laosAseanResultService');
+const { fetchHanoiExtraSnapshots } = require('./hanoiExtraResultService');
+const { fetchHanoiStarSnapshots } = require('./hanoiStarResultService');
+const { fetchHanoiDevelopSnapshots } = require('./hanoiDevelopResultService');
+const { fetchHanoiHdSnapshots } = require('./hanoiHdResultService');
+const { fetchHanoiTvSnapshots } = require('./hanoiTvResultService');
+const { fetchHanoiRedcrossSnapshots } = require('./hanoiRedcrossResultService');
+const { fetchHanoiUnionSnapshots } = require('./hanoiUnionResultService');
+const { fetchHanoiAseanSnapshots } = require('./hanoiAseanResultService');
 
 const legacyBaseUrl = (process.env.MANYCAI_BASE_URL || 'http://vip.manycai.com').replace(/\/$/, '');
 const legacyApiKey = String(process.env.MANYCAI_API_KEY || '').trim();
@@ -25,6 +41,10 @@ const MANYCAI_FEED_BASE_URL = (
 const RESULT_SYNC_TIMEOUT_MS = Number(process.env.RESULT_SYNC_TIMEOUT_MS || 12000);
 const STRICT_FEED_MAPPING = String(process.env.STRICT_FEED_MAPPING || '1') !== '0';
 const GSB_SYNC_LIMIT = Number(process.env.GSB_SYNC_LIMIT || 6);
+const THAI_GOV_SYNC_LIMIT = Number(process.env.THAI_GOV_SYNC_LIMIT || 10);
+const BAAC_SYNC_LIMIT = Number(process.env.BAAC_SYNC_LIMIT || 10);
+const LAOS_SYNC_LIMIT = Number(process.env.LAOS_SYNC_LIMIT || 10);
+const LAOS_VIP_SYNC_LIMIT = Number(process.env.LAOS_VIP_SYNC_LIMIT || 10);
 const LAOS_REDCROSS_SYNC_LIMIT = Number(process.env.LAOS_REDCROSS_SYNC_LIMIT || 10);
 const LAOS_PATHANA_SYNC_LIMIT = Number(process.env.LAOS_PATHANA_SYNC_LIMIT || 10);
 const LAOS_TV_SYNC_LIMIT = Number(process.env.LAOS_TV_SYNC_LIMIT || 10);
@@ -35,6 +55,14 @@ const LAOS_STAR_VIP_SYNC_LIMIT = Number(process.env.LAOS_STAR_VIP_SYNC_LIMIT || 
 const LAOS_UNION_SYNC_LIMIT = Number(process.env.LAOS_UNION_SYNC_LIMIT || 10);
 const LAOS_UNION_VIP_SYNC_LIMIT = Number(process.env.LAOS_UNION_VIP_SYNC_LIMIT || 10);
 const LAOS_ASEAN_SYNC_LIMIT = Number(process.env.LAOS_ASEAN_SYNC_LIMIT || 10);
+const HANOI_EXTRA_SYNC_LIMIT = Number(process.env.HANOI_EXTRA_SYNC_LIMIT || 10);
+const HANOI_STAR_SYNC_LIMIT = Number(process.env.HANOI_STAR_SYNC_LIMIT || 10);
+const HANOI_DEVELOP_SYNC_LIMIT = Number(process.env.HANOI_DEVELOP_SYNC_LIMIT || 10);
+const HANOI_HD_SYNC_LIMIT = Number(process.env.HANOI_HD_SYNC_LIMIT || 10);
+const HANOI_TV_SYNC_LIMIT = Number(process.env.HANOI_TV_SYNC_LIMIT || 10);
+const HANOI_REDCROSS_SYNC_LIMIT = Number(process.env.HANOI_REDCROSS_SYNC_LIMIT || 10);
+const HANOI_UNION_SYNC_LIMIT = Number(process.env.HANOI_UNION_SYNC_LIMIT || 10);
+const HANOI_ASEAN_SYNC_LIMIT = Number(process.env.HANOI_ASEAN_SYNC_LIMIT || 10);
 
 const defaultMappedDigits = (value) => String(value || '').replace(/\D/g, '');
 const defaultMappedList = (value) => {
@@ -127,15 +155,17 @@ const EXPLICIT_FEED_MAPPINGS = {
   cqhn: hanoiFiveDigitFeedMapping(),
   zcvip: fiveDigitCode2FeedMapping(),
   ynhn: fourDigitPre2FeedMapping(),
-  ynma: fourDigitPre2FeedMapping()
+  ynma: fourDigitPre2FeedMapping(),
+  hanoi_union: hanoiFiveDigitFeedMapping(),
+  hanoi_asean: hanoiFiveDigitFeedMapping()
 };
 
 const FEED_CONFIGS = [
   { feedCode: 'hnvip', lotteryCode: 'hnvip', marketName: 'ฮานอย VIP', parser: 'simple', syncToResults: true },
   { feedCode: 'tlzc', lotteryCode: 'tlzc', marketName: 'หวยลาว', parser: 'simple', syncToResults: true },
   { feedCode: 'tykc', lotteryCode: 'tykc', marketName: 'ยี่กี VIP', parser: 'simple', syncToResults: true },
-  { feedCode: 'tgfc', lotteryCode: 'thai_government', marketName: 'รัฐบาลไทย', parser: 'government', syncToResults: true },
-  { feedCode: 'baac', lotteryCode: 'baac', marketName: 'ธ.ก.ส.', parser: 'baac', syncToResults: true },
+  { feedCode: 'tgfc', lotteryCode: 'thai_government', marketName: 'รัฐบาลไทย', parser: 'government', syncToResults: true, provider: 'thaiglo' },
+  { feedCode: 'baac', lotteryCode: 'baac', marketName: 'ธ.ก.ส.', parser: 'baac', syncToResults: true, provider: 'baacofficial' },
   { feedCode: 'gshka', lotteryCode: 'gshka', marketName: 'หุ้นฮั่งเส็ง เช้า', parser: 'stock', syncToResults: true },
   { feedCode: 'gshkp', lotteryCode: 'gshkp', marketName: 'หุ้นฮั่งเส็ง บ่าย', parser: 'stock', syncToResults: true },
   { feedCode: 'bfhn', lotteryCode: 'hanoi_special', marketName: 'ฮานอยพิเศษ', parser: 'simple', syncToResults: true },
@@ -253,19 +283,117 @@ EXTRA_SYNC_CONFIGS.push({
   provider: 'laosasean'
 });
 
+EXTRA_SYNC_CONFIGS.push({
+  feedCode: 'hanoi_extra',
+  lotteryCode: 'hanoi_extra',
+  marketName: '\u0e2e\u0e32\u0e19\u0e2d\u0e22 Extra',
+  parser: 'hanoiextra',
+  syncToResults: true,
+  provider: 'hanoiextra'
+});
+
+EXTRA_SYNC_CONFIGS.push({
+  feedCode: 'hanoi_star',
+  lotteryCode: 'hanoi_star',
+  marketName: '\u0e2e\u0e32\u0e19\u0e2d\u0e22\u0e2a\u0e15\u0e32\u0e23\u0e4c',
+  parser: 'hanoistar',
+  syncToResults: true,
+  provider: 'hanoistar'
+});
+
+EXTRA_SYNC_CONFIGS.push({
+  feedCode: 'hanoi_develop',
+  lotteryCode: 'hanoi_develop',
+  marketName: '\u0e2e\u0e32\u0e19\u0e2d\u0e22\u0e1e\u0e31\u0e12\u0e19\u0e32',
+  parser: 'hanoidevelop',
+  syncToResults: true,
+  provider: 'hanoidevelop'
+});
+
+EXTRA_SYNC_CONFIGS.push({
+  feedCode: 'hanoi_hd',
+  lotteryCode: 'hanoi_hd',
+  marketName: '\u0e2e\u0e32\u0e19\u0e2d\u0e22 HD',
+  parser: 'hanoihd',
+  syncToResults: true,
+  provider: 'hanoihd'
+});
+
+EXTRA_SYNC_CONFIGS.push({
+  feedCode: 'hanoi_tv',
+  lotteryCode: 'hanoi_tv',
+  marketName: '\u0e2e\u0e32\u0e19\u0e2d\u0e22 TV',
+  parser: 'hanoitv',
+  syncToResults: true,
+  provider: 'hanoitv'
+});
+
+EXTRA_SYNC_CONFIGS.push({
+  feedCode: 'hanoi_redcross',
+  lotteryCode: 'hanoi_redcross',
+  marketName: '\u0e2e\u0e32\u0e19\u0e2d\u0e22\u0e01\u0e32\u0e0a\u0e32\u0e14',
+  parser: 'hanoiredcross',
+  syncToResults: true,
+  provider: 'hanoiredcross'
+});
+
+EXTRA_SYNC_CONFIGS.push({
+  feedCode: 'hanoi_union',
+  lotteryCode: 'hanoi_union',
+  marketName: '\u0e2e\u0e32\u0e19\u0e2d\u0e22\u0e2a\u0e32\u0e21\u0e31\u0e04\u0e04\u0e35',
+  parser: 'hanoiunion',
+  syncToResults: true,
+  provider: 'hanoiunion'
+});
+
+EXTRA_SYNC_CONFIGS.push({
+  feedCode: 'hanoi_asean',
+  lotteryCode: 'hanoi_asean',
+  marketName: '\u0e2e\u0e32\u0e19\u0e2d\u0e22\u0e2d\u0e32\u0e40\u0e0b\u0e35\u0e22\u0e19',
+  parser: 'hanoiasean',
+  syncToResults: true,
+  provider: 'hanoiasean'
+});
+
 const SYNC_CONFIGS = [...FEED_CONFIGS, ...EXTRA_SYNC_CONFIGS];
+
+for (const config of FEED_CONFIGS) {
+  if (config.feedCode === 'tlzc') {
+    config.provider = 'huaylao';
+  }
+
+  if (config.feedCode === 'zcvip') {
+    config.provider = 'laosvip';
+  }
+}
+
+const OFFICIAL_PROVIDER_CODES = new Set([
+  'gsb',
+  'thaiglo',
+  'baacofficial',
+  'huaylao',
+  'laosvip',
+  'laosredcross',
+  'laospathana',
+  'laostv',
+  'laoshd',
+  'laoextra',
+  'laostars',
+  'laostarsvip',
+  'laosunion',
+  'laosunionvip',
+  'laosasean',
+  'hanoiextra',
+  'hanoistar',
+  'hanoidevelop',
+  'hanoihd',
+  'hanoitv',
+  'hanoiredcross',
+  'hanoiunion',
+  'hanoiasean'
+]);
 const isConfigMappingCovered = (config) => Boolean(
-  config?.provider === 'gsb'
-  || config?.provider === 'laosredcross'
-  || config?.provider === 'laospathana'
-  || config?.provider === 'laostv'
-  || config?.provider === 'laoshd'
-  || config?.provider === 'laoextra'
-  || config?.provider === 'laostars'
-  || config?.provider === 'laostarsvip'
-  || config?.provider === 'laosunion'
-  || config?.provider === 'laosunionvip'
-  || config?.provider === 'laosasean'
+  OFFICIAL_PROVIDER_CODES.has(config?.provider)
   || EXPLICIT_FEED_MAPPINGS[config?.feedCode]
 );
 
@@ -274,7 +402,7 @@ const getFeedMappingMode = (configOrFeedCode) => {
     ? SYNC_CONFIGS.find((item) => item.feedCode === configOrFeedCode) || { feedCode: configOrFeedCode }
     : configOrFeedCode || {};
 
-  if (config.provider === 'gsb' || config.provider === 'laosredcross' || config.provider === 'laospathana' || config.provider === 'laostv' || config.provider === 'laoshd' || config.provider === 'laoextra' || config.provider === 'laostars' || config.provider === 'laostarsvip' || config.provider === 'laosunion' || config.provider === 'laosunionvip' || config.provider === 'laosasean') {
+  if (OFFICIAL_PROVIDER_CODES.has(config.provider)) {
     return 'official-page';
   }
 
@@ -570,13 +698,36 @@ const snapshotBuilders = {
   baac: buildBaacSnapshot
 };
 
+const describeUnexpectedFeedPayload = (payload) => {
+  if (typeof payload === 'string') {
+    const normalized = payload.trim();
+    if (!normalized) {
+      return 'Empty text payload';
+    }
+    if (normalized.startsWith('<') || /<html/i.test(normalized) || /_Incapsula_Resource/i.test(normalized)) {
+      return 'Feed blocked or returned HTML payload';
+    }
+    return 'Feed returned text payload';
+  }
+
+  if (Array.isArray(payload)) {
+    return 'Feed returned array payload';
+  }
+
+  if (payload && typeof payload === 'object') {
+    return 'Feed returned object payload';
+  }
+
+  return `Feed returned ${typeof payload} payload`;
+};
+
 const fetchFeedRows = async (feedCode) => {
   const response = await axios.get(`${MANYCAI_FEED_BASE_URL}/${feedCode}.json`, {
     timeout: RESULT_SYNC_TIMEOUT_MS
   });
 
   if (!Array.isArray(response.data)) {
-    throw new Error(`Unexpected feed payload for ${feedCode}`);
+    throw new Error(`${describeUnexpectedFeedPayload(response.data)} for ${feedCode}`);
   }
 
   return response.data;
@@ -585,6 +736,26 @@ const fetchFeedRows = async (feedCode) => {
 const fetchSyncRows = async (config) => {
   if (config.provider === 'gsb') {
     const snapshots = await fetchGsbSnapshots({ limit: GSB_SYNC_LIMIT });
+    return snapshots.map((snapshot) => ({ __snapshot: snapshot }));
+  }
+
+  if (config.provider === 'thaiglo') {
+    const snapshots = await fetchThaiGovernmentSnapshots({ limit: THAI_GOV_SYNC_LIMIT });
+    return snapshots.map((snapshot) => ({ __snapshot: snapshot }));
+  }
+
+  if (config.provider === 'baacofficial') {
+    const snapshots = await fetchBaacSnapshots({ limit: BAAC_SYNC_LIMIT });
+    return snapshots.map((snapshot) => ({ __snapshot: snapshot }));
+  }
+
+  if (config.provider === 'huaylao') {
+    const snapshots = await fetchLaosSnapshots({ limit: LAOS_SYNC_LIMIT });
+    return snapshots.map((snapshot) => ({ __snapshot: snapshot }));
+  }
+
+  if (config.provider === 'laosvip') {
+    const snapshots = await fetchLaosVipSnapshots({ limit: LAOS_VIP_SYNC_LIMIT });
     return snapshots.map((snapshot) => ({ __snapshot: snapshot }));
   }
 
@@ -638,11 +809,51 @@ const fetchSyncRows = async (config) => {
     return snapshots.map((snapshot) => ({ __snapshot: snapshot }));
   }
 
+  if (config.provider === 'hanoiextra') {
+    const snapshots = await fetchHanoiExtraSnapshots({ limit: HANOI_EXTRA_SYNC_LIMIT });
+    return snapshots.map((snapshot) => ({ __snapshot: snapshot }));
+  }
+
+  if (config.provider === 'hanoistar') {
+    const snapshots = await fetchHanoiStarSnapshots({ limit: HANOI_STAR_SYNC_LIMIT });
+    return snapshots.map((snapshot) => ({ __snapshot: snapshot }));
+  }
+
+  if (config.provider === 'hanoidevelop') {
+    const snapshots = await fetchHanoiDevelopSnapshots({ limit: HANOI_DEVELOP_SYNC_LIMIT });
+    return snapshots.map((snapshot) => ({ __snapshot: snapshot }));
+  }
+
+  if (config.provider === 'hanoihd') {
+    const snapshots = await fetchHanoiHdSnapshots({ limit: HANOI_HD_SYNC_LIMIT });
+    return snapshots.map((snapshot) => ({ __snapshot: snapshot }));
+  }
+
+  if (config.provider === 'hanoitv') {
+    const snapshots = await fetchHanoiTvSnapshots({ limit: HANOI_TV_SYNC_LIMIT });
+    return snapshots.map((snapshot) => ({ __snapshot: snapshot }));
+  }
+
+  if (config.provider === 'hanoiredcross') {
+    const snapshots = await fetchHanoiRedcrossSnapshots({ limit: HANOI_REDCROSS_SYNC_LIMIT });
+    return snapshots.map((snapshot) => ({ __snapshot: snapshot }));
+  }
+
+  if (config.provider === 'hanoiunion') {
+    const snapshots = await fetchHanoiUnionSnapshots({ limit: HANOI_UNION_SYNC_LIMIT });
+    return snapshots.map((snapshot) => ({ __snapshot: snapshot }));
+  }
+
+  if (config.provider === 'hanoiasean') {
+    const snapshots = await fetchHanoiAseanSnapshots({ limit: HANOI_ASEAN_SYNC_LIMIT });
+    return snapshots.map((snapshot) => ({ __snapshot: snapshot }));
+  }
+
   return fetchFeedRows(config.feedCode);
 };
 
 const buildSnapshot = (config, row, { strict = STRICT_FEED_MAPPING } = {}) => {
-  if (config.provider === 'gsb' || config.provider === 'laosredcross' || config.provider === 'laospathana' || config.provider === 'laostv' || config.provider === 'laoshd' || config.provider === 'laoextra' || config.provider === 'laostars' || config.provider === 'laostarsvip' || config.provider === 'laosunion' || config.provider === 'laosunionvip' || config.provider === 'laosasean') {
+  if (OFFICIAL_PROVIDER_CODES.has(config.provider)) {
     return row?.__snapshot || null;
   }
 
@@ -959,15 +1170,13 @@ const startExternalResultAutoSync = (intervalMs) => {
 };
 
 const fetchThaiGovernmentResultByRoundCode = async (roundCode) => {
-  const config = FEED_CONFIGS.find((item) => item.feedCode === 'tgfc');
-  const rows = await fetchFeedRows('tgfc');
-  const row = rows.find((item) => parseIssueToRoundCode(item.officialissue || item.issue) === roundCode);
-  if (!row || !config) {
+  const snapshot =
+    await fetchThaiGovernmentSnapshotByRoundCode(roundCode)
+    || await fetchLatestThaiGovernmentSnapshot().catch(() => null);
+  if (!snapshot) {
     return null;
   }
-
-  const snapshot = buildGovernmentSnapshot(config, row);
-  return snapshot.legacyGovernmentPayload;
+  return snapshot.legacyGovernmentPayload || null;
 };
 
 module.exports = {
