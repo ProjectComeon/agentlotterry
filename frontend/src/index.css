@@ -2227,9 +2227,17 @@ input, select, textarea {
 
 .operator-preview-modal-actions {
   display: flex;
-  flex-direction: column-reverse;
-  align-items: flex-end;
-  gap: 8px;
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.operator-preview-modal-actions .btn,
+.operator-preview-modal-actions .modal-close {
+  flex: 0 0 auto;
+  white-space: nowrap;
 }
 
 .operator-preview-stat-label,

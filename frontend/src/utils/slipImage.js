@@ -1,5 +1,5 @@
-import { buildSlipDisplayGroups, sortSlipDisplayGroups } from './slipGrouping';
-import { formatMoney as money } from './formatters';
+import { buildSlipDisplayGroups, sortSlipDisplayGroups } from './slipGrouping.js';
+import { formatMoney as money } from './formatters.js';
 
 const REM = 16;
 
@@ -359,7 +359,25 @@ const normalizeRoundLabel = (marketName, roundLabel) => {
   return round.replace(new RegExp(`^${escapedMarket}\\s*[•|]\\s*`), '').trim() || round;
 };
 
-const buildPreviewImagePayload = ({
+const resolveSlipMemberName = (value = {}) => (
+  value?.memberName
+  || value?.member?.name
+  || value?.member?.username
+  || value?.customer?.name
+  || value?.customer?.username
+  || value?.customerName
+  || value?.username
+  || value?.name
+  || '-'
+);
+
+export const buildSlipImageMetaRows = (payload = {}) => ([
+  { label: 'สมาชิก', value: resolveSlipMemberName(payload) },
+  { label: 'ตลาด', value: String(payload.marketName || '-').trim() || '-' },
+  { label: 'งวด', value: String(payload.roundLabel || '-').trim() || '-' }
+]);
+
+export const buildPreviewImagePayload = ({
   preview,
   selectedMember,
   selectedLottery,
@@ -367,7 +385,14 @@ const buildPreviewImagePayload = ({
 }) => ({
   eyebrow: 'สรุปโพยดิจิทัล',
   title: 'ตรวจสอบก่อนบันทึกโพย',
-  memberName: preview?.member?.name || selectedMember?.name || '-',
+  memberName: resolveSlipMemberName({
+    member: preview?.member,
+    memberName: preview?.memberName,
+    customer: preview?.customer,
+    customerName: preview?.customerName,
+    name: selectedMember?.name,
+    username: selectedMember?.username
+  }),
   marketName: selectedLottery?.name || preview?.lottery?.name || '-',
   marketKey: selectedLottery?.code || selectedLottery?.id || selectedLottery?.name || preview?.lottery?.name || '-',
   roundLabel: formatThaiDate(selectedRound?.title || preview?.round?.title || selectedRound?.code || preview?.round?.code || '-'),
@@ -377,7 +402,7 @@ const buildPreviewImagePayload = ({
   showEmptyNote: false
 });
 
-const buildSavedSlipImagePayload = ({ slip }) => {
+export const buildSavedSlipImagePayload = ({ slip }) => {
   const groups = sortSlipDisplayGroups(
     slip?.items?.length ? buildSlipDisplayGroups(slip.items) : (slip?.displayGroups || [])
   );
@@ -389,7 +414,7 @@ const buildSavedSlipImagePayload = ({ slip }) => {
   return {
     eyebrow: 'สรุปโพยดิจิทัล',
     title: 'ตรวจสอบก่อนบันทึกโพย',
-    memberName: slip?.customer?.name || '-',
+    memberName: resolveSlipMemberName(slip),
     marketName: slip?.marketName || '-',
     marketKey: slip?.marketCode || slip?.marketId || slip?.marketName || '-',
     roundLabel: formatThaiDate(normalizeRoundLabel(slip?.marketName, slip?.roundLabel || slip?.roundDate || '-')),
@@ -403,6 +428,7 @@ const buildSavedSlipImagePayload = ({ slip }) => {
 const measureImageLayout = (ctx, payload) => {
   const winningItemLabel = '\u0e1a\u0e32\u0e17';
   const contentWidth = MODAL_WIDTH - (MODAL_PADDING_X * 2);
+  const metaRows = buildSlipImageMetaRows(payload);
   const groupBodyWidth =
     contentWidth -
     (GROUP.cardPaddingX * 2) -
@@ -464,7 +490,7 @@ const measureImageLayout = (ctx, payload) => {
   }
 
   const headerHeight = 52;
-  const metaCardHeight = 108;
+  const metaCardHeight = Math.max(108, 18 + (metaRows.length * 30) + 12);
   const summaryCardHeight = 68;
   const emptyCardHeight = 72;
   const groupsHeight = groups.length
@@ -486,6 +512,7 @@ const measureImageLayout = (ctx, payload) => {
   return {
     contentWidth,
     groups,
+    metaRows,
     noteLines,
     noteCardHeight,
     showNote,
@@ -808,8 +835,12 @@ const renderGroupedSlipImageWithBottomSummary = (payload) => {
 
   ctx.fillStyle = colors.textPrimary;
   ctx.font = `700 ${TYPE.metaLine}px sans-serif`;
-  ctx.fillText(`${marketLabel}: ${payload.marketName}`, contentX + 16, y + 38);
-  ctx.fillText(`${roundLabel}: ${payload.roundLabel}`, contentX + 16, y + 74);
+  layout.metaRows.forEach((row, index) => {
+    const rowLabel = row.label === 'ตลาด'
+      ? marketLabel
+      : (row.label === 'งวด' ? roundLabel : row.label);
+    ctx.fillText(`${rowLabel}: ${row.value}`, contentX + 16, y + 28 + (index * 30));
+  });
 
   y += layout.metaCardHeight + SECTION_GAP;
 
