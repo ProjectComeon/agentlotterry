@@ -61,6 +61,7 @@ const MANYCAI_FEED_BASE_URL = (
 ).replace(/\/$/, '');
 const RESULT_SYNC_TIMEOUT_MS = Number(process.env.RESULT_SYNC_TIMEOUT_MS || 12000);
 const RESULT_SYNC_BATCH_SIZE = Math.max(1, Number(process.env.RESULT_SYNC_BATCH_SIZE || 6));
+const RESULT_SYNC_STARTUP_DELAY_MS = Math.max(0, Number(process.env.RESULT_SYNC_STARTUP_DELAY_MS || 60000));
 const STRICT_FEED_MAPPING = String(process.env.STRICT_FEED_MAPPING || '1') !== '0';
 const GSB_SYNC_LIMIT = Number(process.env.GSB_SYNC_LIMIT || 6);
 const THAI_GOV_SYNC_LIMIT = Number(process.env.THAI_GOV_SYNC_LIMIT || 10);
@@ -596,6 +597,7 @@ const syncState = {
 };
 
 let autoSyncTimer = null;
+let autoSyncStartupTimer = null;
 
 const flattenValues = (value) => Array.isArray(value) ? value.flatMap(flattenValues) : [value];
 const joinDigits = (value) => String(value || '').replace(/\D/g, '');
@@ -1509,10 +1511,15 @@ const getExternalSyncState = () => ({
   }))
 });
 
-const startExternalResultAutoSync = (intervalMs) => {
+const startExternalResultAutoSync = (intervalMs, { startupDelayMs = RESULT_SYNC_STARTUP_DELAY_MS } = {}) => {
   if (autoSyncTimer) {
     clearInterval(autoSyncTimer);
   }
+  if (autoSyncStartupTimer) {
+    clearTimeout(autoSyncStartupTimer);
+  }
+  autoSyncTimer = null;
+  autoSyncStartupTimer = null;
 
   const runSync = async () => {
     try {
@@ -1524,8 +1531,22 @@ const startExternalResultAutoSync = (intervalMs) => {
     }
   };
 
+  const startInterval = () => {
+    autoSyncTimer = setInterval(runSync, intervalMs);
+  };
+  const normalizedStartupDelayMs = Math.max(0, Number(startupDelayMs) || 0);
+
+  if (normalizedStartupDelayMs > 0) {
+    autoSyncStartupTimer = setTimeout(() => {
+      autoSyncStartupTimer = null;
+      runSync();
+      startInterval();
+    }, normalizedStartupDelayMs);
+    return autoSyncStartupTimer;
+  }
+
   runSync();
-  autoSyncTimer = setInterval(runSync, intervalMs);
+  startInterval();
   return autoSyncTimer;
 };
 

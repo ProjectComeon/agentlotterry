@@ -44,14 +44,17 @@ import {
   searchAgentBettingMembers
 } from '../../services/api';
 import { formatDateTime, formatMoney as money, formatRoundLabel } from '../../utils/formatters';
+import { buildSelectableRounds, shouldFetchRoundsForLottery } from '../../utils/operatorBettingRounds';
+import { getEnabledFieldOrder, getFastKeyboardAction } from '../../utils/operatorBettingKeyboard';
 import { buildSlipDisplayGroups } from '../../utils/slipGrouping';
 import { copySlipPreviewImage } from '../../utils/slipImage';
-import { copyPreviewSlipText } from '../../utils/slipText';
 
-const hiddenRoundStatuses = new Set(['closed', 'resulted']);
 const RECENT_MARKETS_LIMIT = 6;
 const CLOSING_SOON_LIMIT = 6;
 const FAVORITE_MARKETS_LIMIT = 8;
+const MEMBER_CONTEXT_PREFETCH_LIMIT = 3;
+const MEMBER_CONTEXT_PREFETCH_STAGGER_MS = 120;
+const MEMBER_CONTEXT_WARM_MARK_TTL_MS = 15000;
 const MARKET_CATEGORY_ORDER = ['main', 'stock_am', 'stock_pm', 'vip', 'foreign', 'daily', 'other'];
 const MARKET_CATEGORY_LABELS = {
   main: 'หวยหลัก',
@@ -539,6 +542,39 @@ const extractFastNumbersByDigits = (rawInput, digits) => {
   return numbers;
 };
 
+const extractFastDiscardedTokensByDigits = (rawInput, digits) => {
+  const discardedTokens = [];
+  const digitLength = Number(digits || 0);
+  if (!digitLength) return discardedTokens;
+
+  String(rawInput || '')
+    .split(/\r?\n/)
+    .forEach((line) => {
+      const sourceTokens = String(line || '').match(/\d+|[^\d\s]+/g) || [];
+      const numericTokens = sourceTokens.filter((token) => /^\d+$/.test(token));
+
+      sourceTokens.forEach((token) => {
+        if (!/^\d+$/.test(token)) {
+          discardedTokens.push(token);
+          return;
+        }
+
+        if (digitLength === 1 || numericTokens.length === 1) {
+          const acceptedLength = splitDigitTokenBySize(token, digitLength).join('').length;
+          const remainder = token.slice(acceptedLength);
+          if (remainder) discardedTokens.push(remainder);
+          return;
+        }
+
+        if (token.length !== digitLength) {
+          discardedTokens.push(token);
+        }
+      });
+    });
+
+  return discardedTokens;
+};
+
 const getFastEnabledColumns = ({ fastFamily, supportedBetTypes = [], closedBetTypes = [] }) => {
   const config = getFastFamilyConfig(fastFamily, supportedBetTypes);
   const supported = new Set(supportedBetTypes);
@@ -1021,6 +1057,7 @@ const OperatorBetting = () => {
   const [selection, setSelection] = useState({ lotteryId: '', roundId: '', rateProfileId: '' });
   const [showRates, setShowRates] = useState(false);
   const [rounds, setRounds] = useState([]);
+  const [loadedRoundsLotteryId, setLoadedRoundsLotteryId] = useState('');
   const [loadingRounds, setLoadingRounds] = useState(false);
   const [mode, setMode] = useState('fast');
   const [fastFamily, setFastFamily] = useState('2');
@@ -1030,6 +1067,7 @@ const OperatorBetting = () => {
   const [rawInput, setRawInput] = useState('');
   const [helperFastNumbers, setHelperFastNumbers] = useState([]);
   const [excludedFastNumbers, setExcludedFastNumbers] = useState([]);
+  const [parsedFastDiscardedTokens, setParsedFastDiscardedTokens] = useState([]);
   const [reverse, setReverse] = useState(false);
   const [includeDoubleSet, setIncludeDoubleSet] = useState(false);
   const [gridRows, setGridRows] = useState(buildInitialGridRows);
@@ -1037,9 +1075,7 @@ const OperatorBetting = () => {
   const [memo, setMemo] = useState('');
   const [savedDraftEntries, setSavedDraftEntries] = useState([]);
   const [preview, setPreview] = useState(null);
-  const [previewDialogOpen, setPreviewDialogOpen] = useState(false);
   const [previewing, setPreviewing] = useState(false);
-  const [copyingText, setCopyingText] = useState(false);
   const [copyingImage, setCopyingImage] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [draftLoading, setDraftLoading] = useState(false);
@@ -1056,6 +1092,9 @@ const OperatorBetting = () => {
   const draftHydratingRef = useRef(false);
   const draftAutosaveTimerRef = useRef(null);
   const draftLoadedScopeRef = useRef('');
+  const roundsRequestRef = useRef('');
+  const memberContextRequestRef = useRef(0);
+  const warmedMemberContextIdsRef = useRef(new Map());
 
   const flatLotteries = useMemo(() => flattenLotteries(catalog), [catalog]);
   const selectedLottery = useMemo(() => flatLotteries.find((item) => item.id === selection.lotteryId) || null, [flatLotteries, selection.lotteryId]);
@@ -1125,10 +1164,10 @@ const OperatorBetting = () => {
     [remainingLotteries]
   );
   const firstMarketSearchMatch = favoriteLotteries[0] || recentLotteries[0] || closingSoonLotteries[0] || remainingLotteries[0] || null;
-  const selectableRounds = useMemo(() => {
-    const visible = rounds.filter((item) => !hiddenRoundStatuses.has(item.status));
-    return visible.length ? visible : rounds;
-  }, [rounds]);
+  const selectableRounds = useMemo(
+    () => buildSelectableRounds(rounds, selectedLottery?.activeRound || null),
+    [rounds, selectedLottery?.activeRound]
+  );
   const draftScopeParams = useMemo(() => {
     if (!selectedMember?.id || !selectedLottery?.id || !selectedRound?.id) {
       return null;
@@ -1197,17 +1236,31 @@ const OperatorBetting = () => {
       }),
     [fastFamily, roundClosedBetTypes, selectedLottery]
   );
-  const parsedFastCandidateEntries = useMemo(() => {
+  const rawFastCandidateEntries = useMemo(() => {
     if (mode !== 'fast') return [];
+    if (!String(rawInput || '').trim()) return [];
     return buildFastWorkingNumbers({
       fastFamily,
       fastTab,
       rawInput,
-      numbers: helperFastNumbers.length ? helperFastNumbers : undefined,
       reverse,
       includeDoubleSet
     });
-  }, [fastFamily, fastTab, helperFastNumbers, includeDoubleSet, mode, rawInput, reverse]);
+  }, [fastFamily, fastTab, includeDoubleSet, mode, rawInput, reverse]);
+  const parsedFastCandidateEntries = useMemo(() => {
+    if (mode !== 'fast') return [];
+    const helperEntries = helperFastNumbers.length
+      ? buildFastWorkingNumbers({
+          fastFamily,
+          fastTab,
+          rawInput: '',
+          numbers: helperFastNumbers,
+          reverse,
+          includeDoubleSet
+        })
+      : [];
+    return [...helperEntries, ...rawFastCandidateEntries];
+  }, [fastFamily, fastTab, helperFastNumbers, includeDoubleSet, mode, rawFastCandidateEntries, reverse]);
   const parsedFastCandidates = useMemo(
     () => dedupeOrderedNumbers(parsedFastCandidateEntries),
     [parsedFastCandidateEntries]
@@ -1216,6 +1269,35 @@ const OperatorBetting = () => {
     if (mode !== 'fast') return new Map();
     return buildNumberCountMap(parsedFastCandidateEntries);
   }, [mode, parsedFastCandidateEntries]);
+  const rawFastDiscardedTokens = useMemo(() => {
+    if (mode !== 'fast') return [];
+    if (!String(rawInput || '').trim()) return [];
+    return extractFastDiscardedTokensByDigits(rawInput, getFastFamilyConfig(fastFamily).digits);
+  }, [fastFamily, mode, rawInput]);
+  const visibleFastDiscardedTokens = useMemo(
+    () => [...parsedFastDiscardedTokens, ...rawFastDiscardedTokens],
+    [parsedFastDiscardedTokens, rawFastDiscardedTokens]
+  );
+  const discardedTokenCountMap = useMemo(
+    () => buildNumberCountMap(visibleFastDiscardedTokens),
+    [visibleFastDiscardedTokens]
+  );
+  const fastExcludedDisplayItems = useMemo(() => {
+    const manualItems = excludedFastNumbers.map((number) => ({
+      key: `number:${number}`,
+      type: 'number',
+      value: number,
+      repeatCount: getFastCandidateCount(fastCandidateCountMap, number)
+    }));
+    const rawItems = dedupeOrderedNumbers(visibleFastDiscardedTokens).map((token) => ({
+      key: `raw:${token}`,
+      type: 'raw',
+      value: token,
+      repeatCount: getFastCandidateCount(discardedTokenCountMap, token)
+    }));
+
+    return [...manualItems, ...rawItems];
+  }, [discardedTokenCountMap, excludedFastNumbers, fastCandidateCountMap, visibleFastDiscardedTokens]);
   const activeFastCandidateEntries = useMemo(
     () => parsedFastCandidateEntries.filter((number) => !excludedFastNumbers.includes(number)),
     [excludedFastNumbers, parsedFastCandidateEntries]
@@ -1285,7 +1367,6 @@ const OperatorBetting = () => {
     [currentDraftItems, savedDraftEntries]
   );
   const combinedDraftGroups = useMemo(() => buildSlipDisplayGroups(combinedDraftItems), [combinedDraftItems]);
-  const previewGroups = useMemo(() => buildSlipDisplayGroups(preview?.items || []), [preview]);
   const combinedDraftSummary = useMemo(() => ({
     itemCount: combinedDraftItems.length,
     totalAmount: combinedDraftItems.reduce((sum, item) => sum + Number(item?.amount || 0), 0),
@@ -1308,12 +1389,26 @@ const OperatorBetting = () => {
     }, {});
   }, [gridColumns, roundClosedBetTypes, selectedLottery]);
 
+  const prefetchMemberContext = (memberId) => {
+    if (!memberId) return;
+    const now = Date.now();
+    const warmedAt = warmedMemberContextIdsRef.current.get(memberId);
+    if (warmedAt && now - warmedAt < MEMBER_CONTEXT_WARM_MARK_TTL_MS) return;
+    warmedMemberContextIdsRef.current.set(memberId, now);
+    copy.getContext(memberId).catch(() => {
+      warmedMemberContextIdsRef.current.delete(memberId);
+    });
+  };
+
   const fetchMemberContext = async (memberId, options = {}) => {
     const { silent = false } = options;
     if (!memberId) return;
+    const requestId = memberContextRequestRef.current + 1;
+    memberContextRequestRef.current = requestId;
     if (!silent) setCatalogLoading(true);
     try {
       const response = await copy.getContext(memberId);
+      if (memberContextRequestRef.current !== requestId) return;
       const nextCatalog = response.data.catalog;
       const nextMember = response.data.member;
       const defaults = nextCatalog?.selectionDefaults || {};
@@ -1322,6 +1417,9 @@ const OperatorBetting = () => {
 
       setSelectedMember(nextMember);
       setCatalog(nextCatalog);
+      setRounds(nextLottery?.activeRound ? [nextLottery.activeRound] : []);
+      setLoadedRoundsLotteryId('');
+      roundsRequestRef.current = '';
       setSearchText('');
       setSearchResults([]);
       setSelection({
@@ -1332,10 +1430,11 @@ const OperatorBetting = () => {
       setPreview(null);
       setSearchParams({ memberId });
     } catch (error) {
+      if (memberContextRequestRef.current !== requestId) return;
       console.error(error);
       toast.error(error.response?.data?.message || 'โหลดสิทธิ์การแทงของสมาชิกไม่สำเร็จ');
     } finally {
-      if (!silent) setCatalogLoading(false);
+      if (!silent && memberContextRequestRef.current === requestId) setCatalogLoading(false);
     }
   };
 
@@ -1365,11 +1464,11 @@ const OperatorBetting = () => {
 
   const clearComposerFields = () => {
     setPreview(null);
-    setPreviewDialogOpen(false);
     setFastAmounts(buildInitialFastAmounts);
     setRawInput('');
     setHelperFastNumbers([]);
     setExcludedFastNumbers([]);
+    setParsedFastDiscardedTokens([]);
     setReverse(false);
     setIncludeDoubleSet(false);
     setFastTab(fastFamily);
@@ -1467,6 +1566,7 @@ const OperatorBetting = () => {
       rawInput,
       helperFastNumbers: [...helperFastNumbers],
       excludedFastNumbers: [...excludedFastNumbers],
+      parsedFastDiscardedTokens: [...parsedFastDiscardedTokens],
       reverse,
       includeDoubleSet,
       memo
@@ -1475,7 +1575,6 @@ const OperatorBetting = () => {
 
   const restoreComposerFromSource = (source) => {
     setPreview(null);
-    setPreviewDialogOpen(false);
 
     if (source?.mode === 'grid') {
       setMode('grid');
@@ -1485,6 +1584,8 @@ const OperatorBetting = () => {
       setFastAmounts(buildInitialFastAmounts);
       setRawInput('');
       setHelperFastNumbers([]);
+      setExcludedFastNumbers([]);
+      setParsedFastDiscardedTokens([]);
       setReverse(false);
       setIncludeDoubleSet(false);
       setFastTab(fastFamily);
@@ -1499,6 +1600,7 @@ const OperatorBetting = () => {
     setRawInput(source?.rawInput || '');
     setHelperFastNumbers(source?.helperFastNumbers || []);
     setExcludedFastNumbers(source?.excludedFastNumbers || []);
+    setParsedFastDiscardedTokens(source?.parsedFastDiscardedTokens || []);
     setReverse(Boolean(source?.reverse));
     setIncludeDoubleSet(Boolean(source?.includeDoubleSet));
     setGridRows(buildInitialGridRows);
@@ -1562,11 +1664,29 @@ const OperatorBetting = () => {
     }
   };
 
-  const handleOpenPreviewDialog = async () => {
-    const nextPreview = preview || await handlePreview();
-    if (!nextPreview) return null;
-    setPreviewDialogOpen(true);
-    return nextPreview;
+  const buildSlipImagePreview = () => {
+    if (!selectedMember?.id) {
+      toast.error(copyMessages.requireMember);
+      return null;
+    }
+    if (!selectedLottery?.id || !selectedRound?.id) {
+      toast.error(copyMessages.requireMarketRound);
+      return null;
+    }
+    if (!combinedDraftItems.length) {
+      toast.error(copyMessages.emptySlip);
+      return null;
+    }
+
+    return {
+      member: selectedMember,
+      customer: selectedMember,
+      lottery: selectedLottery,
+      round: selectedRound,
+      items: combinedDraftItems,
+      memo: combinedDraftMemo,
+      summary: combinedDraftSummary
+    };
   };
 
   const handleSubmitSlip = async () => {
@@ -1627,7 +1747,6 @@ const OperatorBetting = () => {
   const handleRemoveSavedDraftEntry = (entryId) => {
     setSavedDraftEntries((current) => current.filter((item) => item.id !== entryId));
     setPreview(null);
-    setPreviewDialogOpen(false);
     toast.success(copyMessages.removeDraftSuccess);
   };
 
@@ -1637,35 +1756,10 @@ const OperatorBetting = () => {
     );
   };
 
-  const handleCopyAsText = async () => {
-    setCopyingText(true);
-    try {
-      const nextPreview = preview || await handlePreview();
-      if (!nextPreview) return;
-
-      await copyPreviewSlipText({
-        preview: nextPreview,
-        selectedMember,
-        selectedLottery,
-        selectedRound,
-        selectedRateProfile,
-        actorLabel: copy.actorLabel,
-        operatorName: user?.name,
-        resolveRoundStatusLabel: getRoundStatusLabel
-      });
-      toast.success(copyMessages.copyTextSuccess);
-    } catch (error) {
-      console.error(error);
-      toast.error(error.message || copyMessages.copyTextFailed);
-    } finally {
-      setCopyingText(false);
-    }
-  };
-
   const handleCopyAsImage = async () => {
     setCopyingImage(true);
     try {
-      const nextPreview = preview || await handlePreview();
+      const nextPreview = buildSlipImagePreview();
       if (!nextPreview) return;
       const result = await copySlipPreviewImage({
         preview: nextPreview,
@@ -1688,9 +1782,7 @@ const OperatorBetting = () => {
   };
 
   const clearComposer = async () => {
-    await clearPersistedDraft({ scopeParams: draftScopeParams, silent: true });
     clearComposerFields();
-    setSavedDraftEntries([]);
   };
 
   const clearSelectedMember = async () => {
@@ -1700,6 +1792,8 @@ const OperatorBetting = () => {
     setSelectedMember(null);
     setCatalog(null);
     setRounds([]);
+    setLoadedRoundsLotteryId('');
+    roundsRequestRef.current = '';
     setSelection({ lotteryId: '', roundId: '', rateProfileId: '' });
     setSavedDraftEntries([]);
     setPreview(null);
@@ -1717,6 +1811,53 @@ const OperatorBetting = () => {
 
     await fetchMemberContext(memberId);
     setMemberPickerOpen(false);
+  };
+
+  const ensureRoundsLoaded = async ({ lottery = selectedLottery, requiresHistoricalRounds = false } = {}) => {
+    const lotteryId = lottery?.id || '';
+    if (!shouldFetchRoundsForLottery({
+      lotteryId,
+      loadedLotteryId,
+      loadedRounds: rounds,
+      hasActiveRound: Boolean(lottery?.activeRound),
+      requiresHistoricalRounds
+    })) {
+      return rounds;
+    }
+
+    roundsRequestRef.current = lotteryId;
+    setLoadingRounds(true);
+    try {
+      const response = await getCatalogRounds(lotteryId);
+      if (roundsRequestRef.current !== lotteryId) {
+        return [];
+      }
+
+      const nextRounds = response.data || [];
+      const nextSelectableRounds = buildSelectableRounds(nextRounds, lottery?.activeRound || null);
+      setRounds(nextRounds);
+      setLoadedRoundsLotteryId(lotteryId);
+
+      if (nextSelectableRounds.length && !nextSelectableRounds.some((round) => round.id === selection.roundId)) {
+        setSelection((current) =>
+          current.lotteryId === lotteryId
+            ? { ...current, roundId: nextSelectableRounds[0].id }
+            : current
+        );
+      }
+
+      return nextRounds;
+    } catch (error) {
+      if (roundsRequestRef.current === lotteryId) {
+        console.error(error);
+        toast.error(copyMessages.loadRoundsFailed);
+      }
+      return [];
+    } finally {
+      if (roundsRequestRef.current === lotteryId) {
+        setLoadingRounds(false);
+      }
+    }
   };
 
   useEffect(() => {
@@ -1807,6 +1948,9 @@ const OperatorBetting = () => {
     const persisted = await persistCurrentScopeDraft({ silent: false });
     if (!persisted) return;
 
+    roundsRequestRef.current = '';
+    setLoadedRoundsLotteryId('');
+    setRounds(nextLottery.activeRound ? [nextLottery.activeRound] : []);
     setSelection({
       lotteryId: nextLottery.id,
       roundId: nextLottery.activeRound?.id || '',
@@ -1870,6 +2014,7 @@ const OperatorBetting = () => {
     setRawInput(String(item.number || ''));
     setHelperFastNumbers([]);
     setExcludedFastNumbers([]);
+    setParsedFastDiscardedTokens([]);
     setReverse(false);
     setIncludeDoubleSet(false);
     setPreview(null);
@@ -1895,6 +2040,7 @@ const OperatorBetting = () => {
     setFastTab(nextTab || nextFamily);
     setHelperFastNumbers(nextNumbers);
     setExcludedFastNumbers([]);
+    setParsedFastDiscardedTokens([]);
     setReverse(false);
     setIncludeDoubleSet(false);
     setPreview(null);
@@ -1968,6 +2114,8 @@ const OperatorBetting = () => {
       setFastAmounts(buildFastAmountsForBetType(draft.betType || '', draft.defaultAmount));
       setRawInput(draft.rawInput);
       setHelperFastNumbers([]);
+      setExcludedFastNumbers([]);
+      setParsedFastDiscardedTokens([]);
       setGridRows(buildInitialGridRows);
       setGridBulkAmounts(buildEmptyGridAmounts());
     } else {
@@ -1978,6 +2126,8 @@ const OperatorBetting = () => {
       setFastAmounts(buildInitialFastAmounts);
       setRawInput('');
       setHelperFastNumbers([]);
+      setExcludedFastNumbers([]);
+      setParsedFastDiscardedTokens([]);
     }
 
     toast.success(copyMessages.recentSlipApplied(group.slipNumber));
@@ -1987,9 +2137,10 @@ const OperatorBetting = () => {
     'number',
     ...gridColumns.filter((column) => supportedGridColumns[column.key]).map((column) => column.key)
   ];
-  const enabledFastAmountOrder = fastFamilyConfig.columns
-    .map((column) => column.key)
-    .filter((columnKey) => supportedFastColumns[columnKey]);
+  const enabledFastAmountOrder = getEnabledFieldOrder(
+    fastFamilyConfig.columns.map((column) => column.key),
+    supportedFastColumns
+  );
 
   const setGridCellRef = (rowId, field) => (element) => {
     const key = `${rowId}:${field}`;
@@ -2046,13 +2197,51 @@ const OperatorBetting = () => {
     }
   };
 
-  const focusNextFastAmountField = (field) => {
-    const fieldIndex = enabledFastAmountOrder.indexOf(field);
-    if (fieldIndex < 0) return;
+  const commitFastOrderInput = () => {
+    if (!String(rawInput || '').trim()) return false;
+    const nextDiscardedTokens = extractFastDiscardedTokensByDigits(rawInput, getFastFamilyConfig(fastFamily).digits);
+    if (nextDiscardedTokens.length) {
+      setParsedFastDiscardedTokens((current) => [...current, ...nextDiscardedTokens]);
+    }
+    setHelperFastNumbers(parsedFastCandidateEntries);
+    setRawInput('');
+    return parsedFastCandidateEntries.length > 0;
+  };
 
-    const nextField = enabledFastAmountOrder[fieldIndex + 1];
-    if (nextField) {
-      focusFastAmountField(nextField);
+  const handleFastOrderInputChange = (value) => {
+    if (usesWinSeedSelector) {
+      handleWinSeedInputChange(value);
+      return;
+    }
+
+    const nextValue = String(value || '');
+    const nextDiscardedTokens = extractFastDiscardedTokensByDigits(nextValue, getFastFamilyConfig(fastFamily).digits);
+    const nextEntries = buildFastWorkingNumbers({
+      fastFamily,
+      fastTab,
+      rawInput: nextValue,
+      reverse,
+      includeDoubleSet
+    });
+
+    if (!nextEntries.length) {
+      setRawInput(nextValue);
+      return;
+    }
+
+    setHelperFastNumbers((current) => [...current, ...nextEntries]);
+    setParsedFastDiscardedTokens((current) => [...current, ...nextDiscardedTokens]);
+    setRawInput('');
+  };
+
+  const applyFastKeyboardAction = (action) => {
+    if (action.type === 'focus') {
+      focusFastAmountField(action.field);
+      return;
+    }
+
+    if (action.type === 'saveDraftEntry') {
+      handleSaveDraftEntry();
     }
   };
 
@@ -2062,10 +2251,25 @@ const OperatorBetting = () => {
     focusNextGridField(rowId, field);
   };
 
+  const handleFastOrderKeyDown = (event) => {
+    if (event.key !== 'Enter' || event.shiftKey || event.isComposing) return;
+    event.preventDefault();
+    commitFastOrderInput();
+    applyFastKeyboardAction(getFastKeyboardAction({
+      field: 'order',
+      order: enabledFastAmountOrder,
+      amounts: fastAmounts
+    }));
+  };
+
   const handleFastAmountKeyDown = (field, event) => {
     if (event.key !== 'Enter') return;
     event.preventDefault();
-    focusNextFastAmountField(field);
+    applyFastKeyboardAction(getFastKeyboardAction({
+      field,
+      order: enabledFastAmountOrder,
+      amounts: fastAmounts
+    }));
   };
 
   const handleGridNumberPaste = (rowId, event) => {
@@ -2275,30 +2479,36 @@ const OperatorBetting = () => {
   }, [copy, memberPickerOpen, searchText]);
 
   useEffect(() => {
-    const loadRounds = async () => {
-      if (!selectedLottery?.id) {
-        setRounds([]);
-        return;
-      }
-      setLoadingRounds(true);
-      try {
-        const response = await getCatalogRounds(selectedLottery.id);
-        const nextRounds = response.data || [];
-        setRounds(nextRounds);
-        const visible = nextRounds.filter((round) => !hiddenRoundStatuses.has(round.status));
-        const preferred = visible.length ? visible : nextRounds;
-        if (preferred.length && !preferred.some((round) => round.id === selection.roundId)) {
-          setSelection((current) => ({ ...current, roundId: preferred[0].id }));
-        }
-      } catch (error) {
-        console.error(error);
-        toast.error(copyMessages.loadRoundsFailed);
-      } finally {
-        setLoadingRounds(false);
-      }
-    };
-    loadRounds();
-  }, [selectedLottery?.id]);
+    if (!memberPickerOpen || searching || !sortedSearchResults.length) return undefined;
+
+    const timers = sortedSearchResults
+      .slice(0, MEMBER_CONTEXT_PREFETCH_LIMIT)
+      .map((member, index) =>
+        window.setTimeout(() => prefetchMemberContext(member.id), index * MEMBER_CONTEXT_PREFETCH_STAGGER_MS)
+      );
+
+    return () => timers.forEach((timer) => window.clearTimeout(timer));
+  }, [memberPickerOpen, searching, sortedSearchResults]);
+
+  useEffect(() => {
+    roundsRequestRef.current = '';
+
+    if (!selectedLottery?.id) {
+      setRounds([]);
+      setLoadedRoundsLotteryId('');
+      setLoadingRounds(false);
+      return;
+    }
+
+    if (selectedLottery.activeRound) {
+      setRounds([selectedLottery.activeRound]);
+      setLoadedRoundsLotteryId('');
+      setLoadingRounds(false);
+      return;
+    }
+
+    ensureRoundsLoaded({ lottery: selectedLottery }).catch(() => {});
+  }, [selectedLottery?.activeRound, selectedLottery?.id]);
 
   useEffect(() => {
     if (!selectedLottery?.supportedBetTypes?.length) return;
@@ -2313,6 +2523,8 @@ const OperatorBetting = () => {
     const nextFamilies = availableFamilies.length ? availableFamilies : fallbackFamilies;
     if (nextFamilies.length && !nextFamilies.some((option) => option.value === fastFamily)) {
       setHelperFastNumbers([]);
+      setExcludedFastNumbers([]);
+      setParsedFastDiscardedTokens([]);
       setFastFamily(nextFamilies[0].value);
       setFastTab(nextFamilies[0].value);
     }
@@ -2324,6 +2536,7 @@ const OperatorBetting = () => {
       setFastTab(tab.value);
       setHelperFastNumbers([]);
       setExcludedFastNumbers([]);
+      setParsedFastDiscardedTokens([]);
       setReverse(false);
       setIncludeDoubleSet(false);
       setPreview(null);
@@ -2338,6 +2551,8 @@ const OperatorBetting = () => {
       ...(tab.value === 'lao_set' ? { set: current?.set || LAO_SET_AMOUNT } : {})
     }));
     setHelperFastNumbers([]);
+    setExcludedFastNumbers([]);
+    setParsedFastDiscardedTokens([]);
     setIncludeDoubleSet(false);
     setPreview(null);
   };
@@ -2345,11 +2560,13 @@ const OperatorBetting = () => {
   const handleSeedDigitToggle = (digit) => {
     setRawInput((current) => toggleSeedDigitInput(current, digit));
     setHelperFastNumbers([]);
+    setParsedFastDiscardedTokens([]);
   };
 
   const handleWinSeedInputChange = (value) => {
     setRawInput(sanitizeSeedDigitsInput(value));
     setHelperFastNumbers([]);
+    setParsedFastDiscardedTokens([]);
   };
 
   useEffect(() => {
@@ -2366,8 +2583,7 @@ const OperatorBetting = () => {
 
   useEffect(() => {
     setPreview(null);
-    setPreviewDialogOpen(false);
-  }, [selectedMember?.id, selection.lotteryId, selection.roundId, selection.rateProfileId, mode, fastFamily, digitMode, fastAmounts, rawInput, helperFastNumbers, excludedFastNumbers, reverse, includeDoubleSet, memo, gridRows, savedDraftEntries]);
+  }, [selectedMember?.id, selection.lotteryId, selection.roundId, selection.rateProfileId, mode, fastFamily, digitMode, fastAmounts, rawInput, helperFastNumbers, excludedFastNumbers, parsedFastDiscardedTokens, reverse, includeDoubleSet, memo, gridRows, savedDraftEntries]);
 
   useEffect(() => {
     setExcludedFastNumbers((current) => current.filter((number) => parsedFastCandidates.includes(number)));
@@ -2459,6 +2675,7 @@ const OperatorBetting = () => {
     rawInput,
     helperFastNumbers,
     excludedFastNumbers,
+    parsedFastDiscardedTokens,
     reverse,
     includeDoubleSet,
     memo,
@@ -2589,7 +2806,15 @@ const OperatorBetting = () => {
               <div className="operator-search-dropdown">
                 {searching ? <div className="operator-search-empty">{copyText.searching}</div> : null}
                 {!searching && sortedSearchResults.map((member) => (
-                  <button key={member.id} type="button" className="operator-search-option" onClick={() => handleSelectMember(member.id)}>
+                  <button
+                    key={member.id}
+                    type="button"
+                    className="operator-search-option"
+                    onMouseEnter={() => prefetchMemberContext(member.id)}
+                    onFocus={() => prefetchMemberContext(member.id)}
+                    onTouchStart={() => prefetchMemberContext(member.id)}
+                    onClick={() => handleSelectMember(member.id)}
+                  >
                     <span>{member.name}</span>
                     <small>{member.totals?.totalBets || 0} {copyText.itemsSuffix} • {money(member.totals?.totalAmount)} {copyText.baht}</small>
                   </button>
@@ -2733,7 +2958,15 @@ const OperatorBetting = () => {
                   </div>
                   <div>
                     <label className="form-label">{copyText.roundLabel}</label>
-                    <select className="form-select" value={selectedRound?.id || ''} onChange={(event) => handleRoundChange(event.target.value)} disabled={loadingRounds || !selectableRounds.length}>
+                    <select
+                      className="form-select"
+                      value={selectedRound?.id || ''}
+                      onFocus={() => {
+                        ensureRoundsLoaded({ requiresHistoricalRounds: true }).catch(() => {});
+                      }}
+                      onChange={(event) => handleRoundChange(event.target.value)}
+                      disabled={loadingRounds || !selectableRounds.length}
+                    >
                       {selectableRounds.map((round) => <option key={round.id} value={round.id}>{formatRoundLabel(round.title || round.code)} • {getRoundStatusLabel(round.status)}</option>)}
                     </select>
                   </div>
@@ -2819,6 +3052,43 @@ const OperatorBetting = () => {
                           <div className="ops-table-note">คัดเลขจากข้อความคำสั่งซื้อแล้วจะแสดงที่นี่</div>
                         )}
                       </div>
+                      {fastExcludedDisplayItems.length ? (
+                        <div className="operator-fast-excluded-panel">
+                          <div className="operator-fast-excluded-head">
+                            <strong>ตัวที่ตัดออก</strong>
+                            <span>{fastExcludedDisplayItems.length} รายการ</span>
+                          </div>
+                          <div className="operator-fast-excluded-list">
+                            {fastExcludedDisplayItems.map((item) => {
+                              if (item.type === 'raw') {
+                                return (
+                                  <span
+                                    key={item.key}
+                                    className="operator-fast-excluded-chip is-raw"
+                                    title="ตัวอักษรหรืออักขระที่ parser ตัดออก"
+                                  >
+                                    {item.value}
+                                    {item.repeatCount > 1 ? <span className="operator-fast-chip-count">x{item.repeatCount}</span> : null}
+                                  </span>
+                                );
+                              }
+
+                              return (
+                                <button
+                                  key={item.key}
+                                  type="button"
+                                  className="operator-fast-excluded-chip"
+                                  onClick={() => toggleFastCandidate(item.value)}
+                                  title="กดเพื่อดึงกลับเข้าโพย"
+                                >
+                                  {item.value}
+                                  {item.repeatCount > 1 ? <span className="operator-fast-chip-count">x{item.repeatCount}</span> : null}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      ) : null}
                     </div>
                     <div className={`operator-fast-entry-row operator-fast-entry-row-${fastFamily}`}>
                       <div className="card operator-fast-amount-card operator-fast-order-card">
@@ -2830,14 +3100,8 @@ const OperatorBetting = () => {
                           rows="1"
                           placeholder=""
                           value={rawInput}
-                          onChange={(event) => {
-                            if (usesWinSeedSelector) {
-                              handleWinSeedInputChange(event.target.value);
-                            } else {
-                              setRawInput(event.target.value);
-                              setHelperFastNumbers([]);
-                            }
-                          }}
+                          onChange={(event) => handleFastOrderInputChange(event.target.value)}
+                          onKeyDown={handleFastOrderKeyDown}
                         />
                       </div>
                       {fastFamilyConfig.columns.map((column) => {
@@ -3017,7 +3281,9 @@ const OperatorBetting = () => {
           <aside className="card ops-section operator-preview-panel">
               <div className="ui-panel-head">
                 <div><div className="ui-eyebrow">{copyText.previewEyebrow}</div><h3 className="card-title">{copyText.previewTitle}</h3></div>
-              <button className="btn btn-secondary btn-sm" onClick={handleOpenPreviewDialog} disabled={previewing || !selectedMember || !hasPendingSlip}>{previewing ? <FiRefreshCw className="spin-animation" /> : <FiCheckCircle />} {copyText.openPreview}</button>
+              <button className="btn btn-secondary btn-sm" onClick={handleCopyAsImage} disabled={copyingImage || previewing || submitting || !selectedMember || !hasPendingSlip}>
+                {copyingImage ? <FiRefreshCw className="spin-animation" /> : <FiCopy />} {copyingImage ? copyText.copySlipImageLoading : copyText.copySlipImage}
+              </button>
               </div>
 
             {!hasPendingSlip ? (
@@ -3071,67 +3337,12 @@ const OperatorBetting = () => {
             )}
 
             <div className="operator-preview-actions">
-              <button className="btn btn-primary" onClick={handleOpenPreviewDialog} disabled={previewing || !selectedMember || !hasPendingSlip}><FiCheckCircle /> {previewing ? copyText.previewPreparing : copyText.submitSlipNow}</button>
+              <button className="btn btn-primary" onClick={handleSubmitSlip} disabled={previewing || copyingImage || submitting || !selectedMember || !hasPendingSlip || !canSubmit}>
+                {submitting || previewing ? <FiRefreshCw className="spin-animation" /> : <FiSend />} {submitting ? copyText.saveSlipLoading : copyText.submitSlipNow}
+              </button>
               {!canSubmit && selectedMember ? <div className="submit-warning">{copyText.submitBlockedNote}</div> : null}
             </div>
           </aside>
-
-          {previewDialogOpen && preview ? (
-            <div className="modal-overlay" onClick={() => setPreviewDialogOpen(false)}>
-              <div className="modal operator-preview-dialog" role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
-                <div className="modal-header">
-                  <div>
-                    <div className="ui-eyebrow">{previewCopy.eyebrow}</div>
-                    <h3 className="modal-title">{previewCopy.title}</h3>
-                  </div>
-                  <button type="button" className="modal-close" onClick={() => setPreviewDialogOpen(false)} aria-label={previewCopy.closeAriaLabel}>
-                    <FiX />
-                  </button>
-                </div>
-
-                <div className="card operator-preview-meta">
-                  <div>
-                    <strong>{previewCopy.memberLabel}:</strong> {preview.member?.name || selectedMember?.name}
-                    <span className="ops-table-note">
-                      @{preview.member?.username || selectedMember?.username || '-'} • {copyText.netProfit} {money(preview.member?.totals?.netProfit || selectedMember?.totals?.netProfit)} {copyText.baht}
-                    </span>
-                  </div>
-                  <div style={{ marginTop: 6 }}><strong>{previewCopy.actorLabel}:</strong> {preview.placedBy?.name || user?.name} <span className="ops-table-note">{copy.actorLabel}</span></div>
-                </div>
-                <GroupedSlipSummary
-                  slip={{ items: preview?.items || [], displayGroups: previewGroups, memo: preview.memo }}
-                  dense
-                  showMemo={Boolean(preview.memo)}
-                  summaryBlock={(
-                    <div className="card operator-preview-compact-summary">
-                      <div>
-                        <div className="ops-table-note" style={{ margin: 0 }}>{previewCopy.memberLabel}</div>
-                        <strong>{preview.member?.name || selectedMember?.name || '-'}</strong>
-                      </div>
-                      <div>
-                        <div className="ops-table-note" style={{ margin: 0 }}>{previewCopy.totalAmountLabel}</div>
-                        <strong>{money(preview.summary?.totalAmount)} {copyText.baht}</strong>
-                      </div>
-                    </div>
-                  )}
-                  className="operator-preview-grouped-summary slip-grouped-compact"
-                />
-
-                <div className="modal-footer operator-preview-modal-actions">
-                  <button className="btn btn-secondary" onClick={handleCopyAsText} disabled={copyingText || copyingImage || submitting}>
-                    <FiFileText /> {copyingText ? copyText.copyTextLoading : copyText.copyText}
-                  </button>
-                  <button className="btn btn-secondary" onClick={handleCopyAsImage} disabled={copyingText || copyingImage || submitting}>
-                    <FiCopy /> {copyingImage ? copyText.copySlipImageLoading : copyText.copySlipImage}
-                  </button>
-                  <button className="btn btn-primary" onClick={handleSubmitSlip} disabled={copyingText || copyingImage || submitting || !canSubmit}>
-                    <FiSend /> {submitting ? copyText.saveSlipLoading : copyText.saveSlipAction}
-                  </button>
-                </div>
-                {!canSubmit ? <div className="submit-warning">{copyText.submitBlockedNote}</div> : null}
-              </div>
-            </div>
-          ) : null}
         </section>
       </section>
     </div>

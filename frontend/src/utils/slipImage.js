@@ -4,6 +4,7 @@ import { formatMoney as money } from './formatters.js';
 const REM = 16;
 
 const CANVAS_WIDTH = 1280;
+const SLIP_IMAGE_MAX_PIXEL_RATIO = 1.25;
 const FRAME_PADDING = 20;
 const MODAL_WIDTH = CANVAS_WIDTH - (FRAME_PADDING * 2);
 const MODAL_PADDING_X = 14;
@@ -169,6 +170,12 @@ const getSlipThemeColors = (value) => ({
   ...COLORS,
   ...SLIP_THEME_PALETTES[hashThemeSeed(value) % SLIP_THEME_PALETTES.length]
 });
+
+const getSlipImagePixelRatio = () => {
+  const deviceRatio = Number(window.devicePixelRatio || 1);
+  if (!Number.isFinite(deviceRatio) || deviceRatio <= 1) return 1;
+  return Math.min(deviceRatio, SLIP_IMAGE_MAX_PIXEL_RATIO);
+};
 
 const TYPE = {
   eyebrow: 0.78 * REM,
@@ -527,7 +534,7 @@ const measureImageLayout = (ctx, payload) => {
 const renderGroupedSlipImage = (payload) => {
   const winningLabel = '\u0e16\u0e39\u0e01\u0e23\u0e32\u0e07\u0e27\u0e31\u0e25';
   const bahtLabel = '\u0e1a\u0e32\u0e17';
-  const ratio = window.devicePixelRatio > 1 ? 2 : 1;
+  const ratio = getSlipImagePixelRatio();
   const measureCanvas = document.createElement('canvas');
   const measureCtx = measureCanvas.getContext('2d');
   const layout = measureImageLayout(measureCtx, payload);
@@ -772,7 +779,7 @@ const renderGroupedSlipImageWithBottomSummary = (payload) => {
   const renderErrorLabel = '\u0e44\u0e21\u0e48\u0e2a\u0e32\u0e21\u0e32\u0e23\u0e16\u0e2a\u0e23\u0e49\u0e32\u0e07\u0e23\u0e39\u0e1b\u0e42\u0e1e\u0e22\u0e44\u0e14\u0e49';
   const colors = getSlipThemeColors(payload.marketKey || payload.marketName);
 
-  const ratio = window.devicePixelRatio > 1 ? 2 : 1;
+  const ratio = getSlipImagePixelRatio();
   const measureCanvas = document.createElement('canvas');
   const measureCtx = measureCanvas.getContext('2d');
   const layout = measureImageLayout(measureCtx, payload);

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { preloadAppRouteForPath, warmAppRouteDataForPath } from '../utils/appPreload';
 import {
   FiAward,
   FiDollarSign,
@@ -62,6 +63,11 @@ const Navbar = () => {
     navigate('/login');
   };
 
+  const preloadItem = (path) => {
+    preloadAppRouteForPath(path, user?.role);
+    warmAppRouteDataForPath(path, user?.role);
+  };
+
   return (
     <>
       <nav className="navbar">
@@ -82,6 +88,9 @@ const Navbar = () => {
               key={item.path}
               to={item.path}
               className={`navbar-link ${isItemActive(item.path) ? 'active' : ''}`}
+              onFocus={() => preloadItem(item.path)}
+              onMouseEnter={() => preloadItem(item.path)}
+              onTouchStart={() => preloadItem(item.path)}
             >
               {item.icon}
               <span>{item.label}</span>
@@ -122,6 +131,9 @@ const Navbar = () => {
                 key={item.path}
                 to={item.path}
                 className={`mobile-menu-link ${isItemActive(item.path) ? 'active' : ''}`}
+                onFocus={() => preloadItem(item.path)}
+                onMouseEnter={() => preloadItem(item.path)}
+                onTouchStart={() => preloadItem(item.path)}
                 onClick={() => setMobileOpen(false)}
               >
                 {item.icon}

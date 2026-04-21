@@ -17,7 +17,17 @@ import {
 import GroupedSlipSummary from '../../components/GroupedSlipSummary';
 import PageSkeleton from '../../components/PageSkeleton';
 import { cancelAdminBettingSlip, getAdminBets, getAgents } from '../../services/api';
+import {
+  areBetHistoryQueryFiltersEqual,
+  DEFAULT_BET_HISTORY_QUERY_FILTERS,
+  normalizeBetHistoryQueryFilters
+} from '../../utils/betHistoryQueryFilters';
 import { formatMoney as money, formatNumber, formatRoundLabel } from '../../utils/formatters';
+import {
+  DEFAULT_PAGINATION_META,
+  getPaginatedItems,
+  getPaginatedMeta
+} from '../../utils/paginatedResponse';
 import { buildSlipDisplayGroups } from '../../utils/slipGrouping';
 import { copySavedSlipImage } from '../../utils/slipImage';
 
@@ -81,6 +91,17 @@ const ui = {
   noAgentSelected: 'ไม่กรองเจ้ามือ'
 };
 
+const filterActionsCopy = {
+  apply: 'ใช้ตัวกรอง',
+  clear: 'ล้างตัวกรอง',
+  pending: 'มีตัวกรองที่ยังไม่ได้ใช้',
+  loadedCount: (loaded, total) => `แสดง ${loaded} / ${total} โพย`,
+  loadMore: 'โหลดเพิ่ม',
+  loadingMore: 'กำลังโหลด...'
+};
+
+const BETS_PAGE_LIMIT = 18;
+
 const groupBetsBySlip = (bets = []) => {
   const grouped = new Map();
 
@@ -142,10 +163,12 @@ const AdminBets = () => {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [bets, setBets] = useState([]);
+  const [betPagination, setBetPagination] = useState(DEFAULT_PAGINATION_META);
   const [agents, setAgents] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [roundDate, setRoundDate] = useState('');
-  const [agentFilter, setAgentFilter] = useState('');
+  const [loadingMoreBets, setLoadingMoreBets] = useState(false);
+  const [draftQueryFilters, setDraftQueryFilters] = useState(() => ({ ...DEFAULT_BET_HISTORY_QUERY_FILTERS }));
+  const [appliedQueryFilters, setAppliedQueryFilters] = useState(() => ({ ...DEFAULT_BET_HISTORY_QUERY_FILTERS }));
   const [copyingSlipId, setCopyingSlipId] = useState('');
   const [cancellingSlipId, setCancellingSlipId] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
@@ -165,19 +188,30 @@ const AdminBets = () => {
     }
   };
 
-  const loadBets = async () => {
+  const loadBets = async ({
+    page = 1,
+    append = false,
+    force = false
+  } = {}) => {
+    if (!append) setLoading(true);
     try {
-      const params = {};
-      if (roundDate) params.roundDate = roundDate;
+      const params = {
+        paginated: '1',
+        page,
+        limit: BETS_PAGE_LIMIT
+      };
+      if (appliedQueryFilters.roundDate) params.roundDate = appliedQueryFilters.roundDate;
       if (memberId) params.customerId = memberId;
-      if (agentFilter) params.agentId = agentFilter;
-      const response = await getAdminBets(params);
-      setBets(response.data || []);
+      if (appliedQueryFilters.agentId) params.agentId = appliedQueryFilters.agentId;
+      const response = await getAdminBets(params, { force });
+      const nextItems = getPaginatedItems(response.data);
+      setBets((current) => append ? [...current, ...nextItems] : nextItems);
+      setBetPagination(getPaginatedMeta(response.data));
     } catch (error) {
       console.error(error);
       toast.error(ui.loadError);
     } finally {
-      setLoading(false);
+      if (!append) setLoading(false);
     }
   };
 
@@ -186,9 +220,55 @@ const AdminBets = () => {
   }, []);
 
   useEffect(() => {
+    loadBets({ page: 1 });
+  }, [memberId, appliedQueryFilters.roundDate, appliedQueryFilters.agentId]);
+
+  const hasPendingQueryChanges = useMemo(
+    () => !areBetHistoryQueryFiltersEqual(draftQueryFilters, appliedQueryFilters),
+    [appliedQueryFilters, draftQueryFilters]
+  );
+
+  const hasAppliedQueryFilters = useMemo(
+    () => Boolean(appliedQueryFilters.roundDate || appliedQueryFilters.agentId),
+    [appliedQueryFilters.agentId, appliedQueryFilters.roundDate]
+  );
+
+  const applyQueryFilters = () => {
+    const nextFilters = normalizeBetHistoryQueryFilters(draftQueryFilters);
+    if (areBetHistoryQueryFiltersEqual(nextFilters, appliedQueryFilters)) {
+      return;
+    }
+
     setLoading(true);
-    loadBets();
-  }, [memberId, roundDate, agentFilter]);
+    setAppliedQueryFilters(nextFilters);
+  };
+
+  const clearQueryFilters = () => {
+    if (!hasPendingQueryChanges && !hasAppliedQueryFilters) {
+      return;
+    }
+
+    const nextFilters = { ...DEFAULT_BET_HISTORY_QUERY_FILTERS };
+    setDraftQueryFilters(nextFilters);
+    if (hasAppliedQueryFilters) {
+      setLoading(true);
+    }
+    setAppliedQueryFilters(nextFilters);
+  };
+
+  const loadMoreBets = async () => {
+    if (!betPagination.hasNextPage || loadingMoreBets) return;
+
+    setLoadingMoreBets(true);
+    try {
+      await loadBets({
+        page: betPagination.page + 1,
+        append: true
+      });
+    } finally {
+      setLoadingMoreBets(false);
+    }
+  };
 
   const handleCopySlipImage = async (group) => {
     if (!group) return;
@@ -228,7 +308,7 @@ const AdminBets = () => {
     try {
       await cancelAdminBettingSlip(group.slipId);
       toast.success(ui.cancelSuccess);
-      await loadBets();
+      await loadBets({ page: 1, force: true });
     } catch (error) {
       console.error(error);
       toast.error(error.response?.data?.message || ui.cancelError);
@@ -251,8 +331,8 @@ const AdminBets = () => {
     [memberName, slipGroups]
   );
   const selectedAgentName = useMemo(
-    () => agents.find((agent) => String(agent._id) === agentFilter)?.name || '',
-    [agentFilter, agents]
+    () => agents.find((agent) => String(agent._id) === appliedQueryFilters.agentId)?.name || '',
+    [appliedQueryFilters.agentId, agents]
   );
 
   const searchedSlipGroups = useMemo(() => {
@@ -312,15 +392,15 @@ const AdminBets = () => {
 
   const heroLabel = memberId
     ? ui.memberFilter
-    : agentFilter
+    : appliedQueryFilters.agentId
       ? ui.agentFilterLabel
       : ui.roundLabel;
   const heroValue = memberId
     ? activeMemberName || memberId
-    : agentFilter
+    : appliedQueryFilters.agentId
       ? selectedAgentName || ui.noAgentSelected
-      : roundDate
-        ? formatRoundLabel(roundDate)
+      : appliedQueryFilters.roundDate
+        ? formatRoundLabel(appliedQueryFilters.roundDate)
         : ui.allRounds;
 
   if (loading) return <PageSkeleton statCount={4} rows={4} sidebar={false} />;
@@ -389,8 +469,11 @@ const AdminBets = () => {
               <FiUsers />
               <select
                 className="form-input"
-                value={agentFilter}
-                onChange={(event) => setAgentFilter(event.target.value)}
+                value={draftQueryFilters.agentId}
+                onChange={(event) => setDraftQueryFilters((current) => ({
+                  ...current,
+                  agentId: event.target.value
+                }))}
               >
                 <option value="">{ui.allAgents}</option>
                 {agents.map((agent) => (
@@ -429,13 +512,16 @@ const AdminBets = () => {
               <input
                 type="date"
                 className="form-input"
-                value={roundDate}
-                onChange={(event) => setRoundDate(event.target.value)}
+                value={draftQueryFilters.roundDate}
+                onChange={(event) => setDraftQueryFilters((current) => ({
+                  ...current,
+                  roundDate: event.target.value
+                }))}
               />
             </label>
           </div>
 
-          {memberId || searchTerm || roundDate ? (
+          {memberId || searchTerm || hasAppliedQueryFilters || hasPendingQueryChanges ? (
             <div className="ag-bets-filter-actions">
               {memberId ? (
                 <button
@@ -460,15 +546,28 @@ const AdminBets = () => {
                 </button>
               ) : null}
 
-              {roundDate ? (
-                <button type="button" className="btn btn-secondary" onClick={() => setRoundDate('')}>
-                  <FiRotateCcw />
-                  {ui.clearRoundFilter}
-                </button>
-              ) : null}
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={clearQueryFilters}
+                disabled={!hasPendingQueryChanges && !hasAppliedQueryFilters}
+              >
+                <FiRotateCcw />
+                {filterActionsCopy.clear}
+              </button>
+
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={applyQueryFilters}
+                disabled={!hasPendingQueryChanges}
+              >
+                {filterActionsCopy.apply}
+              </button>
             </div>
           ) : null}
         </div>
+        {hasPendingQueryChanges ? <div className="ag-bets-filter-pending">{filterActionsCopy.pending}</div> : null}
       </section>
 
       <section className="ag-bets-list">
@@ -559,6 +658,28 @@ const AdminBets = () => {
         ))}
       </section>
 
+      {displaySlipGroups.length > 0 ? (
+        <section className="card ops-section ag-bets-pagination">
+          <div>
+            <div className="ag-bets-pagination-title">
+              {filterActionsCopy.loadedCount(
+                formatNumber(slipGroups.length),
+                formatNumber(betPagination.total || slipGroups.length)
+              )}
+            </div>
+            <div className="ag-bets-pagination-subtitle">{ui.subtitle}</div>
+          </div>
+          <button
+            type="button"
+            className="btn btn-secondary"
+            onClick={loadMoreBets}
+            disabled={!betPagination.hasNextPage || loadingMoreBets}
+          >
+            {loadingMoreBets ? filterActionsCopy.loadingMore : filterActionsCopy.loadMore}
+          </button>
+        </section>
+      ) : null}
+
       <style>{`
         .ag-bets-page,
         .ag-bets-list {
@@ -595,6 +716,33 @@ const AdminBets = () => {
           flex-wrap: wrap;
           gap: 10px;
           justify-content: flex-end;
+        }
+
+        .ag-bets-filter-pending {
+          color: var(--primary);
+          font-size: 0.92rem;
+          font-weight: 700;
+          margin-top: -4px;
+        }
+
+        .ag-bets-pagination {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 16px;
+          padding: 16px 18px;
+        }
+
+        .ag-bets-pagination-title {
+          color: var(--text-primary);
+          font-size: 0.95rem;
+          font-weight: 800;
+        }
+
+        .ag-bets-pagination-subtitle {
+          color: var(--text-muted);
+          font-size: 0.82rem;
+          margin-top: 4px;
         }
 
         .ag-bets-search-field,
@@ -820,6 +968,7 @@ const AdminBets = () => {
         }
 
         @media (max-width: 980px) {
+          .ag-bets-pagination,
           .ag-bet-card-top,
           .ag-bet-card-bottom {
             flex-direction: column;

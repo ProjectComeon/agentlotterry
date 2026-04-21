@@ -1,5 +1,6 @@
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { preloadAppRouteForPath, warmAppRouteDataForPath } from '../utils/appPreload';
 import {
   FiAward,
   FiDollarSign,
@@ -34,6 +35,11 @@ const BottomNav = () => {
   const isActivePath = (path) =>
     location.pathname === path || (path !== `/${user?.role}` && location.pathname.startsWith(`${path}/`));
 
+  const preloadItem = (path) => {
+    preloadAppRouteForPath(path, user?.role);
+    warmAppRouteDataForPath(path, user?.role);
+  };
+
   if (!visibleItems) return null;
 
   return (
@@ -46,6 +52,9 @@ const BottomNav = () => {
             key={item.path}
             to={item.path}
             className={`bottom-nav-item ${isActive ? 'bottom-nav-active' : ''}`}
+            onFocus={() => preloadItem(item.path)}
+            onMouseEnter={() => preloadItem(item.path)}
+            onTouchStart={() => preloadItem(item.path)}
           >
             <span className="bottom-nav-icon">{item.icon}</span>
             <span className="bottom-nav-label">{item.label}</span>

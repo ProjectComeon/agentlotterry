@@ -9,7 +9,7 @@ const { fetchLotteryResult, saveLotteryResult, getLatestResult, getRecentResults
 const { getMarketOverview } = require('../services/marketResultsService');
 const { createAuditLog } = require('../middleware/auditLog');
 const { BET_TYPES } = require('../constants/betting');
-const { clearCatalogOverviewCache, getRoundStatus } = require('../services/catalogService');
+const { clearCatalogOverviewCache, getRoundStatus, normalizeRoundTimingPayload } = require('../services/catalogService');
 const {
   reconcileRoundSettlementById,
   reverseRoundSettlementById,
@@ -251,6 +251,68 @@ router.put('/rounds/:roundId/betting-override', auth, authorize('admin'), async 
   } catch (error) {
     console.error('Update round betting override error:', error);
     res.status(500).json({ message: error.message || 'Failed to update round betting override' });
+  }
+});
+
+router.put('/rounds/:roundId/timing', auth, authorize('admin'), async (req, res) => {
+  try {
+    const round = await DrawRound.findById(req.params.roundId);
+    if (!round) {
+      return res.status(404).json({ message: 'Round not found' });
+    }
+
+    if (round.resultPublishedAt) {
+      return res.status(400).json({ message: 'This round already has published results' });
+    }
+
+    const lottery = await LotteryType.findById(round.lotteryTypeId).select('name code');
+    if (!lottery) {
+      return res.status(404).json({ message: 'Lottery type not found' });
+    }
+
+    const previousTiming = {
+      openAt: round.openAt,
+      closeAt: round.closeAt
+    };
+    const { openAt, closeAt } = normalizeRoundTimingPayload(req.body, round);
+
+    round.openAt = openAt;
+    round.closeAt = closeAt;
+    round.isManualTiming = true;
+    round.timingUpdatedAt = new Date();
+    round.timingUpdatedBy = req.user._id;
+
+    const statusMeta = getRoundStatus(round);
+    round.status = statusMeta.status;
+    await round.save();
+    clearCatalogOverviewCache();
+
+    await createAuditLog(req.user._id, 'UPDATE_ROUND_TIMING', round._id.toString(), {
+      lotteryCode: lottery.code,
+      roundCode: round.code,
+      previousTiming,
+      openAt,
+      closeAt,
+      effectiveStatus: statusMeta.status
+    });
+
+    res.json({
+      id: round._id.toString(),
+      roundCode: round.code,
+      lotteryCode: lottery.code,
+      lotteryName: lottery.name,
+      openAt: round.openAt,
+      closeAt: round.closeAt,
+      drawAt: round.drawAt,
+      isManualTiming: round.isManualTiming,
+      timingUpdatedAt: round.timingUpdatedAt,
+      status: statusMeta.status,
+      statusLabel: statusMeta.label,
+      countdownSeconds: statusMeta.countdownSeconds
+    });
+  } catch (error) {
+    console.error('Update round timing error:', error);
+    res.status(getErrorStatus(error)).json({ message: error.message || 'Failed to update round timing' });
   }
 });
 

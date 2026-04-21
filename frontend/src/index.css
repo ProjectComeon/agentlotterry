@@ -1479,6 +1479,17 @@ input, select, textarea {
   font-weight: 700;
 }
 
+.operator-composer-panel input[type="number"] {
+  appearance: textfield;
+  -moz-appearance: textfield;
+}
+
+.operator-composer-panel input[type="number"]::-webkit-inner-spin-button,
+.operator-composer-panel input[type="number"]::-webkit-outer-spin-button {
+  margin: 0;
+  -webkit-appearance: none;
+}
+
 .operator-fast-order-card {
   border-color: color-mix(in srgb, var(--lottery-accent) 34%, white 66%);
   background: color-mix(in srgb, var(--lottery-bg) 76%, white 24%);
@@ -1931,6 +1942,62 @@ input, select, textarea {
   font-weight: 800;
   line-height: 1;
   opacity: 0.92;
+}
+
+.operator-fast-excluded-panel {
+  margin-top: 10px;
+  padding: 10px;
+  border: 1px solid rgba(248, 113, 113, 0.45);
+  border-radius: 14px;
+  background: rgba(254, 242, 242, 0.9);
+}
+
+.operator-fast-excluded-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  color: #b91c1c;
+  font-size: 0.86rem;
+  font-weight: 800;
+}
+
+.operator-fast-excluded-head span {
+  color: #ef4444;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.operator-fast-excluded-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.operator-fast-excluded-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-width: 46px;
+  padding: 7px 10px;
+  border: 1px solid rgba(239, 68, 68, 0.34);
+  border-radius: 10px;
+  background: linear-gradient(180deg, #fca5a5, #ef4444);
+  color: #fff;
+  font-size: 0.9rem;
+  font-weight: 800;
+  line-height: 1;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.operator-fast-excluded-chip.is-raw {
+  background: #fff;
+  color: #b91c1c;
+  border-color: rgba(239, 68, 68, 0.42);
 }
 
 .operator-rate-row {
@@ -2410,6 +2477,50 @@ input, select, textarea {
     grid-template-columns: 1fr;
   }
 
+  .operator-fast-entry-row,
+  .operator-fast-entry-row-2,
+  .operator-fast-entry-row-run {
+    grid-template-columns: minmax(140px, 1.25fr) repeat(3, minmax(82px, 0.75fr));
+    gap: 6px;
+    overflow-x: auto;
+    padding-bottom: 2px;
+    scrollbar-width: none;
+  }
+
+  .operator-fast-entry-row-3 {
+    grid-template-columns: minmax(140px, 1.25fr) repeat(4, minmax(82px, 0.75fr));
+  }
+
+  .operator-fast-entry-row-lao_set {
+    grid-template-columns: minmax(140px, 1.25fr) minmax(82px, 0.75fr);
+  }
+
+  .operator-fast-entry-row::-webkit-scrollbar {
+    display: none;
+  }
+
+  .operator-fast-entry-row .operator-fast-amount-card {
+    min-width: 0;
+    padding: 6px;
+    border-radius: 10px;
+    gap: 3px;
+  }
+
+  .operator-fast-entry-row .operator-fast-amount-label {
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    font-size: 0.78rem;
+  }
+
+  .operator-fast-entry-row .form-input,
+  .operator-fast-entry-row .operator-inline-order-input {
+    min-height: 34px;
+    height: 34px;
+    padding: 5px 8px;
+    font-size: 0.9rem;
+  }
+
   .operator-slip-group-card {
     grid-template-columns: 1fr;
   }
@@ -2468,6 +2579,285 @@ input, select, textarea {
 
   .operator-market-status {
     min-width: 0;
+  }
+
+  .operator-page,
+  .operator-workspace {
+    gap: 8px;
+  }
+
+  .operator-composer-panel,
+  .operator-preview-panel {
+    padding: 10px;
+    border-radius: 18px;
+  }
+
+  .operator-composer-divider {
+    margin: 8px 0;
+  }
+
+  .ui-panel-head {
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 10px;
+  }
+
+  .ui-eyebrow {
+    font-size: 0.68rem;
+    letter-spacing: 0.1em;
+  }
+
+  .ui-panel-head .card-title {
+    margin-top: 2px;
+    font-size: 1rem;
+    line-height: 1.18;
+  }
+
+  .operator-select-grid {
+    gap: 8px;
+  }
+
+  .operator-select-grid .form-label {
+    margin-bottom: 3px;
+    font-size: 0.76rem;
+  }
+
+  .operator-market-trigger {
+    min-height: 46px;
+    padding: 7px 10px;
+    border-radius: 12px;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .operator-market-trigger-copy {
+    gap: 2px;
+  }
+
+  .operator-market-trigger-copy strong {
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 0.9rem;
+  }
+
+  .operator-market-pin {
+    width: 42px;
+    min-height: 46px;
+    border-radius: 12px;
+  }
+
+  .operator-market-status {
+    padding: 4px 8px;
+    font-size: 0.72rem;
+  }
+
+  .operator-market-dropdown {
+    top: calc(100% + 6px);
+    max-height: min(70vh, 520px);
+    padding: 8px;
+    gap: 6px;
+    border-radius: 14px;
+  }
+
+  .operator-market-search {
+    min-height: 40px;
+    padding: 0 10px;
+    border-radius: 12px;
+  }
+
+  .operator-market-section,
+  .operator-market-section-list,
+  .operator-market-group-list {
+    gap: 6px;
+  }
+
+  .operator-market-group {
+    gap: 6px;
+    padding: 8px;
+    border-radius: 12px;
+  }
+
+  .operator-market-option {
+    flex-direction: row;
+    align-items: center;
+    padding: 9px 10px;
+    border-radius: 12px;
+  }
+
+  .operator-market-option-copy {
+    gap: 2px;
+  }
+
+  .operator-market-option-copy strong {
+    font-size: 0.88rem;
+  }
+
+  .operator-market-option-copy small {
+    font-size: 0.72rem;
+  }
+
+  .operator-selected-member {
+    margin-top: 6px;
+    padding: 4px 6px;
+  }
+
+  .operator-selected-member-head {
+    flex-direction: row;
+    align-items: center;
+  }
+
+  .operator-mode-row,
+  .operator-bettype-row,
+  .operator-helper-row {
+    flex-wrap: nowrap;
+    gap: 5px;
+    margin-top: 6px;
+    overflow-x: auto;
+    padding-bottom: 1px;
+    scrollbar-width: none;
+  }
+
+  .operator-mode-row::-webkit-scrollbar,
+  .operator-bettype-row::-webkit-scrollbar,
+  .operator-helper-row::-webkit-scrollbar {
+    display: none;
+  }
+
+  .operator-mode-row .btn,
+  .operator-bettype-row .btn,
+  .operator-helper-row .btn {
+    flex: 0 0 auto;
+    min-height: 34px;
+    padding: 6px 10px;
+    font-size: 0.78rem;
+  }
+
+  .operator-working-slip-flat {
+    margin-top: 6px;
+  }
+
+  .operator-fast-chip-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(44px, 1fr));
+    gap: 6px;
+    margin-top: 6px;
+  }
+
+  .operator-fast-chip {
+    min-width: 0;
+    padding: 7px 6px;
+    border-radius: 10px;
+    font-size: 0.9rem;
+  }
+
+  .operator-fast-excluded-panel {
+    margin-top: 8px;
+    padding: 8px;
+    border-radius: 12px;
+  }
+
+  .operator-fast-excluded-list {
+    gap: 5px;
+    margin-top: 6px;
+  }
+
+  .operator-fast-excluded-chip {
+    min-width: 42px;
+    padding: 6px 8px;
+    border-radius: 9px;
+    font-size: 0.84rem;
+  }
+
+  .operator-grid-entry-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6px;
+  }
+
+  .operator-grid-entry-action {
+    grid-column: 1 / -1;
+  }
+
+  .operator-grid-bulk {
+    grid-template-columns: repeat(3, minmax(78px, 1fr));
+    gap: 6px;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .operator-grid-bulk::-webkit-scrollbar {
+    display: none;
+  }
+
+  .operator-grid-entry-card,
+  .operator-grid-bulk-card {
+    padding: 7px;
+    border-radius: 10px;
+  }
+
+  .operator-grid-entry-label,
+  .operator-grid-bulk-label {
+    margin-bottom: 4px;
+    font-size: 0.76rem;
+  }
+
+  .operator-grid-entry-card .form-input,
+  .operator-grid-bulk-card .form-input {
+    min-height: 34px;
+    padding: 5px 8px;
+    font-size: 0.9rem;
+  }
+
+  .operator-preview-staged-toolbar {
+    gap: 6px;
+    margin-bottom: 8px;
+  }
+
+  .operator-preview-stage-pill {
+    padding: 6px 8px;
+    border-radius: 12px;
+  }
+
+  .operator-preview-compact-summary {
+    gap: 6px;
+    padding: 8px;
+    margin-top: 6px;
+  }
+
+  .operator-preview-compact-summary strong {
+    font-size: 0.95rem;
+  }
+
+  .operator-preview-list {
+    max-height: min(46vh, 420px);
+    gap: 6px;
+  }
+
+  .operator-preview-list.operator-slip-group-list .operator-slip-group-card,
+  .operator-preview-list.operator-slip-group-list .operator-slip-group-card-dense {
+    grid-template-columns: 62px minmax(0, 1fr);
+    padding: 6px;
+  }
+
+  .operator-preview-list.operator-slip-group-list .operator-slip-group-side {
+    min-height: 42px;
+  }
+
+  .operator-preview-list.operator-slip-group-list .operator-slip-numbers {
+    min-height: 30px;
+    padding: 6px 8px;
+    font-size: 0.85rem;
+  }
+
+  .operator-preview-actions {
+    gap: 8px;
+    margin-top: 10px;
+  }
+
+  .operator-preview-actions .btn {
+    width: 100%;
+    min-height: 38px;
   }
 }
 

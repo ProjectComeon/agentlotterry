@@ -20,7 +20,8 @@ import {
   rerunLotteryRoundSettlement,
   reverseLotteryRoundSettlement,
   syncLatestLottery,
-  updateRoundBettingOverride
+  updateRoundBettingOverride,
+  updateRoundTiming
 } from '../../services/api';
 import { formatDateTime, formatRoundLabel, formatThaiDate, THAI_TIMEZONE } from '../../utils/formatters';
 import { getLotteryVisual } from '../../utils/lotteryVisuals';
@@ -99,7 +100,17 @@ const BETTING_TOGGLE_UI = {
   closed: '\u0e1b\u0e34\u0e14\u0e23\u0e31\u0e1a',
   updated: '\u0e2d\u0e31\u0e1b\u0e40\u0e14\u0e15\u0e2a\u0e16\u0e32\u0e19\u0e30\u0e23\u0e31\u0e1a\u0e42\u0e1e\u0e22\u0e41\u0e25\u0e49\u0e27',
   error: '\u0e2d\u0e31\u0e1b\u0e40\u0e14\u0e15\u0e2a\u0e16\u0e32\u0e19\u0e30\u0e23\u0e31\u0e1a\u0e42\u0e1e\u0e22\u0e44\u0e21\u0e48\u0e2a\u0e33\u0e40\u0e23\u0e47\u0e08',
-  resetDone: '\u0e01\u0e25\u0e31\u0e1a\u0e44\u0e1b\u0e43\u0e0a\u0e49\u0e40\u0e27\u0e25\u0e32\u0e2d\u0e31\u0e15\u0e42\u0e19\u0e21\u0e31\u0e15\u0e34\u0e41\u0e25\u0e49\u0e27'
+  resetDone: '\u0e01\u0e25\u0e31\u0e1a\u0e44\u0e1b\u0e43\u0e0a\u0e49\u0e40\u0e27\u0e25\u0e32\u0e2d\u0e31\u0e15\u0e42\u0e19\u0e21\u0e31\u0e15\u0e34\u0e41\u0e25\u0e49\u0e27',
+  timingTitle: 'ตั้งเวลาเปิด-ปิดรับโพย',
+  timingHelp: 'กำหนดวัน เดือน ปี และเวลาเปิดรับ/ปิดรับของงวดนี้',
+  openAtLabel: 'เปิดรับ',
+  closeAtLabel: 'ปิดรับ',
+  saveTiming: 'บันทึกเวลา',
+  savingTiming: 'กำลังบันทึก...',
+  timingUpdated: 'อัปเดตเวลาเปิด-ปิดรับแล้ว',
+  timingError: 'อัปเดตเวลาเปิด-ปิดรับไม่สำเร็จ',
+  timingInvalid: 'เวลาเปิดรับต้องมาก่อนเวลาปิดรับ',
+  manualTiming: 'ตั้งเวลาเอง'
 };
 
 const CATALOG_MARKET_ALIASES = {
@@ -336,6 +347,38 @@ const getBangkokParts = (value = new Date()) => {
     day: Number(parts.day),
     weekday: shifted.getUTCDay()
   };
+};
+
+const getBangkokDateTimeInputValue = (value) => {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: THAI_TIMEZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23'
+  }).formatToParts(date).reduce((acc, part) => {
+    if (part.type !== 'literal') {
+      acc[part.type] = part.value;
+    }
+    return acc;
+  }, {});
+
+  return `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}`;
+};
+
+const parseBangkokDateTimeInput = (value) => {
+  const match = String(value || '').match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/);
+  if (!match) return null;
+
+  const [, year, month, day, hour, minute] = match.map(Number);
+  const date = createBangkokDate(year, month, day, hour, minute);
+  return Number.isNaN(date.getTime()) ? null : date;
 };
 
 const formatClock = (value) => formatDateTime(value, {
@@ -657,6 +700,8 @@ const AdminLottery = ({ viewerRole = 'admin' }) => {
   const [selectedCode, setSelectedCode] = useState('');
   const [syncStatus, setSyncStatus] = useState(null);
   const [bettingOverrideBusy, setBettingOverrideBusy] = useState('');
+  const [timingBusy, setTimingBusy] = useState(false);
+  const [timingDraft, setTimingDraft] = useState({ openAt: '', closeAt: '' });
   const [settlementBusy, setSettlementBusy] = useState('');
   const [settlementFeedback, setSettlementFeedback] = useState(null);
   const [marketHistoryCache, setMarketHistoryCache] = useState({});
@@ -776,6 +821,35 @@ const AdminLottery = ({ viewerRole = 'admin' }) => {
       toast.error(error?.response?.data?.message || BETTING_TOGGLE_UI.error);
     } finally {
       setBettingOverrideBusy('');
+    }
+  };
+
+  const handleTimingSave = async () => {
+    if (!activeRoundId) {
+      toast.error(bettingToggleUnavailableReason || BETTING_TOGGLE_UI.unavailable);
+      return;
+    }
+
+    const openAt = parseBangkokDateTimeInput(timingDraft.openAt);
+    const closeAt = parseBangkokDateTimeInput(timingDraft.closeAt);
+    if (!openAt || !closeAt || openAt.getTime() >= closeAt.getTime()) {
+      toast.error(BETTING_TOGGLE_UI.timingInvalid);
+      return;
+    }
+
+    setTimingBusy(true);
+    try {
+      await updateRoundTiming(activeRoundId, {
+        openAt: openAt.toISOString(),
+        closeAt: closeAt.toISOString()
+      });
+      toast.success(BETTING_TOGGLE_UI.timingUpdated);
+      await loadData({ silent: true, force: true });
+    } catch (error) {
+      console.error(error);
+      toast.error(error?.response?.data?.message || BETTING_TOGGLE_UI.timingError);
+    } finally {
+      setTimingBusy(false);
     }
   };
 
@@ -971,6 +1045,20 @@ const AdminLottery = ({ viewerRole = 'admin' }) => {
     ? (activeRound?.isSynthetic ? BETTING_TOGGLE_UI.synthetic : BETTING_TOGGLE_UI.unavailable)
     : (activeRoundStatus === 'resulted' ? BETTING_TOGGLE_UI.resulted : '');
   const bettingToggleChecked = activeRoundStatus === 'open';
+  const activeRoundOpenInput = getBangkokDateTimeInputValue(activeRound?.openAt);
+  const activeRoundCloseInput = getBangkokDateTimeInputValue(activeRound?.closeAt);
+  const timingDraftChanged = Boolean(activeRoundId) && (
+    timingDraft.openAt !== activeRoundOpenInput ||
+    timingDraft.closeAt !== activeRoundCloseInput
+  );
+
+  useEffect(() => {
+    setTimingDraft({
+      openAt: activeRoundOpenInput,
+      closeAt: activeRoundCloseInput
+    });
+  }, [activeRoundId, activeRoundOpenInput, activeRoundCloseInput]);
+
   const syncSummary = syncStatus?.lastSummary || null;
   const syncCoverage = syncStatus?.mappingCoverage || syncSummary?.mappingCoverage || null;
   const syncFeedIssues = useMemo(
@@ -1298,29 +1386,73 @@ const AdminLottery = ({ viewerRole = 'admin' }) => {
                     {bettingToggleUnavailableReason ? (
                       <div className="detail-empty compact">{bettingToggleUnavailableReason}</div>
                     ) : (
-                      <div className="round-toggle-body">
-                        <div className="round-toggle-copy">
-                          <strong>{activeRoundOverrideLabel}</strong>
-                          <span>{activeRound?.title || activeRound?.code || UI.noRound}</span>
+                      <>
+                        <div className="round-toggle-body">
+                          <div className="round-toggle-copy">
+                            <strong>{activeRoundOverrideLabel}</strong>
+                            <span>{activeRound?.title || activeRound?.code || UI.noRound}</span>
+                          </div>
+
+                          <label className={`round-toggle-switch ${bettingToggleChecked ? 'is-checked' : ''} ${bettingOverrideBusy ? 'is-disabled' : ''}`}>
+                            <input
+                              type="checkbox"
+                              checked={bettingToggleChecked}
+                              onChange={handleBettingToggle}
+                              disabled={Boolean(bettingOverrideBusy)}
+                            />
+                            <span className="round-toggle-track">
+                              <span className="round-toggle-thumb" />
+                            </span>
+                            <span className="round-toggle-text">
+                              {bettingOverrideBusy && bettingOverrideBusy !== 'auto'
+                                ? BETTING_TOGGLE_UI.busy
+                                : (bettingToggleChecked ? BETTING_TOGGLE_UI.open : BETTING_TOGGLE_UI.closed)}
+                            </span>
+                          </label>
                         </div>
 
-                        <label className={`round-toggle-switch ${bettingToggleChecked ? 'is-checked' : ''} ${bettingOverrideBusy ? 'is-disabled' : ''}`}>
-                          <input
-                            type="checkbox"
-                            checked={bettingToggleChecked}
-                            onChange={handleBettingToggle}
-                            disabled={Boolean(bettingOverrideBusy)}
-                          />
-                          <span className="round-toggle-track">
-                            <span className="round-toggle-thumb" />
-                          </span>
-                          <span className="round-toggle-text">
-                            {bettingOverrideBusy && bettingOverrideBusy !== 'auto'
-                              ? BETTING_TOGGLE_UI.busy
-                              : (bettingToggleChecked ? BETTING_TOGGLE_UI.open : BETTING_TOGGLE_UI.closed)}
-                          </span>
-                        </label>
-                      </div>
+                        <div className="round-timing-form">
+                          <div className="round-timing-head">
+                            <div>
+                              <strong>{BETTING_TOGGLE_UI.timingTitle}</strong>
+                              <span>{BETTING_TOGGLE_UI.timingHelp}</span>
+                            </div>
+                            {activeRound?.isManualTiming ? (
+                              <span className="round-toggle-pill is-compact">{BETTING_TOGGLE_UI.manualTiming}</span>
+                            ) : null}
+                          </div>
+
+                          <div className="round-timing-grid">
+                            <label>
+                              <span>{BETTING_TOGGLE_UI.openAtLabel}</span>
+                              <input
+                                type="datetime-local"
+                                value={timingDraft.openAt}
+                                onChange={(event) => setTimingDraft((current) => ({ ...current, openAt: event.target.value }))}
+                                disabled={timingBusy}
+                              />
+                            </label>
+                            <label>
+                              <span>{BETTING_TOGGLE_UI.closeAtLabel}</span>
+                              <input
+                                type="datetime-local"
+                                value={timingDraft.closeAt}
+                                onChange={(event) => setTimingDraft((current) => ({ ...current, closeAt: event.target.value }))}
+                                disabled={timingBusy}
+                              />
+                            </label>
+                          </div>
+
+                          <button
+                            type="button"
+                            className="button button-primary round-timing-save"
+                            onClick={handleTimingSave}
+                            disabled={timingBusy || !timingDraftChanged}
+                          >
+                            {timingBusy ? BETTING_TOGGLE_UI.savingTiming : BETTING_TOGGLE_UI.saveTiming}
+                          </button>
+                        </div>
+                      </>
                     )}
 
                     {activeRoundId ? (
@@ -2109,6 +2241,12 @@ const AdminLottery = ({ viewerRole = 'admin' }) => {
           box-shadow: inset 0 0 0 1px rgba(16, 185, 129, 0.06);
         }
 
+        .round-toggle-pill.is-compact {
+          min-height: 34px;
+          padding: 0 12px;
+          font-size: 0.78rem;
+        }
+
         .round-toggle-reset {
           min-height: 48px;
           padding: 0 18px;
@@ -2129,6 +2267,89 @@ const AdminLottery = ({ viewerRole = 'admin' }) => {
 
         .round-toggle-reset:disabled {
           opacity: 0.6;
+          box-shadow: none;
+        }
+
+        .round-timing-form {
+          margin-top: 14px;
+          padding: 14px;
+          border-radius: 18px;
+          background: rgba(255, 255, 255, 0.76);
+          border: 1px solid rgba(16, 185, 129, 0.18);
+        }
+
+        .round-timing-head {
+          display: flex;
+          align-items: flex-start;
+          justify-content: space-between;
+          gap: 12px;
+        }
+
+        .round-timing-head > div {
+          display: flex;
+          flex-direction: column;
+          gap: 4px;
+        }
+
+        .round-timing-head strong {
+          color: #0f172a;
+          font-size: 0.96rem;
+        }
+
+        .round-timing-head span {
+          color: var(--text-muted);
+          font-size: 0.86rem;
+        }
+
+        .round-timing-grid {
+          margin-top: 12px;
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 10px;
+        }
+
+        .round-timing-grid label {
+          display: flex;
+          flex-direction: column;
+          gap: 6px;
+          color: var(--text-muted);
+          font-size: 0.82rem;
+          font-weight: 700;
+        }
+
+        .round-timing-grid input {
+          width: 100%;
+          min-height: 44px;
+          border: 1px solid rgba(16, 185, 129, 0.22);
+          border-radius: 14px;
+          padding: 0 12px;
+          background: rgba(255, 255, 255, 0.94);
+          color: #0f172a;
+          font: inherit;
+          font-weight: 800;
+          outline: none;
+        }
+
+        .round-timing-grid input:focus {
+          border-color: rgba(16, 185, 129, 0.58);
+          box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.12);
+        }
+
+        .round-timing-save {
+          margin-top: 12px;
+          width: 100%;
+          min-height: 44px;
+          border-radius: 14px;
+          border: 0;
+          background: linear-gradient(135deg, rgba(16, 185, 129, 0.98), rgba(5, 150, 105, 0.96));
+          color: white;
+          font-weight: 900;
+          box-shadow: 0 12px 22px rgba(5, 150, 105, 0.2);
+        }
+
+        .round-timing-save:disabled {
+          opacity: 0.58;
+          cursor: not-allowed;
           box-shadow: none;
         }
 
@@ -2369,6 +2590,15 @@ const AdminLottery = ({ viewerRole = 'admin' }) => {
 
           .round-toggle-footer {
             grid-template-columns: 1fr;
+          }
+
+          .round-timing-head,
+          .round-timing-grid {
+            grid-template-columns: 1fr;
+          }
+
+          .round-timing-head {
+            flex-direction: column;
           }
 
           .round-toggle-reset {

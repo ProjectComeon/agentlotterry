@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { buildReadCacheKey } from '../utils/apiReadCache';
 
 const API_URL = import.meta.env.VITE_API_URL || '';
 
@@ -19,35 +20,27 @@ const buildNoCacheConfig = (params = {}) => ({
   }
 });
 const READ_CACHE_DEFAULT_TTL_MS = Number(import.meta.env.VITE_API_READ_CACHE_MS || 15000);
+const READ_TTL_SHORT_MS = 5000;
+const READ_TTL_MEDIUM_MS = 15000;
+const READ_TTL_LONG_MS = 30000;
 const readCache = new Map();
-
-const stableStringify = (value = {}) => {
-  if (!value || typeof value !== 'object') return String(value);
-
-  return JSON.stringify(
-    Object.keys(value)
-      .sort()
-      .reduce((acc, key) => {
-        const nextValue = value[key];
-        if (nextValue !== undefined && nextValue !== null && nextValue !== '') {
-          acc[key] = nextValue;
-        }
-        return acc;
-      }, {})
-  );
-};
-
-const getReadCacheKey = (url, params = {}) => {
-  const token = localStorage.getItem('token') || '';
-  return `${token}:${url}:${stableStringify(params)}`;
-};
 
 export const clearApiReadCache = () => {
   readCache.clear();
 };
 
+const clearCacheAfterWrite = async (request) => {
+  const response = await request;
+  clearApiReadCache();
+  return response;
+};
+
 const cachedGet = (url, { params = {}, ttlMs = READ_CACHE_DEFAULT_TTL_MS, force = false } = {}) => {
-  const cacheKey = getReadCacheKey(url, params);
+  const cacheKey = buildReadCacheKey({
+    token: localStorage.getItem('token') || '',
+    url,
+    params
+  });
   const now = Date.now();
   const cached = readCache.get(cacheKey);
 
@@ -99,57 +92,135 @@ export const login = (data) => api.post('/auth/login', data);
 export const getMe = () => api.get('/auth/me');
 
 // Admin
-export const getAdminDashboard = () => api.get('/admin/dashboard');
-export const getAgents = () => api.get('/admin/agents');
-export const createAgent = (data) => api.post('/admin/agents', data);
-export const updateAgent = (id, data) => api.put(`/admin/agents/${id}`, data);
-export const deleteAgent = (id) => api.delete(`/admin/agents/${id}`);
-export const getAdminCustomers = (agentId) => api.get(`/admin/customers${agentId ? `?agentId=${agentId}` : ''}`);
-export const getAdminMemberBootstrap = (agentId) => api.get('/admin/customers/bootstrap', { params: { agentId } });
-export const getAdminCustomerDetail = (id) => api.get(`/admin/customers/${id}`);
-export const createAdminCustomer = (data) => api.post('/admin/customers', data);
-export const updateAdminCustomer = (id, data) => api.put(`/admin/customers/${id}`, data);
-export const deleteAdminCustomer = (id) => api.delete(`/admin/customers/${id}`);
-export const getAdminBets = (params) => api.get('/admin/bets', { params });
-export const getAdminReports = (params) => api.get('/admin/reports', { params });
+export const getAdminDashboard = (options = {}) => cachedGet('/admin/dashboard', {
+  ttlMs: READ_TTL_MEDIUM_MS,
+  force: Boolean(options.force)
+});
+export const getAgents = (options = {}) => cachedGet('/admin/agents', {
+  ttlMs: READ_TTL_MEDIUM_MS,
+  force: Boolean(options.force)
+});
+export const createAgent = (data) => clearCacheAfterWrite(api.post('/admin/agents', data));
+export const updateAgent = (id, data) => clearCacheAfterWrite(api.put(`/admin/agents/${id}`, data));
+export const deleteAgent = (id) => clearCacheAfterWrite(api.delete(`/admin/agents/${id}`));
+export const getAdminCustomers = (paramsOrAgentId = '', options = {}) => {
+  const params = paramsOrAgentId && typeof paramsOrAgentId === 'object'
+    ? paramsOrAgentId
+    : { agentId: paramsOrAgentId };
+
+  return cachedGet('/admin/customers', {
+    params,
+    ttlMs: READ_TTL_MEDIUM_MS,
+    force: Boolean(options.force)
+  });
+};
+export const getAdminMemberBootstrap = (agentId, options = {}) => cachedGet('/admin/customers/bootstrap', {
+  params: { agentId },
+  ttlMs: READ_TTL_LONG_MS,
+  force: Boolean(options.force)
+});
+export const getAdminCustomerDetail = (id, options = {}) => cachedGet(`/admin/customers/${id}`, {
+  ttlMs: READ_TTL_SHORT_MS,
+  force: Boolean(options.force)
+});
+export const createAdminCustomer = (data) => clearCacheAfterWrite(api.post('/admin/customers', data));
+export const updateAdminCustomer = (id, data) => clearCacheAfterWrite(api.put(`/admin/customers/${id}`, data));
+export const deleteAdminCustomer = (id) => clearCacheAfterWrite(api.delete(`/admin/customers/${id}`));
+export const getAdminBets = (params, options = {}) => cachedGet('/admin/bets', {
+  params,
+  ttlMs: READ_TTL_SHORT_MS,
+  force: Boolean(options.force)
+});
+export const getAdminReports = (params, options = {}) => cachedGet('/admin/reports', {
+  params,
+  ttlMs: READ_TTL_SHORT_MS,
+  force: Boolean(options.force)
+});
 export const searchAdminBettingMembers = (params) => api.get('/admin/betting/members/search', { params });
-export const getAdminBettingMemberContext = (memberId) => api.get(`/admin/betting/members/${memberId}/context`);
+export const getAdminBettingMemberContext = (memberId, options = {}) => cachedGet(`/admin/betting/members/${memberId}/context`, {
+  ttlMs: READ_TTL_MEDIUM_MS,
+  force: Boolean(options.force)
+});
 export const parseAdminBettingSlip = (data) => api.post('/admin/betting/slips/parse', data);
-export const createAdminBettingSlip = (data) => api.post('/admin/betting/slips', data);
-export const cancelAdminBettingSlip = (slipId) => api.post(`/admin/betting/slips/${slipId}/cancel`);
-export const getAdminRecentBettingItems = (params) => api.get('/admin/betting/items/recent', { params });
+export const createAdminBettingSlip = (data) => clearCacheAfterWrite(api.post('/admin/betting/slips', data));
+export const cancelAdminBettingSlip = (slipId) => clearCacheAfterWrite(api.post(`/admin/betting/slips/${slipId}/cancel`));
+export const getAdminRecentBettingItems = (params, options = {}) => cachedGet('/admin/betting/items/recent', {
+  params,
+  ttlMs: READ_TTL_SHORT_MS,
+  force: Boolean(options.force)
+});
 export const getAdminBettingDraft = (params) => api.get('/admin/betting/draft', { params });
 export const saveAdminBettingDraft = (data) => api.put('/admin/betting/draft', data);
 export const clearAdminBettingDraft = (data) => api.delete('/admin/betting/draft', { data });
 
 // Agent
-export const getAgentDashboard = () => api.get('/agent/dashboard');
-export const getAgentMemberBootstrap = () => api.get('/agent/config/bootstrap');
-export const getAgentMembers = (params) => api.get('/agent/members', { params });
-export const getAgentMemberDetail = (id) => api.get(`/agent/members/${id}`);
-export const createAgentMember = (data) => api.post('/agent/members', data);
-export const updateAgentMemberProfile = (id, data) => api.put(`/agent/members/${id}`, data);
-export const getAgentCustomers = (params) => api.get('/agent/customers', { params });
-export const createCustomer = (data) => api.post('/agent/customers', data);
-export const updateCustomer = (id, data) => api.put(`/agent/customers/${id}`, data);
-export const deleteCustomer = (id) => api.delete(`/agent/customers/${id}`);
-export const getAgentBets = (params) => api.get('/agent/bets', { params });
-export const getAgentReports = (params) => api.get('/agent/reports', { params });
+export const getAgentDashboard = (options = {}) => cachedGet('/agent/dashboard', {
+  ttlMs: READ_TTL_MEDIUM_MS,
+  force: Boolean(options.force)
+});
+export const getAgentMemberBootstrap = (options = {}) => cachedGet('/agent/config/bootstrap', {
+  ttlMs: READ_TTL_LONG_MS,
+  force: Boolean(options.force)
+});
+export const getAgentMembers = (params, options = {}) => cachedGet('/agent/members', {
+  params,
+  ttlMs: READ_TTL_SHORT_MS,
+  force: Boolean(options.force)
+});
+export const getAgentMemberDetail = (id, options = {}) => cachedGet(`/agent/members/${id}`, {
+  ttlMs: READ_TTL_SHORT_MS,
+  force: Boolean(options.force)
+});
+export const createAgentMember = (data) => clearCacheAfterWrite(api.post('/agent/members', data));
+export const updateAgentMemberProfile = (id, data) => clearCacheAfterWrite(api.put(`/agent/members/${id}`, data));
+export const getAgentCustomers = (params, options = {}) => cachedGet('/agent/customers', {
+  params,
+  ttlMs: READ_TTL_SHORT_MS,
+  force: Boolean(options.force)
+});
+export const createCustomer = (data) => clearCacheAfterWrite(api.post('/agent/customers', data));
+export const updateCustomer = (id, data) => clearCacheAfterWrite(api.put(`/agent/customers/${id}`, data));
+export const deleteCustomer = (id) => clearCacheAfterWrite(api.delete(`/agent/customers/${id}`));
+export const getAgentBets = (params, options = {}) => cachedGet('/agent/bets', {
+  params,
+  ttlMs: READ_TTL_SHORT_MS,
+  force: Boolean(options.force)
+});
+export const getAgentReports = (params, options = {}) => cachedGet('/agent/reports', {
+  params,
+  ttlMs: READ_TTL_SHORT_MS,
+  force: Boolean(options.force)
+});
 export const searchAgentBettingMembers = (params) => api.get('/agent/betting/members/search', { params });
-export const getAgentBettingMemberContext = (memberId) => api.get(`/agent/betting/members/${memberId}/context`);
+export const getAgentBettingMemberContext = (memberId, options = {}) => cachedGet(`/agent/betting/members/${memberId}/context`, {
+  ttlMs: READ_TTL_MEDIUM_MS,
+  force: Boolean(options.force)
+});
 export const parseAgentBettingSlip = (data) => api.post('/agent/betting/slips/parse', data);
-export const createAgentBettingSlip = (data) => api.post('/agent/betting/slips', data);
-export const cancelAgentBettingSlip = (slipId) => api.post(`/agent/betting/slips/${slipId}/cancel`);
-export const getAgentRecentBettingItems = (params) => api.get('/agent/betting/items/recent', { params });
+export const createAgentBettingSlip = (data) => clearCacheAfterWrite(api.post('/agent/betting/slips', data));
+export const cancelAgentBettingSlip = (slipId) => clearCacheAfterWrite(api.post(`/agent/betting/slips/${slipId}/cancel`));
+export const getAgentRecentBettingItems = (params, options = {}) => cachedGet('/agent/betting/items/recent', {
+  params,
+  ttlMs: READ_TTL_SHORT_MS,
+  force: Boolean(options.force)
+});
 export const getAgentBettingDraft = (params) => api.get('/agent/betting/draft', { params });
 export const saveAgentBettingDraft = (data) => api.put('/agent/betting/draft', data);
 export const clearAgentBettingDraft = (data) => api.delete('/agent/betting/draft', { data });
 
 // Wallet
-export const getWalletSummary = (params) => api.get('/wallet/summary', { params });
-export const getWalletHistory = (params) => api.get('/wallet/history', { params });
-export const transferWalletCredit = (data) => api.post('/wallet/transfer', data);
-export const adjustWalletCredit = (data) => api.post('/wallet/adjust', data);
+export const getWalletSummary = (params, options = {}) => cachedGet('/wallet/summary', {
+  params,
+  ttlMs: READ_TTL_SHORT_MS,
+  force: Boolean(options.force)
+});
+export const getWalletHistory = (params, options = {}) => cachedGet('/wallet/history', {
+  params,
+  ttlMs: READ_TTL_SHORT_MS,
+  force: Boolean(options.force)
+});
+export const transferWalletCredit = (data) => clearCacheAfterWrite(api.post('/wallet/transfer', data));
+export const adjustWalletCredit = (data) => clearCacheAfterWrite(api.post('/wallet/adjust', data));
 
 // Member slip flow
 export const parseMemberSlip = (data) => api.post('/member/slips/parse', data);
@@ -162,11 +233,18 @@ export const getMemberSummary = (params) => api.get('/member/reports/summary', {
 
 // Catalog
 export const getCatalogOverview = (options = {}) => cachedGet('/catalog/overview', {
-  ttlMs: 30000,
+  ttlMs: READ_TTL_LONG_MS,
   force: Boolean(options.force)
 });
-export const getCatalogLotteries = () => api.get('/catalog/lotteries');
-export const getCatalogRounds = (lotteryId) => api.get('/catalog/rounds', { params: { lotteryId } });
+export const getCatalogLotteries = (options = {}) => cachedGet('/catalog/lotteries', {
+  ttlMs: READ_TTL_LONG_MS,
+  force: Boolean(options.force)
+});
+export const getCatalogRounds = (lotteryId, options = {}) => cachedGet('/catalog/rounds', {
+  params: { lotteryId },
+  ttlMs: READ_TTL_SHORT_MS,
+  force: Boolean(options.force)
+});
 export const markCatalogAnnouncementRead = async (announcementId) => {
   const response = await api.post(`/catalog/announcements/${announcementId}/read`);
   clearApiReadCache();
@@ -179,17 +257,17 @@ export const sendPresenceHeartbeat = () => api.post('/presence/heartbeat');
 // Results feed
 export const getRecentMarketResults = (params, options = {}) => cachedGet('/results/recent', {
   params,
-  ttlMs: 60000,
+  ttlMs: READ_TTL_LONG_MS,
   force: Boolean(options.force)
 });
 
 // Lottery
 export const getMarketOverview = (options = {}) => cachedGet('/lottery/markets', {
-  ttlMs: 15000,
+  ttlMs: READ_TTL_MEDIUM_MS,
   force: Boolean(options.force)
 });
 export const getLotterySyncStatus = (options = {}) => cachedGet('/lottery/sync-status', {
-  ttlMs: 5000,
+  ttlMs: READ_TTL_SHORT_MS,
   force: Boolean(options.force)
 });
 export const syncLatestLottery = async () => {
@@ -216,6 +294,11 @@ export const updateRoundClosedBetTypes = async (roundId, data) => {
 };
 export const updateRoundBettingOverride = async (roundId, data) => {
   const response = await api.put(`/lottery/rounds/${roundId}/betting-override`, data);
+  clearApiReadCache();
+  return response;
+};
+export const updateRoundTiming = async (roundId, data) => {
+  const response = await api.put(`/lottery/rounds/${roundId}/timing`, data);
   clearApiReadCache();
   return response;
 };

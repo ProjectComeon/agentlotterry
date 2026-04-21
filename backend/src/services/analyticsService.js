@@ -3,6 +3,7 @@ const BetSlip = require('../models/BetSlip');
 const User = require('../models/User');
 const { Types } = require('mongoose');
 const { normalizeLotteryCode } = require('../utils/lotteryCode');
+const { buildPaginatedResult } = require('../utils/pagination');
 
 const toObjectId = (value) => (Types.ObjectId.isValid(value) ? new Types.ObjectId(value) : value);
 
@@ -25,6 +26,19 @@ const buildSubmittedItemMatch = ({ agentId, customerId, startDate, endDate } = {
   }
 
   return match;
+};
+
+const buildGroupedTotalsMatch = (field, match = {}, scopedIds = []) => {
+  const groupedMatch = buildSubmittedItemMatch(match);
+  const normalizedScopedIds = Array.isArray(scopedIds)
+    ? scopedIds.map((value) => toObjectId(value)).filter(Boolean)
+    : [];
+
+  if (normalizedScopedIds.length) {
+    groupedMatch[field] = { $in: normalizedScopedIds };
+  }
+
+  return groupedMatch;
 };
 
 const buildSlipMatch = ({ roundDate, marketId, agentId, customerId } = {}) => {
@@ -215,9 +229,9 @@ const getRecentBetItems = async ({ agentId, limit = 10 } = {}) => {
     .map(mapBetItemToLegacyShape);
 };
 
-const getTotalsGroupedByField = async (field, match = {}) => {
+const getTotalsGroupedByField = async (field, match = {}, { scopedIds = [] } = {}) => {
   const rows = await BetItem.aggregate([
-    { $match: buildSubmittedItemMatch(match) },
+    { $match: buildGroupedTotalsMatch(field, match, scopedIds) },
     {
       $group: {
         _id: `$${field}`,
@@ -625,7 +639,70 @@ const getAgentReportsBundle = async ({ agentId, roundDate, marketId, customerId,
   };
 };
 
-const listAgentBetItems = async ({ agentId, roundDate, customerId, marketId, limit = 300 } = {}) => {
+const mapBetItemsBySlip = (items = []) => {
+  const itemsBySlip = new Map();
+
+  items.forEach((item) => {
+    const slipId = item.slipId?._id?.toString?.() || item.slipId?.toString?.() || '';
+    if (!slipId) return;
+    if (!itemsBySlip.has(slipId)) {
+      itemsBySlip.set(slipId, []);
+    }
+    itemsBySlip.get(slipId).push(item);
+  });
+
+  return itemsBySlip;
+};
+
+const formatItemsForOrderedSlips = (orderedSlipIds = [], items = []) => {
+  const itemsBySlip = mapBetItemsBySlip(items);
+
+  return orderedSlipIds.flatMap((slipId) =>
+    sortSlipItemsForDisplay(itemsBySlip.get(slipId) || []).map(mapBetItemToLegacyShape)
+  );
+};
+
+const listAgentBetItems = async ({
+  agentId,
+  roundDate,
+  customerId,
+  marketId,
+  limit = 300,
+  paginated = false,
+  page = 1,
+  skip = 0
+} = {}) => {
+  if (paginated) {
+    const slipMatch = buildSlipMatch({ agentId, customerId, roundDate, marketId });
+    const [total, slips] = await Promise.all([
+      BetSlip.countDocuments(slipMatch),
+      BetSlip.find(slipMatch)
+        .sort({ createdAt: -1, _id: -1 })
+        .skip(skip)
+        .limit(limit)
+        .select('_id')
+        .lean()
+    ]);
+
+    if (!slips.length) {
+      return buildPaginatedResult([], { total, page, limit });
+    }
+
+    const orderedSlipIds = slips.map((slip) => slip._id.toString());
+    const items = await BetItem.find({
+      ...buildSubmittedItemMatch({ agentId, customerId }),
+      slipId: { $in: orderedSlipIds }
+    })
+      .populate('customerId', 'name username')
+      .populate('agentId', 'name username')
+      .populate('slipId', 'slipNumber lotteryCode lotteryName roundCode roundTitle memo');
+
+    return buildPaginatedResult(
+      formatItemsForOrderedSlips(orderedSlipIds, items),
+      { total, page, limit }
+    );
+  }
+
   const slipIds = await BetSlip.find(
     buildSlipMatch({ agentId, customerId, roundDate, marketId })
   ).select('_id');
@@ -663,19 +740,7 @@ const listAgentBetItems = async ({ agentId, roundDate, customerId, marketId, lim
     .populate('agentId', 'name username')
     .populate('slipId', 'slipNumber lotteryCode lotteryName roundCode roundTitle memo');
 
-  const itemsBySlip = new Map();
-  items.forEach((item) => {
-    const slipId = item.slipId?._id?.toString?.() || item.slipId?.toString?.() || '';
-    if (!slipId) return;
-    if (!itemsBySlip.has(slipId)) {
-      itemsBySlip.set(slipId, []);
-    }
-    itemsBySlip.get(slipId).push(item);
-  });
-
-  return orderedSlipIds.flatMap((slipId) =>
-    sortSlipItemsForDisplay(itemsBySlip.get(slipId) || []).map(mapBetItemToLegacyShape)
-  );
+  return formatItemsForOrderedSlips(orderedSlipIds, items);
 };
 
 const listBettingRecentItems = async ({
@@ -703,5 +768,8 @@ module.exports = {
   getAgentReportRows,
   listAgentBetItems,
   listBettingRecentItems,
-  getAgentReportsBundle
+  getAgentReportsBundle,
+  __test: {
+    buildGroupedTotalsMatch
+  }
 };

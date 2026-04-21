@@ -119,6 +119,38 @@ const getRoundStatus = (round, now = new Date()) => {
   };
 };
 
+const createValidationError = (message, statusCode = 400) => {
+  const error = new Error(message);
+  error.statusCode = statusCode;
+  return error;
+};
+
+const parseRoundTimingDate = (value, fieldName) => {
+  const date = new Date(value);
+  if (!value || Number.isNaN(date.getTime())) {
+    throw createValidationError(`${fieldName} must be a valid date`);
+  }
+  return date;
+};
+
+const normalizeRoundTimingPayload = (payload = {}, round = {}) => {
+  const openAt = parseRoundTimingDate(payload.openAt, 'openAt');
+  const closeAt = parseRoundTimingDate(payload.closeAt, 'closeAt');
+
+  if (openAt.getTime() >= closeAt.getTime()) {
+    throw createValidationError('openAt must be before closeAt');
+  }
+
+  if (round.drawAt) {
+    const drawAt = new Date(round.drawAt);
+    if (!Number.isNaN(drawAt.getTime()) && closeAt.getTime() > drawAt.getTime()) {
+      throw createValidationError('closeAt must be before or equal to drawAt');
+    }
+  }
+
+  return { openAt, closeAt };
+};
+
 const buildMonthlyOccurrences = (schedule, startDate, horizonDays) => {
   const occurrences = [];
   const start = new Date(startDate.getTime() - schedule.openLeadDays * DAY_MS);
@@ -187,12 +219,15 @@ const buildRoundUpsertOperations = (lotteryType, occurrences) => occurrences.map
       },
       update: {
         $set: {
+          isActive: true
+        },
+        $setOnInsert: {
           title: occurrence.title,
           openAt: occurrence.openAt,
           closeAt: occurrence.closeAt,
           drawAt: occurrence.drawAt,
           status,
-          isActive: true
+          isManualTiming: false
         }
       },
       upsert: true
@@ -578,6 +613,8 @@ const buildCatalogOverview = async (viewer = null) => {
         openAt: activeRound.openAt,
         closeAt: activeRound.closeAt,
         drawAt: activeRound.drawAt,
+        isManualTiming: Boolean(activeRound.isManualTiming),
+        timingUpdatedAt: activeRound.timingUpdatedAt || null,
         status: statusMeta.status,
         statusLabel: statusMeta.label,
         countdownSeconds: statusMeta.countdownSeconds,
@@ -585,6 +622,7 @@ const buildCatalogOverview = async (viewer = null) => {
         isManualOverride: statusMeta.isManualOverride,
         closedBetTypes: activeRound.closedBetTypes || [],
         displayDate: formatBangkokDate(activeRound.drawAt),
+        displayOpenAt: formatBangkokDateTime(activeRound.openAt),
         displayDrawAt: formatBangkokDateTime(activeRound.drawAt),
         displayCloseAt: formatBangkokDateTime(activeRound.closeAt)
       } : null,
@@ -755,10 +793,13 @@ const getRoundsByLottery = async (lotteryId, viewer = null) => {
       openAt: round.openAt,
       closeAt: round.closeAt,
       drawAt: round.drawAt,
+      isManualTiming: Boolean(round.isManualTiming),
+      timingUpdatedAt: round.timingUpdatedAt || null,
       bettingOverride: statusMeta.bettingOverride,
       isManualOverride: statusMeta.isManualOverride,
       closedBetTypes: round.closedBetTypes || [],
       displayDate: formatBangkokDate(round.drawAt),
+      displayOpenAt: formatBangkokDateTime(round.openAt),
       displayCloseAt: formatBangkokDateTime(round.closeAt),
       ...statusMeta
     };
@@ -775,6 +816,7 @@ module.exports = {
   getRoundsByLottery,
   getRecentResults,
   getRoundStatus,
+  normalizeRoundTimingPayload,
   markAnnouncementRead
 };
 

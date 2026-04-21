@@ -1,4 +1,4 @@
-import { Suspense, lazy } from 'react';
+import { Suspense, lazy, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import { AuthProvider, useAuth } from './context/AuthContext';
@@ -7,27 +7,33 @@ import Navbar from './components/Navbar';
 import BottomNav from './components/BottomNav';
 import PageSkeleton from './components/PageSkeleton';
 import ProtectedRoute from './components/ProtectedRoute';
+import { preloadRoleRouteChunks, routeLoaders } from './utils/appPreload';
 import { getAppRouteForRole } from './utils/roleRoutes';
 
 // Pages
-const Login = lazy(() => import('./pages/Login'));
-const AdminDashboard = lazy(() => import('./pages/admin/AdminDashboard'));
-const AgentManagement = lazy(() => import('./pages/admin/AgentManagement'));
-const CustomerManagement = lazy(() => import('./pages/admin/CustomerManagement'));
-const AdminBets = lazy(() => import('./pages/admin/AdminBets'));
-const AdminReports = lazy(() => import('./pages/admin/AdminReports'));
-const AdminLottery = lazy(() => import('./pages/admin/AdminLottery'));
-const AgentDashboard = lazy(() => import('./pages/agent/AgentDashboard'));
-const AgentCustomers = lazy(() => import('./pages/agent/AgentCustomers'));
-const AgentMemberDetail = lazy(() => import('./pages/agent/AgentMemberDetail'));
-const AgentBets = lazy(() => import('./pages/agent/AgentBets'));
-const AgentLottery = lazy(() => import('./pages/agent/AgentLottery'));
-const AgentReports = lazy(() => import('./pages/agent/AgentReports'));
-const OperatorBetting = lazy(() => import('./pages/shared/OperatorBetting'));
+const Login = lazy(routeLoaders.login);
+const AdminDashboard = lazy(routeLoaders.adminDashboard);
+const AgentManagement = lazy(routeLoaders.agentManagement);
+const CustomerManagement = lazy(routeLoaders.customerManagement);
+const AdminBets = lazy(routeLoaders.adminBets);
+const AdminReports = lazy(routeLoaders.adminReports);
+const AdminLottery = lazy(routeLoaders.adminLottery);
+const AgentDashboard = lazy(routeLoaders.agentDashboard);
+const AgentCustomers = lazy(routeLoaders.agentCustomers);
+const AgentMemberDetail = lazy(routeLoaders.agentMemberDetail);
+const AgentBets = lazy(routeLoaders.agentBets);
+const AgentLottery = lazy(routeLoaders.agentLottery);
+const AgentReports = lazy(routeLoaders.agentReports);
+const OperatorBetting = lazy(routeLoaders.operatorBetting);
 
 const AppLayout = ({ children }) => {
   const { user } = useAuth();
   const showBottomNav = user?.role === 'agent';
+
+  useEffect(() => {
+    if (!user?.role) return;
+    preloadRoleRouteChunks(user.role);
+  }, [user?.role]);
 
   return (
     <div className="app-layout">

@@ -45,9 +45,29 @@ assert.strictEqual(
   'bulk ops should target the lottery id'
 );
 assert.strictEqual(
-  operations[0].updateOne.update.$set.status,
+  operations[0].updateOne.update.$setOnInsert.status,
   getRoundStatus(occurrences[0]).status,
   'bulk op should reuse round status calculation'
+);
+assert.strictEqual(
+  operations[0].updateOne.update.$set.openAt,
+  undefined,
+  'catalog seed should not overwrite an existing round openAt'
+);
+assert.strictEqual(
+  operations[0].updateOne.update.$set.closeAt,
+  undefined,
+  'catalog seed should not overwrite an existing round closeAt'
+);
+assert.strictEqual(
+  operations[0].updateOne.update.$setOnInsert.openAt,
+  occurrences[0].openAt,
+  'catalog seed should still initialize new round openAt'
+);
+assert.strictEqual(
+  operations[0].updateOne.update.$setOnInsert.closeAt,
+  occurrences[0].closeAt,
+  'catalog seed should still initialize new round closeAt'
 );
 
 console.log('Catalog seed bulk operation tests passed');

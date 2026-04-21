@@ -8,6 +8,7 @@ import { agentCopy } from '../../i18n/th/agent';
 import { getBetTypeLabel, getUserStatusLabel, getWalletDirectionLabel, getWalletEntryTypeLabel, getWalletReasonLabel } from '../../i18n/th/labels';
 import { getAgentMemberBootstrap, getAgentMemberDetail, getWalletHistory, getWalletSummary, transferWalletCredit, updateAgentMemberProfile } from '../../services/api';
 import { formatDateTime, formatMoney as money, toNumber } from '../../utils/formatters';
+import { MEMBER_WALLET_TAB, shouldLoadMemberWalletSection } from '../../utils/memberDetailLoading';
 import {
   applyProfileToLotterySettings,
   buildMemberFormPayload,
@@ -32,7 +33,8 @@ const AgentMemberDetail = () => {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
-  const [walletLoading, setWalletLoading] = useState(true);
+  const [walletLoading, setWalletLoading] = useState(false);
+  const [walletLoaded, setWalletLoaded] = useState(false);
   const [walletSubmitting, setWalletSubmitting] = useState(false);
   const [agentWallet, setAgentWallet] = useState(null);
   const [memberWallet, setMemberWallet] = useState(null);
@@ -66,6 +68,7 @@ const AgentMemberDetail = () => {
       setAgentWallet(agentWalletRes.data);
       setMemberWallet(memberWalletRes.data);
       setWalletEntries(historyRes.data || []);
+      setWalletLoaded(true);
     } catch (error) {
       console.error(error);
       toast.error(error.response?.data?.message || 'โหลดความเคลื่อนไหวกระเป๋าไม่สำเร็จ');
@@ -75,9 +78,21 @@ const AgentMemberDetail = () => {
   };
 
   useEffect(() => {
-    const loadAll = async () => { await Promise.all([load(), loadWalletData()]); };
-    loadAll();
+    setAgentWallet(null);
+    setMemberWallet(null);
+    setWalletEntries([]);
+    setWalletLoaded(false);
+    setWalletLoading(false);
+    load();
   }, [memberId]);
+
+  useEffect(() => {
+    if (!shouldLoadMemberWalletSection({ activeTab: tab, walletLoaded, walletLoading })) {
+      return;
+    }
+
+    loadWalletData();
+  }, [tab, walletLoaded, walletLoading, memberId]);
 
   const groupedLotteries = useMemo(() => groupLotterySettingsByLeague(form?.lotterySettings || []), [form?.lotterySettings]);
   const updateAccount = (field, value) => setForm((current) => ({ ...current, account: { ...current.account, [field]: value } }));
@@ -112,7 +127,11 @@ const AgentMemberDetail = () => {
   const refresh = async () => {
     setRefreshing(true);
     try {
-      await Promise.all([load(true), loadWalletData(true)]);
+      const tasks = [load(true)];
+      if (walletLoaded || tab === MEMBER_WALLET_TAB) {
+        tasks.push(loadWalletData(true));
+      }
+      await Promise.all(tasks);
     } finally {
       setRefreshing(false);
     }

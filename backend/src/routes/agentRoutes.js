@@ -19,6 +19,7 @@ const {
   isUserOnline
 } = require('../services/memberManagementService');
 const { registerBettingRoutes } = require('./helpers/registerBettingRoutes');
+const { parsePaginationQuery } = require('../utils/pagination');
 
 const router = express.Router();
 
@@ -161,11 +162,13 @@ router.put('/config/members/:id/lotteries', async (req, res) => {
 // GET /api/agent/members
 router.get('/members', async (req, res) => {
   try {
+    const pagination = parsePaginationQuery(req.query, { defaultLimit: 24 });
     const members = await getAgentMembers({
       agentId: req.user._id,
       search: req.query.search || '',
       status: req.query.status || '',
-      online: req.query.online || ''
+      online: req.query.online || '',
+      ...pagination
     });
 
     res.json(members);
@@ -231,14 +234,16 @@ router.put('/members/:id', async (req, res) => {
 // GET /api/agent/customers
 router.get('/customers', async (req, res) => {
   try {
+    const pagination = parsePaginationQuery(req.query, { defaultLimit: 24 });
     const members = await getAgentMembers({
       agentId: req.user._id,
       search: req.query.search || '',
       status: req.query.status || '',
-      online: req.query.online || ''
+      online: req.query.online || '',
+      ...pagination
     });
 
-    res.json(members.map((member) => ({
+    const mapCustomerRow = (member) => ({
       _id: member.id,
       username: member.username,
       name: member.name,
@@ -252,7 +257,16 @@ router.get('/customers', async (req, res) => {
       totalBets: member.totals.totalBets,
       totalAmount: member.totals.totalAmount,
       totalWon: member.totals.totalWon
-    })));
+    });
+
+    if (pagination.paginated) {
+      return res.json({
+        items: (members.items || []).map(mapCustomerRow),
+        pagination: members.pagination
+      });
+    }
+
+    res.json(members.map(mapCustomerRow));
   } catch (error) {
     res.status(500).json({ message: 'Server error' });
   }
@@ -313,11 +327,13 @@ router.delete('/customers/:id', async (req, res) => {
 router.get('/bets', async (req, res) => {
   try {
     const { roundDate, customerId, marketId } = req.query;
+    const pagination = parsePaginationQuery(req.query, { defaultLimit: 18 });
     const bets = await listAgentBetItems({
       agentId: req.user._id,
       roundDate,
       customerId,
-      marketId
+      marketId,
+      ...pagination
     });
 
     res.json(bets);

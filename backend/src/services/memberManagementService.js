@@ -8,6 +8,18 @@ const {
   getBetTotals,
   getTotalsGroupedByField
 } = require('./analyticsService');
+const {
+  createReferenceDataCache,
+  loadWithReferenceCache,
+  clearReferenceDataCache
+} = require('../utils/referenceDataCache');
+const { buildPaginatedResult } = require('../utils/pagination');
+const {
+  buildAdminCustomerFilter,
+  buildAdminCustomerSort,
+  normalizeAdminCustomerQuery,
+  sortAdminCustomerRowsByTotals
+} = require('../utils/adminCustomerQuery');
 
 const ONLINE_WINDOW_MS = 5 * 60 * 1000;
 const DEFAULT_LIMITS = {
@@ -17,6 +29,8 @@ const DEFAULT_LIMITS = {
   keepMode: 'off',
   keepCapAmount: 0
 };
+const activeRateProfilesCache = createReferenceDataCache();
+const activeLotteriesCache = createReferenceDataCache();
 
 const toText = (value) => String(value || '').trim();
 const toAmount = (value, fallback = 0) => {
@@ -54,14 +68,26 @@ const isUserOnline = (user) => {
 };
 
 const loadActiveRateProfiles = async () =>
-  RateProfile.find({ isActive: true }).sort({ isDefault: -1, name: 1 });
+  loadWithReferenceCache(activeRateProfilesCache, () =>
+    RateProfile.find({ isActive: true })
+      .sort({ isDefault: -1, name: 1 })
+      .lean()
+  );
 
 const loadActiveLotteries = async () =>
-  LotteryType.find({ isActive: true })
-    .sort({ sortOrder: 1, name: 1 })
-    .populate('leagueId', 'code name')
-    .populate('rateProfileIds', 'code name description isActive rates commissions')
-    .populate('defaultRateProfileId', 'code name description isActive rates commissions');
+  loadWithReferenceCache(activeLotteriesCache, () =>
+    LotteryType.find({ isActive: true })
+      .sort({ sortOrder: 1, name: 1 })
+      .populate('leagueId', 'code name')
+      .populate('rateProfileIds', 'code name description isActive rates commissions')
+      .populate('defaultRateProfileId', 'code name description isActive rates commissions')
+      .lean()
+  );
+
+const clearMemberReferenceCaches = () => {
+  clearReferenceDataCache(activeRateProfilesCache);
+  clearReferenceDataCache(activeLotteriesCache);
+};
 
 const normalizeEnabledBetTypes = (value, supportedBetTypes) => {
   if (!Array.isArray(value) || !value.length) {
@@ -202,7 +228,12 @@ const buildLotteryConfigDocument = ({ member, lottery, existingConfig, inputConf
   };
 };
 
-const upsertMemberLotteryConfigs = async ({ member, lotterySettings = [], lotteries = null }) => {
+const upsertMemberLotteryConfigs = async ({
+  member,
+  lotterySettings = [],
+  lotteries = null,
+  ensureOnlyMissing = false
+}) => {
   const activeLotteries = lotteries || await loadActiveLotteries();
   const lotteryIds = activeLotteries.map((lottery) => lottery._id);
   const existingConfigs = await UserLotteryConfig.find({
@@ -215,14 +246,20 @@ const upsertMemberLotteryConfigs = async ({ member, lotterySettings = [], lotter
     return acc;
   }, {});
 
-  const inputMap = (Array.isArray(lotterySettings) ? lotterySettings : []).reduce((acc, config) => {
+  const inputSettings = Array.isArray(lotterySettings) ? lotterySettings : [];
+  const hasExplicitLotterySettings = inputSettings.length > 0;
+  const inputMap = inputSettings.reduce((acc, config) => {
     if (config?.lotteryTypeId) {
       acc[config.lotteryTypeId] = config;
     }
     return acc;
   }, {});
 
-  const operations = activeLotteries.map((lottery) => ({
+  const targetLotteries = ensureOnlyMissing && !hasExplicitLotterySettings
+    ? activeLotteries.filter((lottery) => !existingMap[lottery._id.toString()])
+    : activeLotteries;
+
+  const operations = targetLotteries.map((lottery) => ({
     updateOne: {
       filter: {
         userId: member._id,
@@ -301,7 +338,11 @@ const mapLotteryConfigRow = ({ lottery, config }) => {
 
 const getMemberConfigRows = async ({ member, lotteries = null }) => {
   const activeLotteries = lotteries || await loadActiveLotteries();
-  await upsertMemberLotteryConfigs({ member, lotteries: activeLotteries });
+  await upsertMemberLotteryConfigs({
+    member,
+    lotteries: activeLotteries,
+    ensureOnlyMissing: true
+  });
 
   const configDocs = await UserLotteryConfig.find({
     userId: member._id,
@@ -459,38 +500,66 @@ const getAgentMemberBootstrap = async ({ agentId }) => {
 const getAdminMemberBootstrap = async ({ agentId = '' } = {}) =>
   getAgentMemberBootstrap({ agentId: toText(agentId) || null });
 
-const getAgentMembers = async ({ agentId, search = '', status = '', online = '' }) => {
-  const filter = { agentId, role: 'customer' };
+const buildAgentMembersFilter = ({ agentId, search = '', status = '', online = '' }) => {
+  const clauses = [
+    {
+      agentId,
+      role: 'customer'
+    }
+  ];
   const searchText = toText(search);
+  const onlineSince = new Date(Date.now() - ONLINE_WINDOW_MS);
 
   if (searchText) {
     const regex = new RegExp(searchText, 'i');
-    filter.$or = [
-      { name: regex },
-      { username: regex },
-      { phone: regex }
-    ];
+    clauses.push({
+      $or: [
+        { name: regex },
+        { username: regex },
+        { phone: regex }
+      ]
+    });
   }
 
   const normalizedStatus = toText(status);
   if (normalizedStatus && ['active', 'inactive', 'suspended'].includes(normalizedStatus)) {
-    filter.status = normalizedStatus;
+    clauses.push({ status: normalizedStatus });
   }
 
-  const members = await User.find(filter)
-    .select('-password')
-    .sort({ createdAt: -1 });
-
   const onlineFilter = String(online || '').toLowerCase();
-  const filteredMembers = members.filter((member) => {
-    if (onlineFilter === 'true') return isUserOnline(member);
-    if (onlineFilter === 'false') return !isUserOnline(member);
-    return true;
-  });
+  if (onlineFilter === 'true') {
+    clauses.push({
+      isActive: true,
+      status: 'active',
+      lastActiveAt: { $gte: onlineSince }
+    });
+  } else if (onlineFilter === 'false') {
+    clauses.push({
+      $or: [
+        { isActive: { $ne: true } },
+        { status: { $ne: 'active' } },
+        { lastActiveAt: { $exists: false } },
+        { lastActiveAt: null },
+        { lastActiveAt: { $lt: onlineSince } }
+      ]
+    });
+  }
 
-  const memberIds = filteredMembers.map((member) => member._id);
+  if (clauses.length === 1) {
+    return clauses[0];
+  }
+
+  return { $and: clauses };
+};
+
+const hydrateAgentMembers = async ({ agentId, members }) => {
+  if (!members.length) {
+    return [];
+  }
+
+  const memberIds = members.map((member) => member._id);
   const [betStatsByCustomer, configRows] = await Promise.all([
-    getTotalsGroupedByField('customerId', { agentId }),
+    getTotalsGroupedByField('customerId', { agentId }, { scopedIds: memberIds }),
     UserLotteryConfig.aggregate([
       {
         $match: {
@@ -519,13 +588,171 @@ const getAgentMembers = async ({ agentId, search = '', status = '', online = '' 
     return acc;
   }, {});
 
-  return filteredMembers.map((member) =>
+  return members.map((member) =>
     mapMemberSummary(
       member,
       betStatsByCustomer[member._id.toString()] || {},
       configSummaryByMember[member._id.toString()] || {}
     )
   );
+};
+
+const getAgentMembers = async ({
+  agentId,
+  search = '',
+  status = '',
+  online = '',
+  paginated = false,
+  page = 1,
+  limit = 25,
+  skip = 0
+}) => {
+  const filter = buildAgentMembersFilter({ agentId, search, status, online });
+  const query = User.find(filter)
+    .select('-password')
+    .sort({ createdAt: -1, _id: -1 })
+    .lean();
+
+  if (!paginated) {
+    const members = await query;
+    return hydrateAgentMembers({ agentId, members });
+  }
+
+  const [total, members] = await Promise.all([
+    User.countDocuments(filter),
+    query.skip(skip).limit(limit)
+  ]);
+  const items = await hydrateAgentMembers({ agentId, members });
+
+  return buildPaginatedResult(items, {
+    total,
+    page,
+    limit
+  });
+};
+
+const mapAdminCustomerSummary = (customer, totals = {}) => {
+  const row = typeof customer?.toJSON === 'function' ? customer.toJSON() : { ...customer };
+
+  return {
+    ...row,
+    totals: {
+      totalBets: totals.count || 0,
+      totalAmount: totals.totalAmount || 0,
+      totalWon: totals.totalWon || 0,
+      netProfit: (totals.totalAmount || 0) - (totals.totalWon || 0)
+    }
+  };
+};
+
+const hydrateAdminCustomers = async ({ customers, agentId = '', totalsByCustomer = null }) => {
+  if (!customers.length) {
+    return [];
+  }
+
+  const customerIds = customers.map((customer) => customer._id);
+  const totals = totalsByCustomer || await getTotalsGroupedByField(
+    'customerId',
+    agentId ? { agentId } : {},
+    { scopedIds: customerIds }
+  );
+
+  return customers.map((customer) =>
+    mapAdminCustomerSummary(customer, totals[customer._id.toString()] || {})
+  );
+};
+
+const listAdminCustomers = async ({
+  agentId = '',
+  search = '',
+  status = '',
+  sortBy = 'recent',
+  paginated = false,
+  page = 1,
+  limit = 24,
+  skip = 0
+} = {}) => {
+  const normalizedQuery = normalizeAdminCustomerQuery({ agentId, search, status, sortBy });
+  const filter = buildAdminCustomerFilter(normalizedQuery);
+  const mongoSort = buildAdminCustomerSort(normalizedQuery.sortBy);
+
+  if (mongoSort) {
+    const query = User.find(filter)
+      .select('-password')
+      .populate('agentId', 'name username')
+      .sort(mongoSort)
+      .lean();
+
+    if (!paginated) {
+      const customers = await query;
+      return hydrateAdminCustomers({ customers, agentId: normalizedQuery.agentId });
+    }
+
+    const [total, customers] = await Promise.all([
+      User.countDocuments(filter),
+      query.skip(skip).limit(limit)
+    ]);
+    const items = await hydrateAdminCustomers({ customers, agentId: normalizedQuery.agentId });
+
+    return buildPaginatedResult(items, {
+      total,
+      page,
+      limit
+    });
+  }
+
+  const sortRows = await User.find(filter)
+    .select('_id updatedAt lastActiveAt createdAt')
+    .sort({ updatedAt: -1, createdAt: -1, _id: -1 })
+    .lean();
+
+  if (!sortRows.length) {
+    return paginated
+      ? buildPaginatedResult([], { total: 0, page, limit })
+      : [];
+  }
+
+  const customerIds = sortRows.map((row) => row._id);
+  const totalsByCustomer = await getTotalsGroupedByField(
+    'customerId',
+    normalizedQuery.agentId ? { agentId: normalizedQuery.agentId } : {},
+    { scopedIds: customerIds }
+  );
+  const sortedRows = sortAdminCustomerRowsByTotals(
+    sortRows,
+    totalsByCustomer,
+    normalizedQuery.sortBy
+  );
+  const pageRows = paginated ? sortedRows.slice(skip, skip + limit) : sortedRows;
+  const pageIds = pageRows.map((row) => row._id.toString());
+
+  if (!pageIds.length) {
+    return paginated
+      ? buildPaginatedResult([], { total: sortedRows.length, page, limit })
+      : [];
+  }
+
+  const customers = await User.find({ _id: { $in: pageIds } })
+    .select('-password')
+    .populate('agentId', 'name username')
+    .lean();
+  const customersById = new Map(customers.map((customer) => [customer._id.toString(), customer]));
+  const orderedCustomers = pageIds.map((id) => customersById.get(id)).filter(Boolean);
+  const items = await hydrateAdminCustomers({
+    customers: orderedCustomers,
+    agentId: normalizedQuery.agentId,
+    totalsByCustomer
+  });
+
+  if (!paginated) {
+    return items;
+  }
+
+  return buildPaginatedResult(items, {
+    total: sortedRows.length,
+    page,
+    limit
+  });
 };
 
 const searchMembersForBetting = async ({ actorId, actorRole, search = '', agentId = '', limit = 20 }) => {
@@ -557,6 +784,8 @@ const searchMembersForBetting = async ({ actorId, actorRole, search = '', agentI
   const totalsByCustomer = await getTotalsGroupedByField('customerId', {
     ...(actorRole === 'agent' ? { agentId: actorId } : {}),
     ...(actorRole === 'admin' && agentId ? { agentId } : {})
+  }, {
+    scopedIds: members.map((member) => member._id)
   });
 
   const normalizedSearch = searchText.toLowerCase();
@@ -886,6 +1115,7 @@ module.exports = {
   getAgentMemberBootstrap,
   getAdminMemberBootstrap,
   getAgentMembers,
+  listAdminCustomers,
   getAgentMemberDetail,
   getAdminMemberDetail,
   createAgentMember,
@@ -897,5 +1127,8 @@ module.exports = {
   searchMembersForBetting,
   getMemberForBettingActor,
   getMemberConfigRows,
-  normalizeEnabledBetTypes
+  normalizeEnabledBetTypes,
+  __test: {
+    clearMemberReferenceCaches
+  }
 };

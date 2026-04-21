@@ -45,6 +45,7 @@ const manyCaiFeedBaseUrl = toText(process.env.MANYCAI_FEED_BASE_URL, 'http://vip
 const autoSyncResults = parseBoolean(process.env.AUTO_SYNC_RESULTS, !isProduction);
 const autoSeedCatalog = parseBoolean(process.env.AUTO_SEED_CATALOG, !isProduction);
 const resultSyncIntervalMs = Number(process.env.RESULT_SYNC_INTERVAL_MS || 300000);
+const resultSyncStartupDelayMs = Number(process.env.RESULT_SYNC_STARTUP_DELAY_MS || 60000);
 const cronSyncToken = toText(process.env.CRON_SYNC_TOKEN);
 
 const validateEnv = () => {
@@ -86,6 +87,10 @@ const validateEnv = () => {
     issues.push('RESULT_SYNC_INTERVAL_MS must be a number >= 60000');
   }
 
+  if (!Number.isFinite(resultSyncStartupDelayMs) || resultSyncStartupDelayMs < 0) {
+    issues.push('RESULT_SYNC_STARTUP_DELAY_MS must be a number >= 0');
+  }
+
   if (cronSyncToken && cronSyncToken.length < 24) {
     issues.push('CRON_SYNC_TOKEN must be at least 24 characters long when set');
   }
@@ -111,6 +116,7 @@ const getEnvSummary = () => ({
   autoSyncResults,
   autoSeedCatalog,
   resultSyncIntervalMs,
+  resultSyncStartupDelayMs,
   cronSyncTokenConfigured: Boolean(cronSyncToken)
 });
 
@@ -130,6 +136,7 @@ module.exports = {
   autoSyncResults,
   autoSeedCatalog,
   resultSyncIntervalMs,
+  resultSyncStartupDelayMs,
   cronSyncToken,
   validateEnv,
   getEnvSummary

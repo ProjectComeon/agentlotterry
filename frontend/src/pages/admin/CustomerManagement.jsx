@@ -32,6 +32,16 @@ import {
 } from '../../services/api';
 import { formatDateTime, formatMoney as money, formatNumber, getInitial, toNumber } from '../../utils/formatters';
 import {
+  DEFAULT_ADMIN_CUSTOMER_FILTERS,
+  areAdminCustomerFiltersEqual,
+  normalizeAdminCustomerFilters
+} from '../../utils/adminCustomerFilters';
+import {
+  DEFAULT_PAGINATION_META,
+  getPaginatedItems,
+  getPaginatedMeta
+} from '../../utils/paginatedResponse';
+import {
   applyProfileToLotterySettings,
   buildMemberFormPayload,
   createInitialMemberForm,
@@ -53,6 +63,16 @@ const sortOptions = [
   { value: 'profit_desc', label: 'กำไร/ขาดทุนสูงสุด' },
   { value: 'name_asc', label: 'ชื่อ A-Z' }
 ];
+const CUSTOMER_PAGE_LIMIT = 24;
+
+const filterActionsCopy = {
+  apply: 'ใช้ตัวกรอง',
+  clear: 'ล้างตัวกรอง',
+  pending: 'มีตัวกรองที่ยังไม่ได้ใช้',
+  loadedCount: (loaded, total) => `แสดง ${loaded} / ${total} สมาชิก`,
+  loadMore: 'โหลดเพิ่ม',
+  loadingMore: 'กำลังโหลด...'
+};
 
 const ui = {
   filterTitle: 'ค้นหาและกรอง',
@@ -98,13 +118,13 @@ const formatSignedNumber = (value) => {
 const CustomerManagement = () => {
   const navigate = useNavigate();
   const [customers, setCustomers] = useState([]);
+  const [customerPagination, setCustomerPagination] = useState(DEFAULT_PAGINATION_META);
   const [agents, setAgents] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [loadingMoreCustomers, setLoadingMoreCustomers] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
-  const [search, setSearch] = useState('');
-  const [filterAgent, setFilterAgent] = useState('');
-  const [statusFilter, setStatusFilter] = useState('');
-  const [sortBy, setSortBy] = useState('recent');
+  const [draftFilters, setDraftFilters] = useState(() => ({ ...DEFAULT_ADMIN_CUSTOMER_FILTERS }));
+  const [appliedFilters, setAppliedFilters] = useState(() => ({ ...DEFAULT_ADMIN_CUSTOMER_FILTERS }));
   const [showModal, setShowModal] = useState(false);
   const [editCustomer, setEditCustomer] = useState(null);
   const [bootstrap, setBootstrap] = useState(null);
@@ -112,31 +132,49 @@ const CustomerManagement = () => {
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState(null);
 
-  const loadData = async ({ silent = false } = {}) => {
-    if (!silent) setLoading(true);
+  const loadData = async ({
+    silent = false,
+    force = false,
+    page = 1,
+    append = false
+  } = {}) => {
+    if (!silent && !append) setLoading(true);
     try {
-      const [customerRes, agentRes] = await Promise.all([
-        getAdminCustomers(filterAgent),
-        getAgents()
-      ]);
-      setCustomers(customerRes.data || []);
-      setAgents(agentRes.data || []);
+      const query = {
+        ...normalizeAdminCustomerFilters(appliedFilters),
+        paginated: '1',
+        page,
+        limit: CUSTOMER_PAGE_LIMIT
+      };
+      const customerRequest = getAdminCustomers(query, { force });
+      const [customerRes, agentRes] = append
+        ? [await customerRequest, null]
+        : await Promise.all([
+          customerRequest,
+          getAgents({ force })
+        ]);
+      const nextCustomers = getPaginatedItems(customerRes.data);
+      setCustomers((current) => append ? [...current, ...nextCustomers] : nextCustomers);
+      setCustomerPagination(getPaginatedMeta(customerRes.data));
+      if (agentRes) {
+        setAgents(agentRes.data || []);
+      }
     } catch (error) {
       console.error(error);
       toast.error(ui.loadError);
     } finally {
-      if (!silent) setLoading(false);
+      if (!silent && !append) setLoading(false);
     }
   };
 
   useEffect(() => {
     loadData();
-  }, [filterAgent]);
+  }, [appliedFilters.agentId, appliedFilters.search, appliedFilters.sortBy, appliedFilters.status]);
 
   const refreshAll = async () => {
     setRefreshing(true);
     try {
-      await loadData({ silent: true });
+      await loadData({ silent: true, force: true, page: 1 });
     } finally {
       setRefreshing(false);
     }
@@ -161,7 +199,7 @@ const CustomerManagement = () => {
   };
 
   const openCreate = async () => {
-    const preferredAgentId = filterAgent || agents.find((agent) => agent.isActive)?._id || agents[0]?._id || '';
+    const preferredAgentId = appliedFilters.agentId || agents.find((agent) => agent.isActive)?._id || agents[0]?._id || '';
     if (!preferredAgentId) {
       toast.error(ui.noAvailableAgent);
       return;
@@ -249,7 +287,7 @@ const CustomerManagement = () => {
       }
 
       resetWizard();
-      await loadData({ silent: true });
+      await loadData({ silent: true, force: true, page: 1 });
     } catch (error) {
       console.error(error);
       toast.error(error.response?.data?.message || ui.genericError);
@@ -263,7 +301,7 @@ const CustomerManagement = () => {
     try {
       await deleteAdminCustomer(customer._id);
       toast.success(ui.deactivateSuccess);
-      await loadData({ silent: true });
+      await loadData({ silent: true, force: true, page: 1 });
     } catch (error) {
       console.error(error);
       toast.error(error.response?.data?.message || ui.genericError);
@@ -275,38 +313,46 @@ const CustomerManagement = () => {
     [form?.lotterySettings]
   );
 
-  const displayedCustomers = useMemo(() => {
-    const keyword = search.trim().toLowerCase();
-    const filtered = customers.filter((customer) => {
-      const customerStatus = customer.status || (customer.isActive ? 'active' : 'inactive');
-      if (statusFilter && customerStatus !== statusFilter) return false;
-      if (!keyword) return true;
+  const hasPendingFilterChanges = useMemo(
+    () => !areAdminCustomerFiltersEqual(draftFilters, appliedFilters),
+    [appliedFilters, draftFilters]
+  );
 
-      return [
-        customer.name,
-        customer.username,
-        customer.phone,
-        customer.agentId?.name,
-        customer.agentId?.username
-      ]
-        .filter(Boolean)
-        .join(' ')
-        .toLowerCase()
-        .includes(keyword);
-    });
+  const hasAppliedFilterChanges = useMemo(
+    () => !areAdminCustomerFiltersEqual(appliedFilters, DEFAULT_ADMIN_CUSTOMER_FILTERS),
+    [appliedFilters]
+  );
 
-    filtered.sort((left, right) => {
-      if (sortBy === 'sales_desc') return toNumber(right.totals?.totalAmount) - toNumber(left.totals?.totalAmount);
-      if (sortBy === 'profit_desc') return toNumber(right.totals?.netProfit) - toNumber(left.totals?.netProfit);
-      if (sortBy === 'name_asc') return String(left.name || '').localeCompare(String(right.name || ''), 'th');
+  const applyFilters = () => {
+    const nextFilters = normalizeAdminCustomerFilters(draftFilters);
+    if (areAdminCustomerFiltersEqual(nextFilters, appliedFilters)) {
+      return;
+    }
+    setAppliedFilters(nextFilters);
+  };
 
-      const leftTime = new Date(left.updatedAt || left.lastActiveAt || left.createdAt || 0).getTime();
-      const rightTime = new Date(right.updatedAt || right.lastActiveAt || right.createdAt || 0).getTime();
-      return rightTime - leftTime;
-    });
+  const clearFilters = () => {
+    const nextFilters = { ...DEFAULT_ADMIN_CUSTOMER_FILTERS };
+    setDraftFilters(nextFilters);
+    setAppliedFilters(nextFilters);
+  };
 
-    return filtered;
-  }, [customers, search, sortBy, statusFilter]);
+  const loadMoreCustomers = async () => {
+    if (!customerPagination.hasNextPage || loadingMoreCustomers) return;
+
+    setLoadingMoreCustomers(true);
+    try {
+      await loadData({
+        silent: true,
+        page: customerPagination.page + 1,
+        append: true
+      });
+    } finally {
+      setLoadingMoreCustomers(false);
+    }
+  };
+
+  const displayedCustomers = customers;
 
   const summary = useMemo(() => {
     const activeCount = displayedCustomers.filter((customer) => (customer.status || (customer.isActive ? 'active' : 'inactive')) === 'active').length;
@@ -315,13 +361,13 @@ const CustomerManagement = () => {
     const netProfit = displayedCustomers.reduce((sum, customer) => sum + toNumber(customer.totals?.netProfit), 0);
 
     return {
-      totalCustomers: displayedCustomers.length,
+      totalCustomers: customerPagination.total || displayedCustomers.length,
       activeCount,
       assignedAgentCount,
       totalSales,
       netProfit
     };
-  }, [displayedCustomers]);
+  }, [customerPagination.total, displayedCustomers]);
 
   if (loading) {
     return <PageSkeleton statCount={4} rows={5} sidebar={false} />;
@@ -394,7 +440,12 @@ const CustomerManagement = () => {
             <div className="filter-title">{ui.filterTitle}</div>
             <div className="filter-subtitle">{ui.filterSubtitle}</div>
           </div>
-          <div className="filter-count ui-pill">{ui.filterCount(formatNumber(displayedCustomers.length))}</div>
+          <div className="filter-count ui-pill">
+            {filterActionsCopy.loadedCount(
+              formatNumber(displayedCustomers.length),
+              formatNumber(customerPagination.total || displayedCustomers.length)
+            )}
+          </div>
         </div>
         <div className="filter-toolbar">
           <label className="field-inline field-inline-search">
@@ -402,15 +453,20 @@ const CustomerManagement = () => {
             <span className="search-box">
               <FiSearch />
               <input
-                value={search}
-                onChange={(event) => setSearch(event.target.value)}
+                value={draftFilters.search}
+                onChange={(event) => setDraftFilters((current) => ({ ...current, search: event.target.value }))}
+                onKeyDown={(event) => {
+                  if (event.key !== 'Enter') return;
+                  event.preventDefault();
+                  applyFilters();
+                }}
                 placeholder={copy.searchPlaceholder}
               />
             </span>
           </label>
           <label className="field-inline">
             <span>{ui.filterAgentLabel}</span>
-            <select value={filterAgent} onChange={(event) => setFilterAgent(event.target.value)}>
+            <select value={draftFilters.agentId} onChange={(event) => setDraftFilters((current) => ({ ...current, agentId: event.target.value }))}>
               <option value="">{copy.allAgents}</option>
               {agents.map((agent) => (
                 <option key={agent._id} value={agent._id}>{agent.name}</option>
@@ -419,7 +475,7 @@ const CustomerManagement = () => {
           </label>
           <label className="field-inline">
             <span>{ui.statusLabel}</span>
-            <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
+            <select value={draftFilters.status} onChange={(event) => setDraftFilters((current) => ({ ...current, status: event.target.value }))}>
               {statusOptions.map((status) => (
                 <option key={status || 'all'} value={status}>
                   {status ? getUserStatusLabel(status) : ui.allStatuses}
@@ -429,12 +485,25 @@ const CustomerManagement = () => {
           </label>
           <label className="field-inline">
             <span>{ui.sortLabel}</span>
-            <select value={sortBy} onChange={(event) => setSortBy(event.target.value)}>
+            <select value={draftFilters.sortBy} onChange={(event) => setDraftFilters((current) => ({ ...current, sortBy: event.target.value }))}>
               {sortOptions.map((option) => (
                 <option key={option.value} value={option.value}>{option.label}</option>
               ))}
             </select>
           </label>
+        </div>
+        <div className="filter-actions">
+          <div className={`filter-actions-hint ${hasPendingFilterChanges ? 'active' : ''}`}>
+            {hasPendingFilterChanges ? filterActionsCopy.pending : ui.filterSubtitle}
+          </div>
+          <div className="filter-actions-buttons">
+            <button type="button" className="btn btn-secondary" onClick={clearFilters} disabled={!hasPendingFilterChanges && !hasAppliedFilterChanges}>
+              {filterActionsCopy.clear}
+            </button>
+            <button type="button" className="btn btn-primary" onClick={applyFilters} disabled={!hasPendingFilterChanges}>
+              {filterActionsCopy.apply}
+            </button>
+          </div>
         </div>
       </section>
 
@@ -531,6 +600,28 @@ const CustomerManagement = () => {
           );
         })}
       </section>
+
+      {displayedCustomers.length > 0 ? (
+        <section className="card ops-section member-pagination-card">
+          <div>
+            <div className="filter-title">
+              {filterActionsCopy.loadedCount(
+                formatNumber(displayedCustomers.length),
+                formatNumber(customerPagination.total || displayedCustomers.length)
+              )}
+            </div>
+            <div className="filter-subtitle">{ui.filterSubtitle}</div>
+          </div>
+          <button
+            type="button"
+            className="btn btn-secondary"
+            onClick={loadMoreCustomers}
+            disabled={!customerPagination.hasNextPage || loadingMoreCustomers}
+          >
+            {loadingMoreCustomers ? filterActionsCopy.loadingMore : filterActionsCopy.loadMore}
+          </button>
+        </section>
+      ) : null}
 
       <Modal isOpen={showModal} onClose={closeModal} title={editCustomer ? copy.editTitle : ui.memberWizardTitle} size="lg">
         {form && (
@@ -995,6 +1086,39 @@ const CustomerManagement = () => {
           grid-template-columns: repeat(4, minmax(0, 1fr));
         }
 
+        .filter-actions {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 12px;
+          flex-wrap: wrap;
+          margin-top: 14px;
+        }
+
+        .filter-actions-hint {
+          color: var(--text-muted);
+          font-size: 0.92rem;
+        }
+
+        .filter-actions-hint.active {
+          color: var(--primary);
+          font-weight: 700;
+        }
+
+        .filter-actions-buttons {
+          display: flex;
+          gap: 12px;
+          flex-wrap: wrap;
+        }
+
+        .member-pagination-card {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 16px;
+          padding: 16px 18px;
+        }
+
         .field-inline {
           display: flex;
           flex-direction: column;
@@ -1405,6 +1529,14 @@ const CustomerManagement = () => {
           }
 
           .member-actions {
+            flex-direction: column;
+            align-items: stretch;
+          }
+
+          .filter-actions,
+          .filter-actions-buttons,
+          .member-pagination-card {
+            width: 100%;
             flex-direction: column;
             align-items: stretch;
           }

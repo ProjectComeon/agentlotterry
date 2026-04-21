@@ -43,6 +43,19 @@ const drawRoundSchema = new mongoose.Schema({
     enum: ['auto', 'open', 'closed'],
     default: 'auto'
   },
+  isManualTiming: {
+    type: Boolean,
+    default: false
+  },
+  timingUpdatedAt: {
+    type: Date,
+    default: null
+  },
+  timingUpdatedBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    default: null
+  },
   closedBetTypes: [{
     type: String,
     enum: BET_TYPES

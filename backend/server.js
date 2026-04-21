@@ -18,6 +18,7 @@ const {
   isProduction,
   logFormat,
   resultSyncIntervalMs,
+  resultSyncStartupDelayMs,
   trustProxy,
   validateEnv
 } = require('./src/config/env');
@@ -160,8 +161,12 @@ const PORT = process.env.PORT || 5000;
 bootstrapApp()
   .then(() => {
     if (autoSyncResults) {
-      startExternalResultAutoSync(resultSyncIntervalMs);
-      console.log(`External result auto-sync enabled (${resultSyncIntervalMs} ms)`);
+      startExternalResultAutoSync(resultSyncIntervalMs, {
+        startupDelayMs: resultSyncStartupDelayMs
+      });
+      console.log(
+        `External result auto-sync enabled (${resultSyncIntervalMs} ms; first run delayed ${resultSyncStartupDelayMs} ms)`
+      );
     } else if (isProduction) {
       console.log(
         `External result auto-sync disabled on web startup; use POST /api/lottery/sync-latest/cron${cronSyncToken ? ' with configured token' : ''}`

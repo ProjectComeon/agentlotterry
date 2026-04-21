@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { FiBarChart2, FiChevronRight, FiClock, FiCreditCard, FiDollarSign, FiPhone, FiPlus, FiRefreshCw, FiSearch, FiTrendingUp, FiUsers, FiWifi, FiXCircle } from 'react-icons/fi';
@@ -8,6 +8,16 @@ import { agentCopy } from '../../i18n/th/agent';
 import { getBetTypeLabel, getUserStatusLabel } from '../../i18n/th/labels';
 import { createAgentMember, deleteCustomer, getAgentMemberBootstrap, getAgentMembers } from '../../services/api';
 import { formatDateTime, formatNumber, getInitial, toNumber } from '../../utils/formatters';
+import {
+  DEFAULT_MEMBER_LIST_FILTERS,
+  areMemberListFiltersEqual,
+  normalizeMemberListFilters
+} from '../../utils/memberListFilters';
+import {
+  DEFAULT_PAGINATION_META,
+  getPaginatedItems,
+  getPaginatedMeta
+} from '../../utils/paginatedResponse';
 import {
   applyProfileToLotterySettings,
   buildMemberFormPayload,
@@ -28,6 +38,7 @@ const sortOptions = [
   { value: 'online_first', label: copy.sortOptions.online_first },
   { value: 'name_asc', label: copy.sortOptions.name_asc }
 ];
+const MEMBER_PAGE_LIMIT = 24;
 const formatSignedNumber = (value) => {
   const amount = toNumber(value);
   const formatted = Math.abs(amount).toLocaleString('th-TH');
@@ -36,24 +47,52 @@ const formatSignedNumber = (value) => {
   return formatted;
 };
 
+const filterActionsCopy = {
+  apply: 'ใช้ตัวกรอง',
+  clear: 'ล้างตัวกรอง',
+  pending: 'มีการเปลี่ยนแปลงที่ยังไม่ได้ใช้',
+  loadedCount: (loaded, total) => `แสดง ${loaded} / ${total} คน`,
+  loadMore: 'โหลดเพิ่ม',
+  loadingMore: 'กำลังโหลด...'
+};
+
 const AgentCustomers = () => {
   const navigate = useNavigate();
   const [bootstrap, setBootstrap] = useState(null);
   const [members, setMembers] = useState([]);
+  const [memberPagination, setMemberPagination] = useState(DEFAULT_PAGINATION_META);
   const [loading, setLoading] = useState(true);
+  const [loadingMoreMembers, setLoadingMoreMembers] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [showWizard, setShowWizard] = useState(false);
   const [wizardStep, setWizardStep] = useState(0);
   const [saving, setSaving] = useState(false);
-  const [filters, setFilters] = useState({ search: '', status: '', online: '' });
+  const [draftFilters, setDraftFilters] = useState(() => ({ ...DEFAULT_MEMBER_LIST_FILTERS }));
+  const [appliedFilters, setAppliedFilters] = useState(() => ({ ...DEFAULT_MEMBER_LIST_FILTERS }));
   const [sortBy, setSortBy] = useState('recent');
   const [form, setForm] = useState(null);
+  const hasBootstrappedRef = useRef(false);
 
-  const loadMembers = async (query = filters, silent = false) => {
+  const loadMembers = async (
+    query = appliedFilters,
+    silent = false,
+    {
+      force = false,
+      page = 1,
+      append = false
+    } = {}
+  ) => {
     if (!silent) setLoading(true);
     try {
-      const res = await getAgentMembers(query);
-      setMembers(res.data || []);
+      const res = await getAgentMembers({
+        ...normalizeMemberListFilters(query),
+        paginated: '1',
+        page,
+        limit: MEMBER_PAGE_LIMIT
+      }, { force });
+      const nextItems = getPaginatedItems(res.data);
+      setMembers((current) => append ? [...current, ...nextItems] : nextItems);
+      setMemberPagination(getPaginatedMeta(res.data));
     } catch (error) {
       console.error(error);
       toast.error(copy.wizard.loadError);
@@ -62,8 +101,8 @@ const AgentCustomers = () => {
     }
   };
 
-  const loadBootstrap = async () => {
-    const res = await getAgentMemberBootstrap();
+  const loadBootstrap = async ({ force = false } = {}) => {
+    const res = await getAgentMemberBootstrap({ force });
     setBootstrap(res.data);
     return res.data;
   };
@@ -72,7 +111,8 @@ const AgentCustomers = () => {
     const load = async () => {
       setLoading(true);
       try {
-        await Promise.all([loadBootstrap(), loadMembers(filters, true)]);
+        await Promise.all([loadBootstrap(), loadMembers(appliedFilters, true)]);
+        hasBootstrappedRef.current = true;
       } finally {
         setLoading(false);
       }
@@ -81,17 +121,21 @@ const AgentCustomers = () => {
   }, []);
 
   useEffect(() => {
-    if (!bootstrap) return;
-    const timer = setTimeout(() => loadMembers(filters, true), 250);
-    return () => clearTimeout(timer);
-  }, [filters.search, filters.status, filters.online]);
+    if (!bootstrap || !hasBootstrappedRef.current) return;
+    loadMembers(appliedFilters, false, { page: 1 });
+  }, [appliedFilters.search, appliedFilters.status, appliedFilters.online]);
+
+  const hasPendingFilterChanges = useMemo(
+    () => !areMemberListFiltersEqual(draftFilters, appliedFilters),
+    [appliedFilters, draftFilters]
+  );
 
   const summary = useMemo(() => ({
-    totalMembers: members.length,
+    totalMembers: memberPagination.total || members.length,
     onlineMembers: members.filter((member) => member.isOnline).length,
     totalCredit: members.reduce((sum, member) => sum + toNumber(member.creditBalance), 0),
     totalSales: members.reduce((sum, member) => sum + toNumber(member.totals?.totalAmount), 0)
-  }), [members]);
+  }), [memberPagination.total, members]);
 
   const displayedMembers = useMemo(() => {
     const sorted = [...members];
@@ -136,9 +180,40 @@ const AgentCustomers = () => {
   const refreshAll = async () => {
     setRefreshing(true);
     try {
-      await Promise.all([loadBootstrap(), loadMembers(filters, true)]);
+      await Promise.all([
+        loadBootstrap({ force: true }),
+        loadMembers(appliedFilters, true, { force: true, page: 1 })
+      ]);
     } finally {
       setRefreshing(false);
+    }
+  };
+
+  const applyFilters = () => {
+    const nextFilters = normalizeMemberListFilters(draftFilters);
+    if (areMemberListFiltersEqual(nextFilters, appliedFilters)) {
+      return;
+    }
+    setAppliedFilters(nextFilters);
+  };
+
+  const clearFilters = () => {
+    const nextFilters = { ...DEFAULT_MEMBER_LIST_FILTERS };
+    setDraftFilters(nextFilters);
+    setAppliedFilters(nextFilters);
+  };
+
+  const loadMoreMembers = async () => {
+    if (!memberPagination.hasNextPage || loadingMoreMembers) return;
+
+    setLoadingMoreMembers(true);
+    try {
+      await loadMembers(appliedFilters, true, {
+        page: memberPagination.page + 1,
+        append: true
+      });
+    } finally {
+      setLoadingMoreMembers(false);
     }
   };
 
@@ -163,7 +238,7 @@ const AgentCustomers = () => {
       await createAgentMember(buildMemberFormPayload(form));
       toast.success(copy.wizard.createSuccess);
       closeWizard();
-      await loadMembers(filters, true);
+      await loadMembers(appliedFilters, true, { force: true, page: 1 });
     } catch (error) {
       console.error(error);
       toast.error(error.response?.data?.message || copy.wizard.createError);
@@ -177,7 +252,7 @@ const AgentCustomers = () => {
     try {
       await deleteCustomer(member.id);
       toast.success(copy.wizard.deactivateSuccess);
-      await loadMembers(filters, true);
+      await loadMembers(appliedFilters, true, { force: true, page: 1 });
     } catch (error) {
       console.error(error);
       toast.error(error.response?.data?.message || copy.wizard.deactivateError);
@@ -251,25 +326,39 @@ const AgentCustomers = () => {
           <div className="filter-title">{copy.filterTitle}</div>
             <div className="filter-subtitle">{copy.filterSubtitle}</div>
           </div>
-          <div className="filter-count ui-pill">{copy.count(formatNumber(displayedMembers.length))}</div>
+          <div className="filter-count ui-pill">
+            {filterActionsCopy.loadedCount(
+              formatNumber(displayedMembers.length),
+              formatNumber(memberPagination.total || displayedMembers.length)
+            )}
+          </div>
         </div>
         <div className="filter-toolbar">
           <label className="field-inline field-inline-search">
             <span className="field-inline-placeholder" aria-hidden="true">{copy.statusLabel}</span>
             <span className="search-box">
               <FiSearch />
-              <input value={filters.search} onChange={(event) => setFilters((current) => ({ ...current, search: event.target.value }))} placeholder={copy.searchPlaceholder} />
+              <input
+                value={draftFilters.search}
+                onChange={(event) => setDraftFilters((current) => ({ ...current, search: event.target.value }))}
+                onKeyDown={(event) => {
+                  if (event.key !== 'Enter') return;
+                  event.preventDefault();
+                  applyFilters();
+                }}
+                placeholder={copy.searchPlaceholder}
+              />
             </span>
           </label>
           <label className="field-inline">
             <span>{copy.statusLabel}</span>
-            <select value={filters.status} onChange={(event) => setFilters((current) => ({ ...current, status: event.target.value }))}>
+            <select value={draftFilters.status} onChange={(event) => setDraftFilters((current) => ({ ...current, status: event.target.value }))}>
               {statusOptions.map((status) => <option key={status || 'all'} value={status}>{status ? getUserStatusLabel(status) : copy.allStatuses}</option>)}
             </select>
           </label>
           <label className="field-inline">
             <span>{copy.presenceLabel}</span>
-            <select value={filters.online} onChange={(event) => setFilters((current) => ({ ...current, online: event.target.value }))}>
+            <select value={draftFilters.online} onChange={(event) => setDraftFilters((current) => ({ ...current, online: event.target.value }))}>
               {onlineOptions.map((online) => <option key={online || 'all'} value={online}>{online === '' ? copy.allPresence : online === 'true' ? copy.onlineOnly : copy.offlineOnly}</option>)}
             </select>
           </label>
@@ -279,6 +368,19 @@ const AgentCustomers = () => {
               {sortOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
             </select>
           </label>
+        </div>
+        <div className="filter-actions">
+          <div className={`filter-actions-hint ${hasPendingFilterChanges ? 'active' : ''}`}>
+            {hasPendingFilterChanges ? filterActionsCopy.pending : copy.filterSubtitle}
+          </div>
+          <div className="filter-actions-buttons">
+            <button type="button" className="btn btn-secondary" onClick={clearFilters} disabled={!hasPendingFilterChanges && areMemberListFiltersEqual(appliedFilters, DEFAULT_MEMBER_LIST_FILTERS)}>
+              {filterActionsCopy.clear}
+            </button>
+            <button type="button" className="btn btn-primary" onClick={applyFilters} disabled={!hasPendingFilterChanges}>
+              {filterActionsCopy.apply}
+            </button>
+          </div>
         </div>
       </section>
 
@@ -368,6 +470,28 @@ const AgentCustomers = () => {
           );
         })}
       </section>
+
+      {members.length > 0 ? (
+        <section className="card ops-section member-pagination-card">
+          <div>
+            <div className="filter-title">
+              {filterActionsCopy.loadedCount(
+                formatNumber(displayedMembers.length),
+                formatNumber(memberPagination.total || displayedMembers.length)
+              )}
+            </div>
+            <div className="filter-subtitle">{copy.filterSubtitle}</div>
+          </div>
+          <button
+            type="button"
+            className="btn btn-secondary"
+            onClick={loadMoreMembers}
+            disabled={!memberPagination.hasNextPage || loadingMoreMembers}
+          >
+            {loadingMoreMembers ? filterActionsCopy.loadingMore : filterActionsCopy.loadMore}
+          </button>
+        </section>
+      ) : null}
 
       <Modal isOpen={showWizard} onClose={closeWizard} title={copy.wizardTitle} size="lg">
         {form && (
@@ -655,6 +779,39 @@ const AgentCustomers = () => {
           display: grid;
           grid-template-columns: repeat(4, minmax(0, 1fr));
           gap: 12px;
+        }
+
+        .filter-actions {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 12px;
+          flex-wrap: wrap;
+          margin-top: 14px;
+        }
+
+        .filter-actions-hint {
+          color: var(--text-muted);
+          font-size: 0.92rem;
+        }
+
+        .filter-actions-hint.active {
+          color: var(--primary);
+          font-weight: 700;
+        }
+
+        .filter-actions-buttons {
+          display: flex;
+          gap: 12px;
+          flex-wrap: wrap;
+        }
+
+        .member-pagination-card {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 16px;
+          padding: 16px 18px;
         }
 
         .search-box, .field-inline select, .wizard-grid input, .wizard-grid select, .wizard-grid textarea, .wizard-grid-textarea textarea {
@@ -1037,6 +1194,14 @@ const AgentCustomers = () => {
             justify-content: center;
           }
 
+          .filter-actions,
+          .filter-actions-buttons,
+          .member-pagination-card {
+            width: 100%;
+            flex-direction: column;
+            align-items: stretch;
+          }
+
           .member-actions {
             flex-direction: column;
             align-items: stretch;
@@ -1057,7 +1222,7 @@ const AgentCustomers = () => {
             grid-template-columns: 1fr;
           }
 
-          .member-actions-buttons, .page-actions {
+          .member-actions-buttons, .page-actions, .filter-actions-buttons {
             width: 100%;
             flex-direction: column;
             align-items: stretch;

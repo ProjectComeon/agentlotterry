@@ -14,9 +14,11 @@ const {
   createAdminMember,
   getAdminMemberBootstrap,
   getAdminMemberDetail,
+  listAdminCustomers,
   updateAdminMember
 } = require('../services/memberManagementService');
 const { registerBettingRoutes } = require('./helpers/registerBettingRoutes');
+const { parsePaginationQuery } = require('../utils/pagination');
 
 const router = express.Router();
 
@@ -280,30 +282,16 @@ router.delete('/agents/:id', async (req, res) => {
 // GET /api/admin/customers
 router.get('/customers', async (req, res) => {
   try {
-    const { agentId } = req.query;
-    const filter = { role: 'customer' };
-    if (agentId) filter.agentId = agentId;
+    const pagination = parsePaginationQuery(req.query, { defaultLimit: 24 });
+    const customers = await listAdminCustomers({
+      agentId: req.query.agentId || '',
+      search: req.query.search || '',
+      status: req.query.status || '',
+      sortBy: req.query.sortBy || 'recent',
+      ...pagination
+    });
 
-    const [customers, totalsByCustomer] = await Promise.all([
-      User.find(filter)
-        .select('-password')
-        .populate('agentId', 'name username')
-        .sort({ createdAt: -1 }),
-      getTotalsGroupedByField('customerId', agentId ? { agentId } : {})
-    ]);
-
-    res.json(customers.map((customer) => {
-      const totals = totalsByCustomer[customer._id.toString()] || {};
-      return {
-        ...customer.toJSON(),
-        totals: {
-          totalBets: totals.count || 0,
-          totalAmount: totals.totalAmount || 0,
-          totalWon: totals.totalWon || 0,
-          netProfit: (totals.totalAmount || 0) - (totals.totalWon || 0)
-        }
-      };
-    }));
+    res.json(customers);
   } catch (error) {
     res.status(500).json({ message: 'Server error' });
   }
@@ -423,11 +411,13 @@ router.get('/reports', async (req, res) => {
 router.get('/bets', async (req, res) => {
   try {
     const { roundDate, customerId, marketId, agentId } = req.query;
+    const pagination = parsePaginationQuery(req.query, { defaultLimit: 18 });
     const bets = await listAgentBetItems({
       roundDate,
       customerId,
       marketId,
-      agentId
+      agentId,
+      ...pagination
     });
 
     res.json(bets);
