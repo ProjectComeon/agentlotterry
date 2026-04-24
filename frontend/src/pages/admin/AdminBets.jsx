@@ -28,11 +28,9 @@ import {
   getPaginatedItems,
   getPaginatedMeta
 } from '../../utils/paginatedResponse';
-import { buildSlipDisplayGroups } from '../../utils/slipGrouping';
-import { copySavedSlipImage } from '../../utils/slipImage';
+import { groupBetsBySlip } from '../../utils/betSlipGroups';
 
 const getCustomerId = (customer) => String(customer?.id || customer?._id || customer || '');
-const getAgentId = (agent) => String(agent?.id || agent?._id || agent || '');
 
 const ui = {
   openResultAction: 'เปิดผลรางวัลงวดนี้',
@@ -100,64 +98,7 @@ const filterActionsCopy = {
   loadingMore: 'กำลังโหลด...'
 };
 
-const BETS_PAGE_LIMIT = 18;
-
-const groupBetsBySlip = (bets = []) => {
-  const grouped = new Map();
-
-  bets.forEach((bet) => {
-    const slipKey =
-      bet.slipId ||
-      bet.slipNumber ||
-      `${getCustomerId(bet.customerId)}-${bet.roundDate}-${bet.marketId}-${bet.createdAt}`;
-
-    const current = grouped.get(slipKey);
-    if (current) {
-      current.items.push(bet);
-      current.totalStake += Number(bet.amount || 0);
-      current.totalWon += Number(bet.wonAmount || 0);
-      current.totalPotentialPayout += Number(bet.potentialPayout || 0);
-      current.memo = current.memo || bet.memo || '';
-      current.hasPending = current.hasPending || (bet.result || 'pending') === 'pending';
-      current.hasWon = current.hasWon || (bet.result || 'pending') === 'won' || Number(bet.wonAmount || 0) > 0;
-      if (new Date(bet.createdAt || 0) > new Date(current.createdAt || 0)) {
-        current.createdAt = bet.createdAt;
-      }
-      return;
-    }
-
-    grouped.set(slipKey, {
-      key: slipKey,
-      slipId: bet.slipId || '',
-      slipNumber: bet.slipNumber || '',
-      customer: bet.customerId,
-      agent: bet.agentId,
-      marketId: bet.marketId || '',
-      marketName: bet.marketName || ui.defaultMarket,
-      roundDate: bet.roundDate,
-      roundLabel: formatRoundLabel(bet.roundTitle || bet.roundDate || '-'),
-      createdAt: bet.createdAt,
-      items: [bet],
-      totalStake: Number(bet.amount || 0),
-      totalWon: Number(bet.wonAmount || 0),
-      totalPotentialPayout: Number(bet.potentialPayout || 0),
-      memo: bet.memo || '',
-      hasPending: (bet.result || 'pending') === 'pending',
-      hasWon: (bet.result || 'pending') === 'won' || Number(bet.wonAmount || 0) > 0
-    });
-  });
-
-  return [...grouped.values()]
-    .map((group) => ({
-      ...group,
-      displayGroups: buildSlipDisplayGroups(group.items),
-      memo: group.memo || 'ไม่มีบันทึกช่วยจำ',
-      result: group.hasPending ? 'pending' : group.hasWon ? 'won' : 'lost',
-      canCancel: group.hasPending && Boolean(group.slipId),
-      itemCount: group.items.length
-    }))
-    .sort((left, right) => new Date(right.createdAt || 0) - new Date(left.createdAt || 0));
-};
+const BETS_PAGE_LIMIT = 10;
 
 const AdminBets = () => {
   const navigate = useNavigate();
@@ -197,6 +138,7 @@ const AdminBets = () => {
     try {
       const params = {
         paginated: '1',
+        summary: '1',
         page,
         limit: BETS_PAGE_LIMIT
       };
@@ -276,6 +218,7 @@ const AdminBets = () => {
     setCopyingSlipId(copyKey);
 
     try {
+      const { copySavedSlipImage } = await import('../../utils/slipImage');
       const result = await copySavedSlipImage({
         slip: {
           ...group,
@@ -325,7 +268,10 @@ const AdminBets = () => {
     navigate(`/admin/lottery${params.toString() ? `?${params.toString()}` : ''}`);
   };
 
-  const slipGroups = useMemo(() => groupBetsBySlip(bets), [bets]);
+  const slipGroups = useMemo(
+    () => groupBetsBySlip(bets, { defaultMarket: ui.defaultMarket, emptyMemo: 'ไม่มีบันทึกช่วยจำ' }),
+    [bets]
+  );
   const activeMemberName = useMemo(
     () => slipGroups[0]?.customer?.name || memberName,
     [memberName, slipGroups]
@@ -803,6 +749,8 @@ const AdminBets = () => {
           display: flex;
           flex-direction: column;
           gap: 4px;
+          content-visibility: auto;
+          contain-intrinsic-size: 380px;
         }
 
         .ag-bet-card-pending {

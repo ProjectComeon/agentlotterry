@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import {
@@ -17,10 +17,10 @@ import {
   FiXCircle
 } from 'react-icons/fi';
 import Modal from '../../components/Modal';
-import PageSkeleton from '../../components/PageSkeleton';
+import PageSkeleton, { SectionSkeleton } from '../../components/PageSkeleton';
 import { agentCopy } from '../../i18n/th/agent';
 import { adminCopy } from '../../i18n/th/admin';
-import { getBetTypeLabel, getUserStatusLabel } from '../../i18n/th/labels';
+import { getUserStatusLabel } from '../../i18n/th/labels';
 import {
   createAdminCustomer,
   deleteAdminCustomer,
@@ -57,6 +57,7 @@ const wizardSteps = wizardCopy.steps;
 const statusOptions = ['', 'active', 'inactive'];
 const memberStatusOptions = ['active', 'inactive', 'suspended'];
 const betTypeKeys = ['3top', '3front', '3bottom', '3tod', '2top', '2bottom', 'run_top', 'run_bottom', 'lao_set4'];
+const MemberLotterySettingsStep = lazy(() => import('../shared/MemberLotterySettingsStep'));
 const sortOptions = [
   { value: 'recent', label: 'อัปเดตล่าสุด' },
   { value: 'sales_desc', label: 'ยอดซื้อสูงสุด' },
@@ -115,14 +116,25 @@ const formatSignedNumber = (value) => {
   return formatted;
 };
 
+const markCustomerTotalsState = (items = [], totalsLoaded = true) =>
+  (items || []).map((item) => ({
+    ...item,
+    __totalsLoaded: totalsLoaded
+  }));
+
+const hasCustomerTotalsLoaded = (customer) => customer?.__totalsLoaded !== false;
+
 const CustomerManagement = () => {
   const navigate = useNavigate();
+  const customerRequestRef = useRef(0);
+  const bootstrapCacheRef = useRef(new Map());
   const [customers, setCustomers] = useState([]);
   const [customerPagination, setCustomerPagination] = useState(DEFAULT_PAGINATION_META);
   const [agents, setAgents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadingMoreCustomers, setLoadingMoreCustomers] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [totalsHydrating, setTotalsHydrating] = useState(false);
   const [draftFilters, setDraftFilters] = useState(() => ({ ...DEFAULT_ADMIN_CUSTOMER_FILTERS }));
   const [appliedFilters, setAppliedFilters] = useState(() => ({ ...DEFAULT_ADMIN_CUSTOMER_FILTERS }));
   const [showModal, setShowModal] = useState(false);
@@ -136,52 +148,100 @@ const CustomerManagement = () => {
     silent = false,
     force = false,
     page = 1,
-    append = false
+    append = false,
+    includeTotals = true
   } = {}) => {
+    const requestId = ++customerRequestRef.current;
     if (!silent && !append) setLoading(true);
     try {
       const query = {
         ...normalizeAdminCustomerFilters(appliedFilters),
         paginated: '1',
         page,
-        limit: CUSTOMER_PAGE_LIMIT
+        limit: CUSTOMER_PAGE_LIMIT,
+        includeTotals: includeTotals ? '1' : '0'
       };
-      const customerRequest = getAdminCustomers(query, { force });
-      const [customerRes, agentRes] = append
-        ? [await customerRequest, null]
-        : await Promise.all([
-          customerRequest,
-          getAgents({ force })
-        ]);
+      const customerRes = await getAdminCustomers(query, { force });
       const nextCustomers = getPaginatedItems(customerRes.data);
-      setCustomers((current) => append ? [...current, ...nextCustomers] : nextCustomers);
-      setCustomerPagination(getPaginatedMeta(customerRes.data));
-      if (agentRes) {
-        setAgents(agentRes.data || []);
+      if (requestId !== customerRequestRef.current) {
+        return { ignored: true };
       }
+      const normalizedCustomers = markCustomerTotalsState(nextCustomers, includeTotals);
+      setCustomers((current) => append ? [...current, ...normalizedCustomers] : normalizedCustomers);
+      setCustomerPagination(getPaginatedMeta(customerRes.data));
+      return { ignored: false, items: normalizedCustomers };
     } catch (error) {
       console.error(error);
       toast.error(ui.loadError);
+      return { ignored: true };
     } finally {
       if (!silent && !append) setLoading(false);
     }
   };
 
+  const loadCustomersForView = async ({ force = false } = {}) => {
+    const shouldFastLoadCustomers = !['sales_desc', 'profit_desc'].includes(appliedFilters.sortBy);
+    setTotalsHydrating(shouldFastLoadCustomers);
+    try {
+      const baseResult = await loadData({
+        force,
+        page: 1,
+        includeTotals: !shouldFastLoadCustomers
+      });
+
+      if (shouldFastLoadCustomers && !baseResult?.ignored) {
+        await loadData({
+          silent: true,
+          force,
+          page: 1,
+          includeTotals: true
+        });
+      }
+    } finally {
+      setTotalsHydrating(false);
+    }
+  };
+
+  const loadAgents = async ({ force = false } = {}) => {
+    try {
+      const res = await getAgents({ force });
+      setAgents(res.data || []);
+    } catch (error) {
+      console.error(error);
+      toast.error(ui.loadError);
+    }
+  };
+
   useEffect(() => {
-    loadData();
+    loadAgents();
+  }, []);
+
+  useEffect(() => {
+    loadCustomersForView();
   }, [appliedFilters.agentId, appliedFilters.search, appliedFilters.sortBy, appliedFilters.status]);
 
   const refreshAll = async () => {
     setRefreshing(true);
     try {
-      await loadData({ silent: true, force: true, page: 1 });
+      await Promise.all([
+        loadAgents({ force: true }),
+        loadCustomersForView({ force: true })
+      ]);
     } finally {
       setRefreshing(false);
     }
   };
 
-  const loadBootstrap = async (agentId = '') => {
-    const res = await getAdminMemberBootstrap(agentId);
+  const loadBootstrap = async (agentId = '', { force = false } = {}) => {
+    const cacheKey = String(agentId || '');
+    if (!force && bootstrapCacheRef.current.has(cacheKey)) {
+      const cachedBootstrap = bootstrapCacheRef.current.get(cacheKey);
+      setBootstrap(cachedBootstrap);
+      return cachedBootstrap;
+    }
+
+    const res = await getAdminMemberBootstrap(agentId, { force });
+    bootstrapCacheRef.current.set(cacheKey, res.data);
     setBootstrap(res.data);
     return res.data;
   };
@@ -287,7 +347,7 @@ const CustomerManagement = () => {
       }
 
       resetWizard();
-      await loadData({ silent: true, force: true, page: 1 });
+      await loadCustomersForView({ force: true });
     } catch (error) {
       console.error(error);
       toast.error(error.response?.data?.message || ui.genericError);
@@ -301,7 +361,7 @@ const CustomerManagement = () => {
     try {
       await deleteAdminCustomer(customer._id);
       toast.success(ui.deactivateSuccess);
-      await loadData({ silent: true, force: true, page: 1 });
+      await loadCustomersForView({ force: true });
     } catch (error) {
       console.error(error);
       toast.error(error.response?.data?.message || ui.genericError);
@@ -309,8 +369,8 @@ const CustomerManagement = () => {
   };
 
   const groupedLotteries = useMemo(
-    () => groupLotterySettingsByLeague(form?.lotterySettings || []),
-    [form?.lotterySettings]
+    () => (wizardStep === 2 ? groupLotterySettingsByLeague(form?.lotterySettings || []) : {}),
+    [form?.lotterySettings, wizardStep]
   );
 
   const hasPendingFilterChanges = useMemo(
@@ -337,6 +397,13 @@ const CustomerManagement = () => {
     setAppliedFilters(nextFilters);
   };
 
+  const toggleWizardLotteryBetType = (lotteryTypeId, betType) => {
+    setForm((current) => ({
+      ...current,
+      lotterySettings: toggleBetType(current.lotterySettings, lotteryTypeId, betType)
+    }));
+  };
+
   const loadMoreCustomers = async () => {
     if (!customerPagination.hasNextPage || loadingMoreCustomers) return;
 
@@ -345,7 +412,8 @@ const CustomerManagement = () => {
       await loadData({
         silent: true,
         page: customerPagination.page + 1,
-        append: true
+        append: true,
+        includeTotals: true
       });
     } finally {
       setLoadingMoreCustomers(false);
@@ -353,6 +421,10 @@ const CustomerManagement = () => {
   };
 
   const displayedCustomers = customers;
+  const customersHaveTotals = useMemo(
+    () => displayedCustomers.every(hasCustomerTotalsLoaded),
+    [displayedCustomers]
+  );
 
   const summary = useMemo(() => {
     const activeCount = displayedCustomers.filter((customer) => (customer.status || (customer.isActive ? 'active' : 'inactive')) === 'active').length;
@@ -419,7 +491,7 @@ const CustomerManagement = () => {
             <span className="summary-icon"><FiDollarSign /></span>
             <span className="summary-label">{copy.overviewCards.totalSales.label}</span>
           </div>
-          <strong>{money(summary.totalSales)}</strong>
+          <strong>{customersHaveTotals || !totalsHydrating ? money(summary.totalSales) : '...'}</strong>
           <p>{copy.overviewCards.totalSales.hint}</p>
         </div>
         <div className="summary-card">
@@ -427,8 +499,8 @@ const CustomerManagement = () => {
             <span className="summary-icon"><FiTrendingUp /></span>
             <span className="summary-label">{copy.overviewCards.netProfit.label}</span>
           </div>
-          <strong className={summary.netProfit > 0 ? 'metric-positive' : summary.netProfit < 0 ? 'metric-negative' : ''}>
-            {formatSignedNumber(summary.netProfit)}
+          <strong className={customersHaveTotals || !totalsHydrating ? (summary.netProfit > 0 ? 'metric-positive' : summary.netProfit < 0 ? 'metric-negative' : '') : ''}>
+            {customersHaveTotals || !totalsHydrating ? formatSignedNumber(summary.netProfit) : '...'}
           </strong>
           <p>{copy.overviewCards.netProfit.hint}</p>
         </div>
@@ -514,6 +586,7 @@ const CustomerManagement = () => {
             <div className="empty-state-text">{copy.empty}</div>
           </div>
         ) : displayedCustomers.map((customer) => {
+          const totalsLoaded = hasCustomerTotalsLoaded(customer);
           const purchasedSlips = toNumber(customer.totals?.slipCount ?? customer.totals?.totalBets);
           const profitLoss = toNumber(customer.totals?.netProfit);
           const profitLossClass = profitLoss > 0 ? 'metric-positive' : profitLoss < 0 ? 'metric-negative' : '';
@@ -553,19 +626,19 @@ const CustomerManagement = () => {
               <div className="member-metrics">
                 <div>
                   <span>{ui.purchasedSlips}</span>
-                  <strong>{formatNumber(purchasedSlips)}</strong>
+                  <strong>{totalsLoaded ? formatNumber(purchasedSlips) : '...'}</strong>
                 </div>
                 <div>
                   <span>{ui.purchaseAmount}</span>
-                  <strong>{money(customer.totals?.totalAmount)}</strong>
+                  <strong>{totalsLoaded ? money(customer.totals?.totalAmount) : '...'}</strong>
                 </div>
                 <div>
                   <span>{ui.won}</span>
-                  <strong>{money(customer.totals?.totalWon)}</strong>
+                  <strong>{totalsLoaded ? money(customer.totals?.totalWon) : '...'}</strong>
                 </div>
                 <div>
                   <span>{ui.profitLoss}</span>
-                  <strong className={profitLossClass}>{formatSignedNumber(profitLoss)}</strong>
+                  <strong className={totalsLoaded ? profitLossClass : ''}>{totalsLoaded ? formatSignedNumber(profitLoss) : '...'}</strong>
                 </div>
               </div>
 
@@ -729,141 +802,16 @@ const CustomerManagement = () => {
             )}
 
             {wizardStep === 2 && (
-              <div className="lottery-groups">
-                {Object.entries(groupedLotteries).map(([leagueName, items]) => (
-                  <div key={leagueName} className="lottery-group">
-                    <div className="lottery-group-title">{leagueName}</div>
-                    {items.map((lottery) => (
-                      <div key={lottery.lotteryTypeId} className={`lottery-card ${lottery.isEnabled ? '' : 'muted'}`}>
-                        <div className="lottery-card-header">
-                          <div>
-                            <strong>{lottery.lotteryName}</strong>
-                            <span>{lottery.lotteryCode}</span>
-                          </div>
-                          <label className="inline-check">
-                            <input
-                              type="checkbox"
-                              checked={lottery.isEnabled}
-                              onChange={(event) => patchLottery(lottery.lotteryTypeId, { isEnabled: event.target.checked })}
-                            />
-                            {wizardCopy.wizard.lottery.enabled}
-                          </label>
-                        </div>
-
-                        <div className="wizard-grid">
-                          <label>
-                            <span>{wizardCopy.wizard.lottery.rateProfile}</span>
-                            <select value={lottery.rateProfileId} onChange={(event) => patchLottery(lottery.lotteryTypeId, { rateProfileId: event.target.value })}>
-                              {lottery.availableRateProfiles.map((profile) => (
-                                <option key={profile.id} value={profile.id}>{profile.name}</option>
-                              ))}
-                            </select>
-                          </label>
-                          <label>
-                            <span>{wizardCopy.wizard.lottery.minimumBet}</span>
-                            <input type="number" min="0" value={lottery.minimumBet} onChange={(event) => patchLottery(lottery.lotteryTypeId, { minimumBet: event.target.value })} />
-                          </label>
-                          <label>
-                            <span>{wizardCopy.wizard.lottery.maximumBet}</span>
-                            <input type="number" min="0" value={lottery.maximumBet} onChange={(event) => patchLottery(lottery.lotteryTypeId, { maximumBet: event.target.value })} />
-                          </label>
-                          <label>
-                            <span>{wizardCopy.wizard.lottery.maximumPerNumber}</span>
-                            <input type="number" min="0" value={lottery.maximumPerNumber} onChange={(event) => patchLottery(lottery.lotteryTypeId, { maximumPerNumber: event.target.value })} />
-                          </label>
-                          <label>
-                            <span>{wizardCopy.wizard.profile.stockPercent}</span>
-                            <input type="number" min="0" max="100" value={lottery.stockPercent} onChange={(event) => patchLottery(lottery.lotteryTypeId, { stockPercent: event.target.value })} />
-                          </label>
-                          <label>
-                            <span>{wizardCopy.wizard.profile.ownerPercent}</span>
-                            <input type="number" min="0" max="100" value={lottery.ownerPercent} onChange={(event) => patchLottery(lottery.lotteryTypeId, { ownerPercent: event.target.value })} />
-                          </label>
-                          <label>
-                            <span>{wizardCopy.wizard.profile.keepPercent}</span>
-                            <input type="number" min="0" max="100" value={lottery.keepPercent} onChange={(event) => patchLottery(lottery.lotteryTypeId, { keepPercent: event.target.value })} />
-                          </label>
-                          <label>
-                            <span>{wizardCopy.wizard.profile.commissionRate}</span>
-                            <input type="number" min="0" max="100" value={lottery.commissionRate} onChange={(event) => patchLottery(lottery.lotteryTypeId, { commissionRate: event.target.value })} />
-                          </label>
-                          <label>
-                            <span>{wizardCopy.wizard.lottery.keepMode}</span>
-                            <select value={lottery.keepMode} onChange={(event) => patchLottery(lottery.lotteryTypeId, { keepMode: event.target.value })}>
-                              <option value="off">{wizardCopy.wizard.lottery.keepModes.off}</option>
-                              <option value="cap">{wizardCopy.wizard.lottery.keepModes.cap}</option>
-                            </select>
-                          </label>
-                          <label>
-                            <span>{wizardCopy.wizard.lottery.keepCapAmount}</span>
-                            <input type="number" min="0" value={lottery.keepCapAmount} onChange={(event) => patchLottery(lottery.lotteryTypeId, { keepCapAmount: event.target.value })} />
-                          </label>
-                        </div>
-
-                        <div className="bet-type-row">
-                          {lottery.supportedBetTypes.map((betType) => (
-                            <button
-                              key={betType}
-                              type="button"
-                              className={`bet-chip ${lottery.enabledBetTypes.includes(betType) ? 'active' : ''}`}
-                              onClick={() => setForm((current) => ({
-                                ...current,
-                                lotterySettings: toggleBetType(current.lotterySettings, lottery.lotteryTypeId, betType)
-                              }))}
-                            >
-                              {getBetTypeLabel(betType)}
-                            </button>
-                          ))}
-                        </div>
-
-                        <div className="lottery-advanced-row">
-                          <label className="inline-check">
-                            <input
-                              type="checkbox"
-                              checked={lottery.useCustomRates}
-                              onChange={(event) => patchLottery(lottery.lotteryTypeId, { useCustomRates: event.target.checked })}
-                            />
-                            {wizardCopy.wizard.lottery.customRates}
-                          </label>
-                        </div>
-
-                        {lottery.useCustomRates && (
-                          <div className="wizard-grid">
-                            {betTypeKeys.map((betType) => (
-                              <label key={betType}>
-                                <span>{getBetTypeLabel(betType)}</span>
-                                <input
-                                  type="number"
-                                  min="0"
-                                  value={lottery.customRates?.[betType] || 0}
-                                  onChange={(event) => patchLottery(lottery.lotteryTypeId, {
-                                    customRates: {
-                                      ...lottery.customRates,
-                                      [betType]: event.target.value
-                                    }
-                                  })}
-                                />
-                              </label>
-                            ))}
-                          </div>
-                        )}
-
-                        <label className="wizard-grid-textarea">
-                          <span>{wizardCopy.wizard.lottery.blockedNumbers}</span>
-                          <textarea
-                            rows="3"
-                            value={(lottery.blockedNumbers || []).join('\n')}
-                            onChange={(event) => patchLottery(lottery.lotteryTypeId, {
-                              blockedNumbers: event.target.value.split(/\r?\n|,/).map((item) => item.trim()).filter(Boolean)
-                            })}
-                            placeholder={wizardCopy.wizard.lottery.blockedNumbersPlaceholder}
-                          />
-                        </label>
-                      </div>
-                    ))}
-                  </div>
-                ))}
-              </div>
+              <Suspense fallback={<SectionSkeleton rows={5} />}>
+                <MemberLotterySettingsStep
+                  groupedLotteries={groupedLotteries}
+                  lotteryCopy={wizardCopy.wizard.lottery}
+                  profileCopy={wizardCopy.wizard.profile}
+                  betTypeKeys={betTypeKeys}
+                  patchLottery={patchLottery}
+                  toggleBetTypeForLottery={toggleWizardLotteryBetType}
+                />
+              </Suspense>
             )}
 
             <div className="modal-footer wizard-footer">

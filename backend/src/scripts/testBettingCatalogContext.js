@@ -19,6 +19,11 @@ assert.match(
 );
 assert.match(
   catalogServiceSource,
+  /getMemberConfigRows\(\{ member: viewer, lotteries, ensureMissing: false \}\)/,
+  'member betting catalog read path should not upsert all missing lottery configs'
+);
+assert.match(
+  catalogServiceSource,
   /CATALOG_OVERVIEW_CACHE_MS \|\| 60000/,
   'catalog overview cache should default to a longer read TTL'
 );

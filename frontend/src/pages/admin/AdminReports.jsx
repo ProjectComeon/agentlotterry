@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { FiCalendar, FiDollarSign, FiFileText, FiLayers, FiRefreshCw, FiTrendingUp, FiUsers } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 import PageSkeleton from '../../components/PageSkeleton';
@@ -13,35 +13,125 @@ const defaultFilters = {
   startDate: '',
   endDate: ''
 };
+const emptyOverview = {
+  totalAmount: 0,
+  totalWon: 0,
+  betCount: 0,
+  wonCount: 0,
+  lostCount: 0,
+  pendingCount: 0,
+  totalAgents: 0,
+  netProfit: 0
+};
+const emptyReportBundle = {
+  overview: { ...emptyOverview },
+  rows: [],
+  filters: { ...defaultFilters },
+  loadedSections: []
+};
+
+const normalizeReportFilters = (value = {}) => ({
+  agentId: value.agentId || '',
+  marketId: value.marketId || '',
+  roundDate: value.roundDate || '',
+  startDate: value.startDate || '',
+  endDate: value.endDate || ''
+});
+
+const areReportFiltersEqual = (left = {}, right = {}) => {
+  const normalizedLeft = normalizeReportFilters(left);
+  const normalizedRight = normalizeReportFilters(right);
+  return Object.keys(defaultFilters).every((key) => normalizedLeft[key] === normalizedRight[key]);
+};
+
+const mergeReportBundle = (current, data, requestFilters) => {
+  const base = current && areReportFiltersEqual(current.filters, requestFilters)
+    ? current
+    : emptyReportBundle;
+  const loadedSections = data?.loadedSections || [];
+  const nextBundle = {
+    ...emptyReportBundle,
+    ...base,
+    overview: loadedSections.includes('overview')
+      ? (data?.overview || emptyOverview)
+      : (base.overview || emptyOverview),
+    filters: normalizeReportFilters(data?.filters || requestFilters),
+    loadedSections: Array.from(new Set([...(base.loadedSections || []), ...loadedSections]))
+  };
+
+  if (loadedSections.includes('rows')) {
+    nextBundle.rows = data?.rows || [];
+  }
+
+  return nextBundle;
+};
+
+const ReportTableSkeleton = () => (
+  <div className="admin-report-table-skeleton" aria-hidden="true">
+    <span className="admin-report-table-skeleton-bar admin-report-table-skeleton-bar-wide" />
+    <span className="admin-report-table-skeleton-bar" />
+    <span className="admin-report-table-skeleton-bar" />
+    <span className="admin-report-table-skeleton-bar admin-report-table-skeleton-bar-short" />
+  </div>
+);
 
 const AdminReports = () => {
-  const [reports, setReports] = useState([]);
+  const [reportBundle, setReportBundle] = useState(emptyReportBundle);
   const [loading, setLoading] = useState(true);
+  const [tableLoading, setTableLoading] = useState(false);
   const [agentOptions, setAgentOptions] = useState([]);
   const [marketOptions, setMarketOptions] = useState([]);
   const [roundOptions, setRoundOptions] = useState([]);
   const [roundsLoading, setRoundsLoading] = useState(false);
   const [draftFilters, setDraftFilters] = useState(defaultFilters);
   const [filters, setFilters] = useState(defaultFilters);
+  const initialLoadRef = useRef(true);
+  const reportRequestRef = useRef(0);
 
   const selectedMarket = useMemo(
     () => marketOptions.find((option) => option.code === draftFilters.marketId) || null,
     [draftFilters.marketId, marketOptions]
   );
 
-  const loadReports = async (nextFilters = filters) => {
-    setLoading(true);
+  const loadReports = async (nextFilters = filters, {
+    sections = ['overview', 'rows'],
+    force = false,
+    background = false
+  } = {}) => {
+    const requestId = ++reportRequestRef.current;
+    const requestFilters = normalizeReportFilters(nextFilters);
+
+    if (background) {
+      setTableLoading(true);
+    } else {
+      setLoading(true);
+    }
+
     try {
       const params = Object.fromEntries(
-        Object.entries(nextFilters).filter(([, value]) => value !== '' && value !== null && value !== undefined)
+        Object.entries(requestFilters).filter(([, value]) => value !== '' && value !== null && value !== undefined)
       );
-      const res = await getAdminReports(params);
-      setReports(res.data || []);
+      params.limit = 200;
+      params.bundle = '1';
+      params.sections = sections.join(',');
+      const res = await getAdminReports(params, { force });
+
+      if (requestId !== reportRequestRef.current) {
+        return;
+      }
+
+      setReportBundle((current) => mergeReportBundle(current, res.data, requestFilters));
     } catch (error) {
       console.error(error);
       toast.error('โหลดรายงานแอดมินไม่สำเร็จ');
     } finally {
-      setLoading(false);
+      if (requestId === reportRequestRef.current) {
+        if (background) {
+          setTableLoading(false);
+        } else {
+          setLoading(false);
+        }
+      }
     }
   };
 
@@ -64,7 +154,26 @@ const AdminReports = () => {
   }, []);
 
   useEffect(() => {
-    loadReports(filters);
+    let cancelled = false;
+
+    const run = async () => {
+      if (initialLoadRef.current) {
+        initialLoadRef.current = false;
+        await loadReports(filters, { sections: ['overview'] });
+        if (!cancelled) {
+          loadReports(filters, { sections: ['rows'], background: true });
+        }
+        return;
+      }
+
+      loadReports(filters, { sections: ['overview', 'rows'] });
+    };
+
+    run();
+
+    return () => {
+      cancelled = true;
+    };
   }, [filters.agentId, filters.marketId, filters.roundDate, filters.startDate, filters.endDate]);
 
   useEffect(() => {
@@ -94,11 +203,15 @@ const AdminReports = () => {
     loadRounds();
   }, [selectedMarket?.id]);
 
-  const totalAmount = reports.reduce((sum, report) => sum + (report.totalAmount || 0), 0);
-  const totalWon = reports.reduce((sum, report) => sum + (report.totalWon || 0), 0);
-  const totalBets = reports.reduce((sum, report) => sum + (report.betCount || 0), 0);
-  const totalAgents = new Set(reports.map((report) => report.agentName).filter(Boolean)).size;
-  const netProfit = totalAmount - totalWon;
+  const reports = reportBundle.rows || [];
+  const overview = reportBundle.overview || emptyOverview;
+  const hasOverviewLoaded = (reportBundle.loadedSections || []).includes('overview');
+  const hasRowsLoaded = (reportBundle.loadedSections || []).includes('rows');
+  const totalAmount = Number(overview.totalAmount || 0);
+  const totalWon = Number(overview.totalWon || 0);
+  const totalBets = Number(overview.betCount || 0);
+  const totalAgents = Number(overview.totalAgents || 0);
+  const netProfit = Number(overview.netProfit || 0);
 
   const overviewCards = useMemo(() => ([
     {
@@ -127,7 +240,7 @@ const AdminReports = () => {
     }
   ]), [netProfit, totalAgents, totalAmount, totalBets]);
 
-  if (loading && !reports.length) {
+  if (loading && !hasOverviewLoaded) {
     return <PageSkeleton statCount={4} rows={6} sidebar={false} />;
   }
 
@@ -166,8 +279,13 @@ const AdminReports = () => {
             <p className="ops-table-note">กรองตามเจ้ามือ ตลาด งวด และช่วงวันที่ก่อนสรุปผล</p>
           </div>
           <div className="admin-report-toolbar-controls">
-            <button type="button" className="btn btn-secondary" onClick={() => loadReports(filters)} disabled={loading}>
-              <FiRefreshCw className={loading ? 'spin-animation' : ''} />
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={() => loadReports(filters, { sections: ['overview', 'rows'], force: true })}
+              disabled={loading || tableLoading}
+            >
+              <FiRefreshCw className={loading || tableLoading ? 'spin-animation' : ''} />
               {adminCopy.common.refresh}
             </button>
           </div>
@@ -284,7 +402,10 @@ const AdminReports = () => {
           <span className="ui-pill">{copy.groupedRows(reports.length)}</span>
         </div>
 
-        <div className="table-container">
+        {tableLoading && !hasRowsLoaded ? (
+          <ReportTableSkeleton />
+        ) : (
+          <div className="table-container">
           <table className="data-table">
             <thead>
               <tr>
@@ -327,7 +448,8 @@ const AdminReports = () => {
               )}
             </tbody>
           </table>
-        </div>
+          </div>
+        )}
       </section>
 
       <style>{`
@@ -458,6 +580,42 @@ const AdminReports = () => {
         .admin-report-breakdown .badge {
           min-width: 34px;
           justify-content: center;
+        }
+
+        .admin-report-table-skeleton {
+          display: grid;
+          gap: 12px;
+          padding: 18px;
+          border-radius: 20px;
+          border: 1px solid rgba(220, 38, 38, 0.1);
+          background: rgba(255, 251, 251, 0.96);
+        }
+
+        .admin-report-table-skeleton-bar {
+          display: block;
+          height: 18px;
+          width: 100%;
+          border-radius: 999px;
+          background: linear-gradient(90deg, rgba(252, 231, 231, 0.9), rgba(255, 255, 255, 0.96), rgba(252, 231, 231, 0.9));
+          background-size: 200% 100%;
+          animation: admin-report-skeleton 1.3s ease-in-out infinite;
+        }
+
+        .admin-report-table-skeleton-bar-wide {
+          width: 92%;
+        }
+
+        .admin-report-table-skeleton-bar-short {
+          width: 68%;
+        }
+
+        @keyframes admin-report-skeleton {
+          0% {
+            background-position: 200% 0;
+          }
+          100% {
+            background-position: -200% 0;
+          }
         }
 
         @media (max-width: 1100px) {

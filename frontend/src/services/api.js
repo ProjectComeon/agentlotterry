@@ -128,16 +128,20 @@ export const updateAdminCustomer = (id, data) => clearCacheAfterWrite(api.put(`/
 export const deleteAdminCustomer = (id) => clearCacheAfterWrite(api.delete(`/admin/customers/${id}`));
 export const getAdminBets = (params, options = {}) => cachedGet('/admin/bets', {
   params,
-  ttlMs: READ_TTL_SHORT_MS,
+  ttlMs: READ_TTL_MEDIUM_MS,
   force: Boolean(options.force)
 });
 export const getAdminReports = (params, options = {}) => cachedGet('/admin/reports', {
   params,
-  ttlMs: READ_TTL_SHORT_MS,
+  ttlMs: READ_TTL_MEDIUM_MS,
   force: Boolean(options.force)
 });
 export const searchAdminBettingMembers = (params) => api.get('/admin/betting/members/search', { params });
 export const getAdminBettingMemberContext = (memberId, options = {}) => cachedGet(`/admin/betting/members/${memberId}/context`, {
+  params: {
+    ...(options.params || {}),
+    ...(options.includeCatalog === false ? { includeCatalog: '0' } : {})
+  },
   ttlMs: READ_TTL_LONG_MS,
   force: Boolean(options.force)
 });
@@ -183,16 +187,20 @@ export const updateCustomer = (id, data) => clearCacheAfterWrite(api.put(`/agent
 export const deleteCustomer = (id) => clearCacheAfterWrite(api.delete(`/agent/customers/${id}`));
 export const getAgentBets = (params, options = {}) => cachedGet('/agent/bets', {
   params,
-  ttlMs: READ_TTL_SHORT_MS,
+  ttlMs: READ_TTL_MEDIUM_MS,
   force: Boolean(options.force)
 });
 export const getAgentReports = (params, options = {}) => cachedGet('/agent/reports', {
   params,
-  ttlMs: READ_TTL_SHORT_MS,
+  ttlMs: READ_TTL_MEDIUM_MS,
   force: Boolean(options.force)
 });
 export const searchAgentBettingMembers = (params) => api.get('/agent/betting/members/search', { params });
 export const getAgentBettingMemberContext = (memberId, options = {}) => cachedGet(`/agent/betting/members/${memberId}/context`, {
+  params: {
+    ...(options.params || {}),
+    ...(options.includeCatalog === false ? { includeCatalog: '0' } : {})
+  },
   ttlMs: READ_TTL_LONG_MS,
   force: Boolean(options.force)
 });
@@ -233,6 +241,11 @@ export const getMemberSummary = (params) => api.get('/member/reports/summary', {
 
 // Catalog
 export const getCatalogOverview = (options = {}) => cachedGet('/catalog/overview', {
+  params: {
+    ...(options.variant ? { variant: options.variant } : {}),
+    ...(typeof options.includeAnnouncements === 'boolean' ? { includeAnnouncements: String(options.includeAnnouncements) } : {}),
+    ...(typeof options.includeRecentResults === 'boolean' ? { includeRecentResults: String(options.includeRecentResults) } : {})
+  },
   ttlMs: READ_TTL_LONG_MS,
   force: Boolean(options.force)
 });

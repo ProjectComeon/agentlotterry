@@ -14,13 +14,14 @@ const {
   updateAgentMember,
   deactivateAgentMember
 } = require('../services/memberManagementService');
-const { clearCatalogOverviewCache } = require('../services/catalogService');
+const { clearCatalogOverviewCache, clearCatalogOverviewCacheForUsers } = require('../services/catalogService');
 const { getAgentDashboardSummary } = require('../services/dashboardSnapshotService');
 const { scheduleReadModelSnapshotRebuild } = require('../services/readModelSnapshotService');
 const { registerBettingRoutes } = require('./helpers/registerBettingRoutes');
 const { parsePaginationQuery } = require('../utils/pagination');
 
 const router = express.Router();
+const shouldIncludeTotals = (value) => !['0', 'false'].includes(String(value || '').trim().toLowerCase());
 
 // All agent routes require auth + agent role
 router.use(auth, authorize('agent'));
@@ -92,6 +93,7 @@ router.put('/config/members/:id/lotteries', async (req, res) => {
     await createAuditLog(req.user._id, 'UPDATE_MEMBER_LOTTERY_CONFIG', detail.member.id, {
       enabledLotteryCount: detail.lotteryConfigs.filter((lottery) => lottery.isEnabled).length
     });
+    await clearCatalogOverviewCacheForUsers({ userIds: [detail.member.id] });
     clearCatalogOverviewCache({ includeSnapshots: false });
     scheduleReadModelSnapshotRebuild({
       reason: 'agent-member-lottery-config-update',
@@ -116,6 +118,7 @@ router.get('/members', async (req, res) => {
       search: req.query.search || '',
       status: req.query.status || '',
       online: req.query.online || '',
+      includeTotals: shouldIncludeTotals(req.query.includeTotals),
       ...pagination
     });
 
@@ -191,6 +194,7 @@ router.get('/customers', async (req, res) => {
       search: req.query.search || '',
       status: req.query.status || '',
       online: req.query.online || '',
+      includeTotals: shouldIncludeTotals(req.query.includeTotals),
       ...pagination
     });
 
@@ -205,9 +209,9 @@ router.get('/customers', async (req, res) => {
       creditBalance: member.creditBalance,
       stockPercent: member.stockPercent,
       lastActiveAt: member.lastActiveAt,
-      totalBets: member.totals.totalBets,
-      totalAmount: member.totals.totalAmount,
-      totalWon: member.totals.totalWon
+      totalBets: member.totals?.totalBets || 0,
+      totalAmount: member.totals?.totalAmount || 0,
+      totalWon: member.totals?.totalWon || 0
     });
 
     if (pagination.paginated) {
@@ -254,6 +258,8 @@ router.put('/customers/:id', async (req, res) => {
     });
 
     await createAuditLog(req.user._id, 'UPDATE_CUSTOMER', detail.member.id, { name: detail.member.name });
+    await clearCatalogOverviewCacheForUsers({ userIds: [detail.member.id] });
+    clearCatalogOverviewCache({ includeSnapshots: false });
     scheduleReadModelSnapshotRebuild({ reason: 'agent-customer-update', agentIds: [req.user._id] });
     res.json(detail.member);
   } catch (error) {
@@ -270,6 +276,8 @@ router.delete('/customers/:id', async (req, res) => {
     });
 
     await createAuditLog(req.user._id, 'DEACTIVATE_CUSTOMER', customer._id.toString(), { name: customer.name });
+    await clearCatalogOverviewCacheForUsers({ userIds: [customer._id] });
+    clearCatalogOverviewCache({ includeSnapshots: false });
     scheduleReadModelSnapshotRebuild({ reason: 'agent-customer-deactivate', agentIds: [req.user._id] });
     res.json({ message: 'Customer deactivated successfully' });
   } catch (error) {
@@ -280,13 +288,14 @@ router.delete('/customers/:id', async (req, res) => {
 // GET /api/agent/bets
 router.get('/bets', async (req, res) => {
   try {
-    const { roundDate, customerId, marketId } = req.query;
-    const pagination = parsePaginationQuery(req.query, { defaultLimit: 18 });
+    const { roundDate, customerId, marketId, summary } = req.query;
+    const pagination = parsePaginationQuery(req.query, { defaultLimit: 10 });
     const bets = await listAgentBetItems({
       agentId: req.user._id,
       roundDate,
       customerId,
       marketId,
+      summary: summary === '1',
       ...pagination
     });
 
@@ -299,14 +308,15 @@ router.get('/bets', async (req, res) => {
 // GET /api/agent/reports
 router.get('/reports', async (req, res) => {
   try {
-    const { roundDate, marketId, customerId, startDate, endDate, legacy } = req.query;
+    const { roundDate, marketId, customerId, startDate, endDate, legacy, sections } = req.query;
     const report = await getAgentReportsBundle({
       agentId: req.user._id,
       roundDate,
       marketId,
       customerId,
       startDate,
-      endDate
+      endDate,
+      sections: legacy === '1' ? undefined : sections
     });
 
     res.json(legacy === '1' ? report.legacyRows : report);

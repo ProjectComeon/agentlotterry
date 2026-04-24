@@ -1,5 +1,5 @@
 const { createAuditLog } = require('../../middleware/auditLog');
-const { getBetTotals, listBettingRecentItems } = require('../../services/analyticsService');
+const { getBetTotals, listBettingRecentItems, clearAnalyticsReadCache } = require('../../services/analyticsService');
 const { previewSlip, createSlip, cancelSlipByActor } = require('../../services/betSlipService');
 const { getBettingCatalogOverview } = require('../../services/catalogService');
 const { scheduleReadModelSnapshotRebuild } = require('../../services/readModelSnapshotService');
@@ -49,6 +49,7 @@ const registerBettingRoutes = (
         actorRole: req.user.role,
         search: req.query.q || req.query.search || '',
         limit: req.query.limit || 20,
+        includeTotals: req.query.includeTotals === '1' || req.query.includeTotals === 'true',
         ...buildSearchParams(req)
       });
 
@@ -67,8 +68,11 @@ const registerBettingRoutes = (
       });
 
       const shouldIncludeTotals = req.query.includeTotals === '1' || req.query.includeTotals === 'true';
+      const shouldIncludeCatalog = req.query.includeCatalog !== '0' && req.query.includeCatalog !== 'false';
       const [catalog, totals] = await Promise.all([
-        getBettingCatalogOverview(member),
+        shouldIncludeCatalog
+          ? getBettingCatalogOverview(member)
+          : Promise.resolve(null),
         shouldIncludeTotals
           ? getBetTotals(buildMemberTotalsParams(req, member))
           : Promise.resolve({})
@@ -113,6 +117,7 @@ const registerBettingRoutes = (
         slip.id,
         buildSlipAuditPayload({ customerId: req.body.customerId, slip })
       );
+      clearAnalyticsReadCache();
       scheduleReadModelSnapshotRebuild({
         reason: 'betting-slip-create',
         agentIds: req.user.role === 'agent' ? [req.user._id] : [],
@@ -140,6 +145,7 @@ const registerBettingRoutes = (
         slipNumber: slip.slipNumber,
         customerId: slip.customerId
       });
+      clearAnalyticsReadCache();
       scheduleReadModelSnapshotRebuild({
         reason: 'betting-slip-cancel',
         agentIds: req.user.role === 'agent' ? [req.user._id] : [],

@@ -1,19 +1,16 @@
-import { useEffect, useMemo, useState } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
 import toast from 'react-hot-toast';
 import { useSearchParams } from 'react-router-dom';
 import {
   FiAlertCircle,
   FiCheckCircle,
   FiClock,
-  FiExternalLink,
   FiRefreshCw,
-  FiRotateCcw,
   FiSlash
 } from 'react-icons/fi';
 import PageSkeleton from '../../components/PageSkeleton';
 import {
   getCatalogOverview,
-  getLotterySyncStatus,
   getMarketOverview,
   getRecentMarketResults,
   reconcileLotteryRoundSettlement,
@@ -31,6 +28,9 @@ import {
   sortResultsByLatestFirst,
   getResultChronologyTime
 } from '../../utils/lotteryResultSelection';
+
+const LotteryDetailPanel = lazy(() => import('./LotteryDetailPanel'));
+const LotteryAdminSyncPanel = lazy(() => import('./LotteryAdminSyncPanel'));
 
 const UI = {
   eyebrow: 'ผลหวย API',
@@ -151,83 +151,6 @@ const CATALOG_MARKET_ALIASES = {
   england_vip: ['stock-england-vip', 'england_vip'],
   germany_vip: ['stock-germany-vip', 'germany_vip'],
   russia_vip: ['stock-russia-vip', 'russia_vip']
-};
-
-const API_MARKET_RESULT_ALIASES = {
-  'thai-government': ['thai_government', 'tgfc'],
-  baac: ['baac'],
-  gsb: ['gsb', 'gsb-1year-100'],
-  'gsb-1year-100': ['gsb', 'gsb-1year-100'],
-  'hanoi-vip': ['hnvip'],
-  'hanoi-special': ['hanoi_special', 'bfhn'],
-  'hanoi-extra': ['hanoi_extra'],
-  'hanoi-star': ['hanoi_star'],
-  'hanoi-develop': ['hanoi_develop'],
-  'hanoi-hd': ['hanoi_hd'],
-  'hanoi-tv': ['hanoi_tv'],
-  'hanoi-redcross': ['hanoi_redcross'],
-  'hanoi-specific': ['cqhn'],
-  lao: ['tlzc'],
-  'lao-vip': ['lao_vip', 'zcvip'],
-  lao_redcross: ['lao_redcross', 'lao-redcross'],
-  'lao-redcross': ['lao_redcross'],
-  lao_tv: ['lao_tv', 'lao-tv'],
-  'lao-tv': ['lao_tv'],
-  lao_hd: ['lao_hd', 'lao-hd'],
-  'lao-hd': ['lao_hd'],
-  lao_extra: ['lao_extra', 'lao-extra'],
-  'lao-extra': ['lao_extra'],
-  lao_star: ['lao_star', 'lao-star', 'lao-stars'],
-  'lao-star': ['lao_star'],
-  'lao-stars': ['lao_star'],
-  lao_star_vip: ['lao_star_vip', 'lao-star-vip', 'lao-stars-vip'],
-  'lao-star-vip': ['lao_star_vip'],
-  'lao-stars-vip': ['lao_star_vip'],
-  lao_union: ['lao_union', 'lao-union'],
-  'lao-union': ['lao_union'],
-  lao_union_vip: ['lao_union_vip', 'lao-union-vip'],
-  'lao-union-vip': ['lao_union_vip'],
-  lao_asean: ['lao_asean', 'lao-asean'],
-  'lao-asean': ['lao_asean'],
-  hanoi_extra: ['hanoi_extra', 'hanoi-extra'],
-  hanoi_star: ['hanoi_star', 'hanoi-star'],
-  hanoi_develop: ['hanoi_develop', 'hanoi-develop'],
-  hanoi_hd: ['hanoi_hd', 'hanoi-hd'],
-  hanoi_tv: ['hanoi_tv', 'hanoi-tv'],
-  hanoi_redcross: ['hanoi_redcross', 'hanoi-redcross'],
-  lao_pathana: ['lao_pathana', 'lao-pathana'],
-  'lao-pathana': ['lao_pathana'],
-  'hanoi-normal': ['ynhn'],
-  malay: ['ynma'],
-  'yeekee-vip': ['tykc'],
-  'stock-thai': ['gsth'],
-  'stock-hangseng-morning': ['gshka'],
-  'stock-hangseng-morning-vip': ['hangseng_morning_vip'],
-  'stock-hangseng-afternoon': ['gshkp'],
-  'stock-hangseng-afternoon-vip': ['hangseng_afternoon_vip'],
-  'stock-taiwan': ['gstw'],
-  'stock-taiwan-vip': ['taiwan_vip'],
-  'stock-nikkei-morning': ['nikkei_morning', 'gsjpa'],
-  'stock-nikkei-morning-vip': ['nikkei_morning_vip'],
-  'stock-nikkei-afternoon': ['gsjpp'],
-  'stock-nikkei-afternoon-vip': ['nikkei_afternoon_vip'],
-  'stock-korea': ['gskr'],
-  'stock-korea-vip': ['korea_vip'],
-  'stock-china-morning': ['gscna'],
-  'stock-china-morning-vip': ['china_morning_vip'],
-  'stock-china-afternoon': ['china_afternoon', 'gscnp'],
-  'stock-china-afternoon-vip': ['china_afternoon_vip'],
-  'stock-singapore': ['gssg'],
-  'stock-singapore-vip': ['singapore_vip'],
-  'stock-india': ['gsin'],
-  'stock-egypt': ['gseg'],
-  'stock-russia': ['gsru'],
-  'stock-russia-vip': ['russia_vip'],
-  'stock-germany': ['gsde'],
-  'stock-germany-vip': ['germany_vip'],
-  'stock-england': ['gsuk'],
-  'stock-england-vip': ['england_vip'],
-  'stock-dowjones': ['dowjones_vip', 'gsus']
 };
 
 const SOURCE_LABELS = {
@@ -588,61 +511,6 @@ const getWarningMarketMatch = (warning, cards) => cards.find((card) => (
     .some((value) => String(warning || '').includes(value))
 ));
 
-const buildRecentResultsMap = (overview) => {
-  const map = new Map();
-
-  (overview?.recentResults || []).forEach((result) => {
-    [result.lotteryCode, result.lotteryName, result.lotteryShortName]
-      .filter(Boolean)
-      .forEach((alias) => {
-        const key = normalizeKey(alias);
-        const bucket = map.get(key) || [];
-        bucket.push(result);
-        map.set(key, bucket);
-      });
-  });
-
-  return map;
-};
-
-const resolveResultKeys = (apiMarket, matchedLottery) => [
-  matchedLottery?.code,
-  ...(API_MARKET_RESULT_ALIASES[apiMarket.id] || []),
-  apiMarket.id,
-  apiMarket.marketId,
-  apiMarket.name,
-  matchedLottery?.name,
-  matchedLottery?.shortName
-].filter(Boolean);
-
-const getLatestRecentResult = (recentResultsMap, resultKeys) => {
-  for (const key of resultKeys) {
-    const entries = recentResultsMap.get(normalizeKey(key));
-    if (entries?.length) {
-      return getLatestResultCandidate(entries);
-    }
-  }
-
-  return null;
-};
-
-const getRecentHistory = (recentResultsMap, resultKeys, limit = 6) => {
-  const merged = [];
-  const seen = new Set();
-
-  resultKeys.forEach((key) => {
-    const entries = recentResultsMap.get(normalizeKey(key)) || [];
-    entries.forEach((entry) => {
-      if (!seen.has(entry.id)) {
-        seen.add(entry.id);
-        merged.push(entry);
-      }
-    });
-  });
-
-  return sortResultsByLatestFirst(merged).slice(0, limit);
-};
-
 const formatInteger = (value) => new Intl.NumberFormat('th-TH').format(Number(value || 0));
 
 const buildSettlementFeedback = (action, payload) => {
@@ -698,7 +566,7 @@ const AdminLottery = ({ viewerRole = 'admin' }) => {
   const [refreshing, setRefreshing] = useState(false);
   const [syncingLatest, setSyncingLatest] = useState(false);
   const [selectedCode, setSelectedCode] = useState('');
-  const [syncStatus, setSyncStatus] = useState(null);
+  const [syncPanelRefreshKey, setSyncPanelRefreshKey] = useState(0);
   const [bettingOverrideBusy, setBettingOverrideBusy] = useState('');
   const [timingBusy, setTimingBusy] = useState(false);
   const [timingDraft, setTimingDraft] = useState({ openAt: '', closeAt: '' });
@@ -706,15 +574,22 @@ const AdminLottery = ({ viewerRole = 'admin' }) => {
   const [settlementFeedback, setSettlementFeedback] = useState(null);
   const [marketHistoryCache, setMarketHistoryCache] = useState({});
 
-  const loadData = async ({ silent = false, force = false } = {}) => {
+  const loadData = async ({ silent = false, force = false, clearHistory = !silent } = {}) => {
     if (silent) {
       setRefreshing(true);
     } else {
       setLoading(true);
     }
-    setMarketHistoryCache({});
+    if (clearHistory) {
+      setMarketHistoryCache({});
+    }
 
-    const catalogTask = getCatalogOverview({ force })
+    const catalogTask = getCatalogOverview({
+      force,
+      variant: 'lottery-page',
+      includeAnnouncements: false,
+      includeRecentResults: false
+    })
       .then((response) => {
         setCatalogOverview(response.data || null);
       })
@@ -734,26 +609,9 @@ const AdminLottery = ({ viewerRole = 'admin' }) => {
         setMarketOverview({ provider: { configured: false }, warnings: [] });
       });
 
-    const syncTask = isAdmin
-      ? getLotterySyncStatus({ force })
-        .then((response) => {
-          setSyncStatus(response.data || null);
-        })
-        .catch((error) => {
-          console.error(error);
-          toast.error('โหลดสถานะซิงก์ผลหวยไม่สำเร็จ');
-          setSyncStatus({
-            running: false,
-            lastError: error?.message || 'โหลดสถานะซิงก์ไม่สำเร็จ',
-            lastSummary: null,
-            mappingCoverage: null,
-            feeds: []
-          });
-        })
-      : Promise.resolve().then(() => setSyncStatus(null));
 
     if (silent) {
-      await Promise.allSettled([catalogTask, marketTask, syncTask]);
+      await Promise.allSettled([catalogTask, marketTask]);
       setRefreshing(false);
       return;
     }
@@ -761,7 +619,7 @@ const AdminLottery = ({ viewerRole = 'admin' }) => {
     await marketTask;
     setLoading(false);
 
-    Promise.allSettled([catalogTask, syncTask]).finally(() => {
+    Promise.allSettled([catalogTask]).finally(() => {
       setRefreshing(false);
     });
   };
@@ -784,13 +642,21 @@ const AdminLottery = ({ viewerRole = 'admin' }) => {
       } else {
         toast.success(summary?.mode === 'fetch-store' ? UI.syncLatestDeferredSuccess : UI.syncLatestSuccess);
       }
-      await loadData({ silent: true, force: true });
+      setSyncPanelRefreshKey((current) => current + 1);
+      await loadData({ silent: true, force: true, clearHistory: true });
     } catch (error) {
       console.error(error);
       toast.error(error?.response?.data?.message || UI.syncLatestError);
     } finally {
       setSyncingLatest(false);
     }
+  };
+
+  const handleRefresh = async () => {
+    if (isAdmin) {
+      setSyncPanelRefreshKey((current) => current + 1);
+    }
+    await loadData({ silent: true, force: true, clearHistory: true });
   };
 
   const handleBettingToggle = async () => {
@@ -805,7 +671,7 @@ const AdminLottery = ({ viewerRole = 'admin' }) => {
     try {
       await updateRoundBettingOverride(activeRoundId, { bettingOverride: nextOverride });
       toast.success(BETTING_TOGGLE_UI.updated);
-      await loadData({ silent: true, force: true });
+      await loadData({ silent: true, force: true, clearHistory: false });
     } catch (error) {
       console.error(error);
       toast.error(error?.response?.data?.message || BETTING_TOGGLE_UI.error);
@@ -825,7 +691,7 @@ const AdminLottery = ({ viewerRole = 'admin' }) => {
     try {
       await updateRoundBettingOverride(activeRoundId, { bettingOverride: 'auto' });
       toast.success(BETTING_TOGGLE_UI.resetDone);
-      await loadData({ silent: true, force: true });
+      await loadData({ silent: true, force: true, clearHistory: false });
     } catch (error) {
       console.error(error);
       toast.error(error?.response?.data?.message || BETTING_TOGGLE_UI.error);
@@ -854,7 +720,7 @@ const AdminLottery = ({ viewerRole = 'admin' }) => {
         closeAt: closeAt.toISOString()
       });
       toast.success(BETTING_TOGGLE_UI.timingUpdated);
-      await loadData({ silent: true, force: true });
+      await loadData({ silent: true, force: true, clearHistory: false });
     } catch (error) {
       console.error(error);
       toast.error(error?.response?.data?.message || BETTING_TOGGLE_UI.timingError);
@@ -874,7 +740,6 @@ const AdminLottery = ({ viewerRole = 'admin' }) => {
 
   const displaySections = useMemo(() => {
     const catalogLotteryMap = buildCatalogLotteryMap(catalogOverview);
-    const recentResultsMap = buildRecentResultsMap(catalogOverview);
 
     return (marketOverview?.sections || [])
       .map((section) => ({
@@ -884,15 +749,13 @@ const AdminLottery = ({ viewerRole = 'admin' }) => {
         description: section.description,
         cards: (section.markets || []).map((apiMarket) => {
           const matchedLottery = resolveCatalogLottery(apiMarket, catalogLotteryMap);
-          const resultKeys = resolveResultKeys(apiMarket, matchedLottery);
-          const fallbackRecentResult = getLatestRecentResult(recentResultsMap, resultKeys);
           const latestResult = getLatestResultCandidate([
             matchedLottery?.latestResult,
-            fallbackRecentResult,
             buildApiResultSnapshot(apiMarket)
           ]) || buildApiResultSnapshot(apiMarket);
           const effectiveStatus = matchedLottery?.status
-            || ((apiMarket.status === 'waiting' || apiMarket.status === 'missing') && fallbackRecentResult ? 'live' : (apiMarket.status || 'missing'));
+            || apiMarket.status
+            || 'missing';
           const statusMeta = resolveStatusMeta(effectiveStatus);
 
           const resolvedActiveRound = matchedLottery?.activeRound || buildSyntheticRound(apiMarket.id);
@@ -909,7 +772,6 @@ const AdminLottery = ({ viewerRole = 'admin' }) => {
             statusClass: statusMeta.cardClass,
             activeRound: resolvedActiveRound,
             latestResult,
-            historyKeys: resultKeys,
             providerConfigured: apiMarket?.providerConfigured ?? marketOverview?.provider?.configured ?? true,
             apiMarket,
             visual: getLotteryVisual(matchedLottery?.code || apiMarket.id, matchedLottery?.shortName || apiMarket.name)
@@ -1000,13 +862,21 @@ const AdminLottery = ({ viewerRole = 'admin' }) => {
       return sortResultsByLatestFirst(cachedHistory);
     }
 
-    if (!selectedCard.historyKeys?.length) return [];
-    return sortResultsByLatestFirst(getRecentHistory(buildRecentResultsMap(catalogOverview), selectedCard.historyKeys, 20));
-  }, [catalogOverview, marketHistoryCache, selectedCard]);
+    return [];
+  }, [marketHistoryCache, selectedCard]);
 
   const selectedHistory = useMemo(
     () => availableSelectedHistory.slice(0, 6),
     [availableSelectedHistory]
+  );
+  const selectedHistoryItems = useMemo(
+    () => selectedHistory.map((result) => ({
+      id: result.id,
+      roundLabel: formatRoundLabel(result.drawAt || result.roundCode, { fallback: result.roundCode || '-' }),
+      sourceLabel: SOURCE_LABELS[result.sourceType] || SOURCE_LABELS.unknown,
+      headline: result.headline || '-'
+    })),
+    [selectedHistory]
   );
 
   const selectedResult = useMemo(() => {
@@ -1028,6 +898,12 @@ const AdminLottery = ({ viewerRole = 'admin' }) => {
       }) || candidates[0]
     );
   }, [availableSelectedHistory, requestedRoundKey, selectedCard]);
+  const selectedResultItems = useMemo(
+    () => (selectedResult ? buildResultItems(selectedResult) : []),
+    [selectedResult]
+  );
+  const selectedResultSourceLabel = SOURCE_LABELS[selectedResult?.sourceType] || SOURCE_LABELS.unknown;
+  const selectedResultUpdatedAt = formatUpdatedAt(selectedResult?.resultPublishedAt || selectedResult?.drawAt);
   const detailDisplayDate = requestedRoundKey && selectedResult
     ? getResultDisplayDate(selectedResult, getCardDisplayDate(selectedCard, UI.noRound))
     : getCardDisplayDate(selectedCard, UI.noRound);
@@ -1068,37 +944,6 @@ const AdminLottery = ({ viewerRole = 'admin' }) => {
       closeAt: activeRoundCloseInput
     });
   }, [activeRoundId, activeRoundOpenInput, activeRoundCloseInput]);
-
-  const syncSummary = syncStatus?.lastSummary || null;
-  const syncCoverage = syncStatus?.mappingCoverage || syncSummary?.mappingCoverage || null;
-  const syncFeedIssues = useMemo(
-    () => (syncSummary?.feedSummaries || []).filter((feed) => feed.status !== 'ok'),
-    [syncSummary]
-  );
-  const syncMetrics = useMemo(() => ([
-    {
-      label: UI.syncConfiguredFeeds,
-      value: syncCoverage ? formatInteger(syncCoverage.configuredCount) : '-',
-      note: syncStatus?.feeds?.length ? `${formatInteger(syncStatus.feeds.length)} feeds` : UI.syncSummaryEmpty
-    },
-    {
-      label: UI.syncExplicitFeeds,
-      value: syncCoverage ? `${formatInteger(syncCoverage.explicitCount)}/${formatInteger(syncCoverage.configuredCount)}` : '-',
-      note: syncCoverage?.strictMode ? UI.syncStrictModeOn : UI.syncStrictModeOff
-    },
-    {
-      label: UI.syncProblemFeeds,
-      value: syncSummary ? formatInteger((syncSummary.warningFeeds || 0) + (syncSummary.errorFeeds || 0)) : '-',
-      note: syncStatus?.lastError ? UI.syncLastError : UI.syncSummaryTitle
-    },
-    {
-      label: UI.syncSettlements,
-      value: syncSummary ? formatInteger(syncSummary.settlements) : '-',
-      note: syncSummary?.syncedAt
-        ? `${UI.syncLastRun} ${formatUpdatedAt(syncSummary.syncedAt)} · ${syncSummary?.mode === 'fetch-store' ? UI.syncModeDeferred : UI.syncModeFull}`
-        : UI.syncSummaryEmpty
-    }
-  ]), [syncCoverage, syncStatus, syncSummary]);
   const settlementRoundId = selectedResult?.roundId
     || (selectedCard?.activeRound?.isSynthetic ? '' : (selectedCard?.activeRound?.id || ''));
   const settlementUnavailableReason = selectedResult && !selectedResult?.roundId
@@ -1111,8 +956,7 @@ const AdminLottery = ({ viewerRole = 'admin' }) => {
 
     return [
       ...(marketOverview?.warnings || []),
-      ...(marketOverview?.provider?.configured === false ? [UI.apiNotConfigured] : []),
-      ...(syncStatus?.lastError ? [`${UI.syncLastError}: ${syncStatus.lastError}`] : [])
+      ...(marketOverview?.provider?.configured === false ? [UI.apiNotConfigured] : [])
     ]
       .filter(Boolean)
       .filter((warning) => {
@@ -1132,15 +976,8 @@ const AdminLottery = ({ viewerRole = 'admin' }) => {
 
         return !(hasVisibleResult || hasResolvedStatus);
       });
-  }, [displaySections, marketOverview, syncStatus]);
+  }, [displaySections, marketOverview]);
   const connectionStatus = useMemo(() => {
-    if (syncStatus?.lastError) {
-      return {
-        label: UI.syncLastError,
-        className: 'is-warning',
-        note: syncStatus.lastError
-      };
-    }
     const fallbackOnly = pageWarnings.length === 1 && /fallback|สำรอง/i.test(pageWarnings[0] || '');
     if (fallbackOnly) {
       return {
@@ -1163,7 +1000,7 @@ const AdminLottery = ({ viewerRole = 'admin' }) => {
       className: 'is-ok',
       note: 'ระบบเชื่อมต่อข้อมูลผลหวยได้ตามปกติ'
     };
-  }, [pageWarnings, syncStatus]);
+  }, [pageWarnings]);
 
   const handleSettlementAction = async (action) => {
     if (!settlementRoundId) {
@@ -1185,7 +1022,7 @@ const AdminLottery = ({ viewerRole = 'admin' }) => {
 
       const payload = action === 'reconcile' ? response.data : (response.data?.summary || null);
       setSettlementFeedback(buildSettlementFeedback(action, payload));
-      await loadData({ silent: true, force: true });
+      await loadData({ silent: true, force: true, clearHistory: false });
 
       if (action === 'reconcile') {
         toast.success('ตรวจสอบ settlement สำเร็จ');
@@ -1220,16 +1057,16 @@ const AdminLottery = ({ viewerRole = 'admin' }) => {
               type="button"
               className="button button-secondary refresh-button sync-button"
               onClick={handleSyncLatest}
-              disabled={refreshing || syncingLatest || Boolean(syncStatus?.running)}
+              disabled={refreshing || syncingLatest}
             >
-              <FiRefreshCw className={(syncingLatest || syncStatus?.running) ? 'spin' : ''} />
-              {syncingLatest || syncStatus?.running ? UI.syncLatestBusy : UI.syncLatest}
+              <FiRefreshCw className={syncingLatest ? 'spin' : ''} />
+              {syncingLatest ? UI.syncLatestBusy : UI.syncLatest}
             </button>
           ) : null}
           <button
             type="button"
             className="button button-secondary refresh-button"
-            onClick={() => loadData({ silent: true, force: true })}
+            onClick={handleRefresh}
             disabled={refreshing || syncingLatest}
           >
             <FiRefreshCw className={refreshing ? 'spin' : ''} />
@@ -1255,34 +1092,9 @@ const AdminLottery = ({ viewerRole = 'admin' }) => {
         ) : null}
 
         {isAdmin ? (
-          <>
-        <div className="sync-metrics-grid">
-          {syncMetrics.map((metric) => (
-            <article key={metric.label} className="sync-metric-card">
-              <span>{metric.label}</span>
-              <strong>{metric.value}</strong>
-              <small>{metric.note}</small>
-            </article>
-          ))}
-        </div>
-
-        {syncFeedIssues.length > 0 ? (
-          <div className="sync-feed-panel">
-            <div className="sync-feed-title">{UI.syncFeedIssues}</div>
-            <div className="sync-feed-list">
-              {syncFeedIssues.slice(0, 8).map((feed) => (
-                <article key={feed.feedCode} className={`sync-feed-card is-${feed.status}`}>
-                  <div>
-                    <strong>{feed.marketName}</strong>
-                    <span>{feed.feedCode} · {feed.mappingMode}</span>
-                  </div>
-                  <small>{feed.error || feed.warnings[0] || 'ต้องตรวจสอบเพิ่มเติม'}</small>
-                </article>
-              ))}
-            </div>
-          </div>
-        ) : null}
-          </>
+          <Suspense fallback={null}>
+            <LotteryAdminSyncPanel ui={UI} refreshKey={syncPanelRefreshKey} />
+          </Suspense>
         ) : null}
       </section>
 
@@ -1358,255 +1170,47 @@ const AdminLottery = ({ viewerRole = 'admin' }) => {
             ))}
           </div>
 
-          <aside className="card lottery-detail-card">
-            {selectedCard ? (
-              <>
-                <div className="detail-top">
-                  <div className="detail-market-meta">
-                    <span className="section-eyebrow">{UI.latestDetailTitle}</span>
-                    <h2>{selectedCard.name}</h2>
-                    <div className="detail-market-date">{detailDisplayDate}</div>
-                    <p>
-                      {detailResolvedDate}
-                      {' · '}
-                    </p>
-                  </div>
-
-                  <span className={`detail-status-pill ${selectedCard.statusClass}`}>
-                    <SelectedStatusIcon />
-                    {selectedCard.statusLabel}
-                  </span>
-                </div>
-
-                {isAdmin ? (
-                  <section className="round-toggle-panel">
-                    <div className="settlement-head">
-                      <div>
-                        <div className="history-title">{BETTING_TOGGLE_UI.title}</div>
-                        <p className="settlement-note">{BETTING_TOGGLE_UI.help}</p>
-                      </div>
-                      {activeRound ? (
-                        <span className={`detail-status-pill ${activeRoundStatusMeta.cardClass}`}>
-                          <ActiveRoundStatusIcon />
-                          {activeRoundStatusMeta.label}
-                        </span>
-                      ) : null}
-                    </div>
-
-                    {bettingToggleUnavailableReason ? (
-                      <div className="detail-empty compact">{bettingToggleUnavailableReason}</div>
-                    ) : (
-                      <>
-                        <div className="round-toggle-body">
-                          <div className="round-toggle-copy">
-                            <strong>{activeRoundOverrideLabel}</strong>
-                            <span>{activeRound?.title || activeRound?.code || UI.noRound}</span>
-                          </div>
-
-                          <label className={`round-toggle-switch ${bettingToggleChecked ? 'is-checked' : ''} ${bettingOverrideBusy ? 'is-disabled' : ''}`}>
-                            <input
-                              type="checkbox"
-                              checked={bettingToggleChecked}
-                              onChange={handleBettingToggle}
-                              disabled={Boolean(bettingOverrideBusy)}
-                            />
-                            <span className="round-toggle-track">
-                              <span className="round-toggle-thumb" />
-                            </span>
-                            <span className="round-toggle-text">
-                              {bettingOverrideBusy && bettingOverrideBusy !== 'auto'
-                                ? BETTING_TOGGLE_UI.busy
-                                : (bettingToggleChecked ? BETTING_TOGGLE_UI.open : BETTING_TOGGLE_UI.closed)}
-                            </span>
-                          </label>
-                        </div>
-
-                        <div className="round-timing-form">
-                          <div className="round-timing-head">
-                            <div>
-                              <strong>{BETTING_TOGGLE_UI.timingTitle}</strong>
-                              <span>{BETTING_TOGGLE_UI.timingHelp}</span>
-                            </div>
-                            {activeRound?.isManualTiming ? (
-                              <span className="round-toggle-pill is-compact">{BETTING_TOGGLE_UI.manualTiming}</span>
-                            ) : null}
-                          </div>
-
-                          <div className="round-timing-grid">
-                            <label>
-                              <span>{BETTING_TOGGLE_UI.openAtLabel}</span>
-                              <input
-                                type="datetime-local"
-                                value={timingDraft.openAt}
-                                onChange={(event) => setTimingDraft((current) => ({ ...current, openAt: event.target.value }))}
-                                disabled={timingBusy}
-                              />
-                            </label>
-                            <label>
-                              <span>{BETTING_TOGGLE_UI.closeAtLabel}</span>
-                              <input
-                                type="datetime-local"
-                                value={timingDraft.closeAt}
-                                onChange={(event) => setTimingDraft((current) => ({ ...current, closeAt: event.target.value }))}
-                                disabled={timingBusy}
-                              />
-                            </label>
-                          </div>
-
-                          <button
-                            type="button"
-                            className="button button-primary round-timing-save"
-                            onClick={handleTimingSave}
-                            disabled={timingBusy || !timingDraftChanged}
-                          >
-                            {timingBusy ? BETTING_TOGGLE_UI.savingTiming : BETTING_TOGGLE_UI.saveTiming}
-                          </button>
-                        </div>
-                      </>
-                    )}
-
-                    {activeRoundId ? (
-                      <div className="round-toggle-footer">
-                        <span className="round-toggle-pill">{activeRound?.code || activeRound?.title || '-'}</span>
-                        <button
-                          type="button"
-                          className="button button-secondary round-toggle-reset"
-                          onClick={handleBettingReset}
-                          disabled={Boolean(bettingOverrideBusy) || activeRoundBettingOverride === 'auto' || Boolean(bettingToggleUnavailableReason)}
-                        >
-                          {bettingOverrideBusy === 'auto' ? BETTING_TOGGLE_UI.busy : BETTING_TOGGLE_UI.reset}
-                        </button>
-                      </div>
-                    ) : null}
-                  </section>
-                ) : null}
-
-                <section className="detail-result-hero">
-                  <div className="detail-result-label">{UI.latestResult}</div>
-                  <div className="detail-result-headline">{selectedResult?.headline || '-'}</div>
-                  <div className="detail-result-meta">
-                    <span>{UI.source}: {SOURCE_LABELS[selectedResult?.sourceType] || SOURCE_LABELS.unknown}</span>
-                    <span>{UI.updatedAt}: {formatUpdatedAt(selectedResult?.resultPublishedAt || selectedResult?.drawAt)}</span>
-                  </div>
-                </section>
-
-                {selectedResult ? (
-                  <div className="detail-result-grid">
-                    {buildResultItems(selectedResult).map((item) => (
-                      <article key={`${item.label}-${item.value}`} className="detail-result-item">
-                        <span>{item.label}</span>
-                        <strong>{item.value || '-'}</strong>
-                      </article>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="detail-empty">{UI.noResult}</div>
-                )}
-
-                {selectedCard?.apiMarket?.provider ? (
-                  <div className="detail-provider-note">
-                    {UI.source}: {selectedCard.apiMarket.provider}
-                  </div>
-                ) : null}
-
-                {selectedResult?.sourceUrl ? (
-                  <a
-                    className="detail-link"
-                    href={selectedResult.sourceUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    <FiExternalLink />
-                    {UI.apiLink}
-                  </a>
-                ) : null}
-
-                {isAdmin ? (
-                  <section className="settlement-panel">
-                  <div className="settlement-head">
-                    <div>
-                      <div className="history-title">{UI.settlementTitle}</div>
-                      <p className="settlement-note">{UI.settlementHelp}</p>
-                    </div>
-                    {settlementRoundId ? (
-                      <span className="settlement-round-pill">{selectedResult?.roundCode || selectedCard.activeRound?.code || selectedCard.activeRound?.title || '-'}</span>
-                    ) : null}
-                  </div>
-
-                  {settlementUnavailableReason ? (
-                    <div className="detail-empty compact">{settlementUnavailableReason}</div>
-                  ) : (
-                    <div className="settlement-actions">
-                      <button
-                        type="button"
-                        className="button button-secondary settlement-button"
-                        onClick={() => handleSettlementAction('reconcile')}
-                        disabled={Boolean(settlementBusy)}
-                      >
-                        <FiCheckCircle />
-                        {settlementBusy === 'reconcile' ? UI.settlementBusy : UI.settlementReconcile}
-                      </button>
-                      <button
-                        type="button"
-                        className="button button-secondary settlement-button is-warning"
-                        onClick={() => handleSettlementAction('reverse')}
-                        disabled={Boolean(settlementBusy)}
-                      >
-                        <FiSlash />
-                        {settlementBusy === 'reverse' ? UI.settlementBusy : UI.settlementReverse}
-                      </button>
-                      <button
-                        type="button"
-                        className="button button-secondary settlement-button is-accent"
-                        onClick={() => handleSettlementAction('rerun')}
-                        disabled={Boolean(settlementBusy)}
-                      >
-                        <FiRotateCcw />
-                        {settlementBusy === 'rerun' ? UI.settlementBusy : UI.settlementRerun}
-                      </button>
-                    </div>
-                  )}
-
-                  {settlementFeedback ? (
-                    <article className={`settlement-feedback ${settlementFeedback.className || ''}`}>
-                      <strong>{settlementFeedback.title}</strong>
-                      <div className="settlement-feedback-lines">
-                        {settlementFeedback.lines.map((line) => (
-                          <span key={line}>{line}</span>
-                        ))}
-                      </div>
-                    </article>
-                  ) : (
-                    <div className="settlement-empty">{UI.settlementFeedbackEmpty}</div>
-                  )}
-                  </section>
-                ) : null}
-
-                <div className="history-head">
-                  <div className="history-title">{UI.recentHistoryTitle}</div>
-                  <div className="history-count">{selectedHistory.length} งวด</div>
-                </div>
-
-                {selectedHistory.length ? (
-                  <div className="history-list">
-                    {selectedHistory.map((result) => (
-                      <article key={result.id} className="history-item">
-                        <div>
-                          <div className="history-round">{formatRoundLabel(result.drawAt || result.roundCode, { fallback: result.roundCode || '-' })}</div>
-                          <div className="history-source">{SOURCE_LABELS[result.sourceType] || SOURCE_LABELS.unknown}</div>
-                        </div>
-                        <div className="history-headline">{result.headline || '-'}</div>
-                      </article>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="detail-empty">{UI.noHistory}</div>
-                )}
-              </>
-            ) : (
-              <div className="detail-empty">{UI.noData}</div>
-            )}
-          </aside>
+          <Suspense fallback={(
+            <aside className="card lottery-detail-card">
+              <div className="detail-empty">{UI.latestDetailTitle}</div>
+            </aside>
+          )}>
+            <LotteryDetailPanel
+              selectedCard={selectedCard}
+              isAdmin={isAdmin}
+              ui={UI}
+              bettingUi={BETTING_TOGGLE_UI}
+              selectedStatusIcon={SelectedStatusIcon}
+              detailDisplayDate={detailDisplayDate}
+              detailResolvedDate={detailResolvedDate}
+              activeRound={activeRound}
+              activeRoundStatusMeta={activeRoundStatusMeta}
+              activeRoundStatusIcon={ActiveRoundStatusIcon}
+              bettingToggleUnavailableReason={bettingToggleUnavailableReason}
+              activeRoundOverrideLabel={activeRoundOverrideLabel}
+              bettingToggleChecked={bettingToggleChecked}
+              bettingOverrideBusy={bettingOverrideBusy}
+              onBettingToggle={handleBettingToggle}
+              timingDraft={timingDraft}
+              onTimingDraftChange={(field, value) => setTimingDraft((current) => ({ ...current, [field]: value }))}
+              timingBusy={timingBusy}
+              timingDraftChanged={timingDraftChanged}
+              onTimingSave={handleTimingSave}
+              activeRoundId={activeRoundId}
+              activeRoundBettingOverride={activeRoundBettingOverride}
+              onBettingReset={handleBettingReset}
+              selectedResult={selectedResult}
+              selectedResultItems={selectedResultItems}
+              selectedResultSourceLabel={selectedResultSourceLabel}
+              selectedResultUpdatedAt={selectedResultUpdatedAt}
+              settlementRoundId={settlementRoundId}
+              settlementUnavailableReason={settlementUnavailableReason}
+              settlementBusy={settlementBusy}
+              onSettlementAction={handleSettlementAction}
+              settlementFeedback={settlementFeedback}
+              selectedHistoryItems={selectedHistoryItems}
+            />
+          </Suspense>
         </div>
       )}
 

@@ -27,6 +27,8 @@ const DIGIT_LENGTHS = {
   'lao_set4': 4
 };
 
+const UNIQUE_NUMBER_BET_TYPES = new Set(['2top', '2bottom', '2tod']);
+
 const makeSlipNumber = () => {
   const now = new Date();
   const stamp = now.toISOString().replace(/\D/g, '').slice(0, 14);
@@ -158,6 +160,12 @@ const combineEntries = (entries) => {
     const key = `${entry.betType}:${entry.number}`;
     const current = grouped.get(key);
     if (current) {
+      if (UNIQUE_NUMBER_BET_TYPES.has(entry.betType)) {
+        current.sourceFlags.fromReverse = current.sourceFlags.fromReverse || entry.sourceFlags.fromReverse;
+        current.sourceFlags.fromDoubleSet = current.sourceFlags.fromDoubleSet || entry.sourceFlags.fromDoubleSet;
+        return;
+      }
+
       current.amount += entry.amount;
       current.potentialPayout = current.amount * current.payRate;
       current.sourceFlags.fromReverse = current.sourceFlags.fromReverse || entry.sourceFlags.fromReverse;

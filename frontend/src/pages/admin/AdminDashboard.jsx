@@ -8,7 +8,6 @@ import { adminCopy } from '../../i18n/th/admin';
 import { getBetResultLabel, getBetTypeLabel } from '../../i18n/th/labels';
 import { getAdminDashboard } from '../../services/api';
 import { groupRecentBetsBySlip } from '../../utils/recentSlipGroups';
-import { copySavedSlipImage } from '../../utils/slipImage';
 import { formatMoney as money } from '../../utils/formatters';
 const copy = adminCopy.dashboard;
 
@@ -76,6 +75,7 @@ const AdminDashboard = () => {
     if (!selectedSlip) return;
     setCopyingSlipImage(true);
     try {
+      const { copySavedSlipImage } = await import('../../utils/slipImage');
       const result = await copySavedSlipImage({
         slip: {
           ...selectedSlip,

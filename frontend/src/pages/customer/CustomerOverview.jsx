@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { FiActivity, FiArrowRight, FiClock, FiTrendingUp } from 'react-icons/fi';
 import PageSkeleton from '../../components/PageSkeleton';
@@ -19,16 +20,56 @@ const CustomerOverview = () => {
   const {
     leagues,
     announcements,
+    catalogLoaded,
     selectedLottery,
     selectedRound,
     selectedRateProfile,
+    ensureCatalogLoaded,
     markAnnouncementRead,
     setSelectedLottery,
     setSelectedRateProfile,
     loading
   } = useCatalog();
 
-  if (loading) return <PageSkeleton statCount={4} rows={6} sidebar={false} />;
+  useEffect(() => {
+    let cancelled = false;
+    let idleId = null;
+    let timeoutId = null;
+
+    const scheduleAnnouncementsLoad = () => {
+      if (cancelled) return;
+
+      const loadAnnouncements = () => {
+        if (!cancelled) {
+          void ensureCatalogLoaded?.({ includeAnnouncements: true });
+        }
+      };
+
+      if (typeof window !== 'undefined' && typeof window.requestIdleCallback === 'function') {
+        idleId = window.requestIdleCallback(loadAnnouncements, { timeout: 500 });
+      } else if (typeof window !== 'undefined') {
+        timeoutId = window.setTimeout(loadAnnouncements, 150);
+      } else {
+        loadAnnouncements();
+      }
+    };
+
+    void ensureCatalogLoaded?.().then(() => {
+      scheduleAnnouncementsLoad();
+    });
+
+    return () => {
+      cancelled = true;
+      if (idleId !== null && typeof window !== 'undefined' && typeof window.cancelIdleCallback === 'function') {
+        window.cancelIdleCallback(idleId);
+      }
+      if (timeoutId !== null && typeof window !== 'undefined') {
+        window.clearTimeout(timeoutId);
+      }
+    };
+  }, [ensureCatalogLoaded]);
+
+  if (loading || !catalogLoaded) return <PageSkeleton statCount={4} rows={6} sidebar={false} />;
 
   const lotteryCount = leagues.reduce((sum, league) => sum + league.lotteries.length, 0);
   const openCount = leagues.reduce((sum, league) => sum + league.lotteries.filter((lottery) => lottery.status === 'open').length, 0);

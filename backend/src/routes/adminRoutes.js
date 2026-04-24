@@ -6,6 +6,7 @@ const { createAuditLog } = require('../middleware/auditLog');
 const {
   getTotalsGroupedByField,
   getAgentReportRows,
+  getAdminReportsBundle,
   listAgentBetItems
 } = require('../services/analyticsService');
 const {
@@ -15,13 +16,14 @@ const {
   listAdminCustomers,
   updateAdminMember
 } = require('../services/memberManagementService');
-const { clearCatalogOverviewCache } = require('../services/catalogService');
+const { clearCatalogOverviewCache, clearCatalogOverviewCacheForUsers } = require('../services/catalogService');
 const { getAdminDashboardSummary } = require('../services/dashboardSnapshotService');
 const { scheduleReadModelSnapshotRebuild } = require('../services/readModelSnapshotService');
 const { registerBettingRoutes } = require('./helpers/registerBettingRoutes');
 const { parsePaginationQuery } = require('../utils/pagination');
 
 const router = express.Router();
+const shouldIncludeTotals = (value) => !['0', 'false'].includes(String(value || '').trim().toLowerCase());
 
 // All admin routes require auth + admin role
 router.use(auth, authorize('admin'));
@@ -263,6 +265,7 @@ router.get('/customers', async (req, res) => {
       search: req.query.search || '',
       status: req.query.status || '',
       sortBy: req.query.sortBy || 'recent',
+      includeTotals: shouldIncludeTotals(req.query.includeTotals),
       ...pagination
     });
 
@@ -343,6 +346,7 @@ router.put('/customers/:id', async (req, res) => {
       name: detail.member.name,
       agentId: detail.member.agentId
     });
+    await clearCatalogOverviewCacheForUsers({ userIds: [detail.member.id] });
     clearCatalogOverviewCache({ includeSnapshots: false });
     scheduleReadModelSnapshotRebuild({
       reason: 'admin-customer-update',
@@ -368,6 +372,8 @@ router.delete('/customers/:id', async (req, res) => {
     await customer.save();
 
     await createAuditLog(req.user._id, 'DEACTIVATE_CUSTOMER', customer._id.toString(), { name: customer.name });
+    await clearCatalogOverviewCacheForUsers({ userIds: [customer._id] });
+    clearCatalogOverviewCache({ includeSnapshots: false });
     scheduleReadModelSnapshotRebuild({
       reason: 'admin-customer-deactivate',
       agentIds: customer.agentId ? [customer.agentId] : [],
@@ -382,13 +388,28 @@ router.delete('/customers/:id', async (req, res) => {
 // GET /api/admin/reports
 router.get('/reports', async (req, res) => {
   try {
-    const { roundDate, startDate, endDate, marketId, agentId } = req.query;
+    const { roundDate, startDate, endDate, marketId, agentId, limit, sections, bundle } = req.query;
+    if (bundle === '1') {
+      const reportBundle = await getAdminReportsBundle({
+        roundDate,
+        startDate,
+        endDate,
+        marketId,
+        agentId,
+        limit,
+        sections
+      });
+
+      return res.json(reportBundle);
+    }
+
     const report = await getAgentReportRows({
       roundDate,
       startDate,
       endDate,
       marketId,
-      agentId
+      agentId,
+      limit
     });
 
     res.json(report);
@@ -401,13 +422,14 @@ router.get('/reports', async (req, res) => {
 // GET /api/admin/bets
 router.get('/bets', async (req, res) => {
   try {
-    const { roundDate, customerId, marketId, agentId } = req.query;
-    const pagination = parsePaginationQuery(req.query, { defaultLimit: 18 });
+    const { roundDate, customerId, marketId, agentId, summary } = req.query;
+    const pagination = parsePaginationQuery(req.query, { defaultLimit: 10 });
     const bets = await listAgentBetItems({
       roundDate,
       customerId,
       marketId,
       agentId,
+      summary: summary === '1',
       ...pagination
     });
 

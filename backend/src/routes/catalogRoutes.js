@@ -12,6 +12,10 @@ const getErrorStatus = (error, fallback = 500) => {
   const statusCode = Number(error?.status || error?.statusCode);
   return Number.isInteger(statusCode) && statusCode >= 400 ? statusCode : fallback;
 };
+const parseBooleanQuery = (value, fallback) => {
+  if (value === undefined) return fallback;
+  return value === true || value === 'true' || value === '1';
+};
 const applyNoStore = (res) => {
   res.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
   res.set('Pragma', 'no-cache');
@@ -22,7 +26,14 @@ router.use(auth);
 
 router.get('/overview', async (req, res) => {
   try {
-    const overview = await getCatalogOverview(req.user);
+    const requestedVariant = String(req.query.variant || '').trim().toLowerCase();
+    const variant = ['lottery-page', 'betting'].includes(requestedVariant) ? requestedVariant : 'full';
+    const compactVariant = variant !== 'full';
+    const overview = await getCatalogOverview(req.user, {
+      cacheVariant: variant,
+      includeAnnouncements: parseBooleanQuery(req.query.includeAnnouncements, !compactVariant),
+      includeRecentResults: parseBooleanQuery(req.query.includeRecentResults, !compactVariant)
+    });
     applyNoStore(res);
     res.json(overview);
   } catch (error) {

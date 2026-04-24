@@ -10,6 +10,7 @@ const { getMarketOverview } = require('../services/marketResultsService');
 const { createAuditLog } = require('../middleware/auditLog');
 const { BET_TYPES } = require('../constants/betting');
 const { clearCatalogOverviewCache, getRoundStatus, normalizeRoundTimingPayload } = require('../services/catalogService');
+const { clearAnalyticsReadCache } = require('../services/analyticsService');
 const { getReadModelSnapshotState, scheduleReadModelSnapshotRebuild } = require('../services/readModelSnapshotService');
 const {
   reconcileRoundSettlementById,
@@ -30,10 +31,12 @@ const applyNoStore = (res) => {
 };
 const scheduleCatalogRefresh = (reason) => {
   clearCatalogOverviewCache({ includeSnapshots: false });
+  clearAnalyticsReadCache();
   scheduleReadModelSnapshotRebuild({ reason });
 };
 const scheduleSettlementRefresh = (reason) => {
   clearCatalogOverviewCache({ includeSnapshots: false });
+  clearAnalyticsReadCache();
   scheduleReadModelSnapshotRebuild({ reason, includeAgents: true });
 };
 
@@ -80,6 +83,7 @@ router.get('/sync-status', auth, authorize('admin'), async (req, res) => {
 router.post('/sync-latest', auth, authorize('admin'), async (req, res) => {
   try {
     const summary = await syncLatestExternalResults({ runSettlement: false });
+    clearAnalyticsReadCache();
     await createAuditLog(req.user._id, 'SYNC_LATEST_RESULTS_FETCH_STORE', 'manycai', summary);
     res.json({
       message: 'Latest results synced successfully with deferred settlement',
@@ -94,6 +98,7 @@ router.post('/sync-latest', auth, authorize('admin'), async (req, res) => {
 router.post('/sync-latest/cron', cronAuth, async (req, res) => {
   try {
     const summary = await syncLatestExternalResults();
+    clearAnalyticsReadCache();
     res.json({
       message: 'Latest results synced successfully',
       trigger: req.cronAuth?.trigger || 'external-cron',

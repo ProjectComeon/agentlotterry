@@ -1,23 +1,52 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { FiActivity, FiAward, FiExternalLink } from 'react-icons/fi';
+import toast from 'react-hot-toast';
 import PageSkeleton from '../../components/PageSkeleton';
 import { memberCopy } from '../../i18n/th/member';
 import { getResultSourceTypeLabel } from '../../i18n/th/labels';
-import { useCatalog } from '../../context/CatalogContext';
+import { getRecentMarketResults } from '../../services/api';
 
 const LotteryResults = () => {
   const copy = memberCopy.results;
-  const { recentResults, loading } = useCatalog();
+  const [recentResults, setRecentResults] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let active = true;
+
+    const load = async () => {
+      try {
+        const response = await getRecentMarketResults({ limit: 50 });
+        if (active) {
+          setRecentResults(response.data || []);
+        }
+      } catch (error) {
+        console.error(error);
+        if (active) {
+          setRecentResults([]);
+          toast.error(error.response?.data?.message || 'โหลดผลรางวัลไม่สำเร็จ');
+        }
+      } finally {
+        if (active) {
+          setLoading(false);
+        }
+      }
+    };
+
+    load();
+
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const latest = recentResults[0] || null;
-  const grouped = useMemo(() => {
-    return recentResults.reduce((acc, item) => {
-      const key = item.lotteryCode || 'general';
-      if (!acc[key]) acc[key] = [];
-      acc[key].push(item);
-      return acc;
-    }, {});
-  }, [recentResults]);
+  const grouped = useMemo(() => recentResults.reduce((acc, item) => {
+    const key = item.lotteryCode || 'general';
+    if (!acc[key]) acc[key] = [];
+    acc[key].push(item);
+    return acc;
+  }, {}), [recentResults]);
 
   if (loading) return <PageSkeleton statCount={3} rows={5} sidebar={false} />;
 

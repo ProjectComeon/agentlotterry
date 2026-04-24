@@ -18,9 +18,11 @@ const CustomerBet = () => {
   const {
     loading,
     flatLotteries,
+    catalogLoaded,
     selectedLottery,
     selectedRound,
     selectedRateProfile,
+    ensureCatalogLoaded,
     setSelectedLottery,
     setSelectedRound,
     setSelectedRateProfile
@@ -37,6 +39,10 @@ const CustomerBet = () => {
   const [previewing, setPreviewing] = useState(false);
   const [savingDraft, setSavingDraft] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    ensureCatalogLoaded?.();
+  }, [ensureCatalogLoaded]);
 
   useEffect(() => {
     if (!selectedLottery?.supportedBetTypes?.length) return;
@@ -174,7 +180,7 @@ const CustomerBet = () => {
   const canSubmit = selectedRoundMeta?.status === 'open';
   const previewSummary = preview?.summary || {};
 
-  if (loading) return <PageSkeleton statCount={4} rows={6} sidebar compactSidebar />;
+  if (loading || !catalogLoaded) return <PageSkeleton statCount={4} rows={6} sidebar compactSidebar />;
 
   return (
     <div className="animate-fade-in customer-bet-page">

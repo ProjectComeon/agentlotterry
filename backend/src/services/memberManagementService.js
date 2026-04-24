@@ -31,6 +31,11 @@ const DEFAULT_LIMITS = {
 };
 const activeRateProfilesCache = createReferenceDataCache();
 const activeLotteriesCache = createReferenceDataCache();
+const EMPTY_MEMBER_TOTALS = Object.freeze({
+  count: 0,
+  totalAmount: 0,
+  totalWon: 0
+});
 
 const toText = (value) => String(value || '').trim();
 const toAmount = (value, fallback = 0) => {
@@ -336,13 +341,15 @@ const mapLotteryConfigRow = ({ lottery, config }) => {
   };
 };
 
-const getMemberConfigRows = async ({ member, lotteries = null }) => {
+const getMemberConfigRows = async ({ member, lotteries = null, ensureMissing = true } = {}) => {
   const activeLotteries = lotteries || await loadActiveLotteries();
-  await upsertMemberLotteryConfigs({
-    member,
-    lotteries: activeLotteries,
-    ensureOnlyMissing: true
-  });
+  if (ensureMissing) {
+    await upsertMemberLotteryConfigs({
+      member,
+      lotteries: activeLotteries,
+      ensureOnlyMissing: true
+    });
+  }
 
   const configDocs = await UserLotteryConfig.find({
     userId: member._id,
@@ -552,35 +559,39 @@ const buildAgentMembersFilter = ({ agentId, search = '', status = '', online = '
   return { $and: clauses };
 };
 
-const hydrateAgentMembers = async ({ agentId, members }) => {
+const hydrateAgentMembers = async ({ agentId, members, includeTotals = true, includeConfigSummary = true }) => {
   if (!members.length) {
     return [];
   }
 
   const memberIds = members.map((member) => member._id);
   const [betStatsByCustomer, configRows] = await Promise.all([
-    getTotalsGroupedByField('customerId', { agentId }, { scopedIds: memberIds }),
-    UserLotteryConfig.aggregate([
-      {
-        $match: {
-          agentId,
-          userId: { $in: memberIds }
+    includeTotals
+      ? getTotalsGroupedByField('customerId', { agentId }, { scopedIds: memberIds })
+      : Promise.resolve({}),
+    includeConfigSummary
+      ? UserLotteryConfig.aggregate([
+        {
+          $match: {
+            agentId,
+            userId: { $in: memberIds }
+          }
+        },
+        {
+          $group: {
+            _id: '$userId',
+            enabledLotteryCount: {
+              $sum: {
+                $cond: ['$isEnabled', 1, 0]
+              }
+            },
+            minimumBet: { $min: '$minimumBet' },
+            maximumBet: { $max: '$maximumBet' },
+            maximumPerNumber: { $max: '$maximumPerNumber' }
+          }
         }
-      },
-      {
-        $group: {
-          _id: '$userId',
-          enabledLotteryCount: {
-            $sum: {
-              $cond: ['$isEnabled', 1, 0]
-            }
-          },
-          minimumBet: { $min: '$minimumBet' },
-          maximumBet: { $max: '$maximumBet' },
-          maximumPerNumber: { $max: '$maximumPerNumber' }
-        }
-      }
-    ])
+      ])
+      : Promise.resolve([])
   ]);
 
   const configSummaryByMember = configRows.reduce((acc, row) => {
@@ -591,7 +602,7 @@ const hydrateAgentMembers = async ({ agentId, members }) => {
   return members.map((member) =>
     mapMemberSummary(
       member,
-      betStatsByCustomer[member._id.toString()] || {},
+      betStatsByCustomer[member._id.toString()] || EMPTY_MEMBER_TOTALS,
       configSummaryByMember[member._id.toString()] || {}
     )
   );
@@ -602,6 +613,7 @@ const getAgentMembers = async ({
   search = '',
   status = '',
   online = '',
+  includeTotals = true,
   paginated = false,
   page = 1,
   limit = 25,
@@ -615,14 +627,14 @@ const getAgentMembers = async ({
 
   if (!paginated) {
     const members = await query;
-    return hydrateAgentMembers({ agentId, members });
+    return hydrateAgentMembers({ agentId, members, includeTotals });
   }
 
   const [total, members] = await Promise.all([
     User.countDocuments(filter),
     query.skip(skip).limit(limit)
   ]);
-  const items = await hydrateAgentMembers({ agentId, members });
+  const items = await hydrateAgentMembers({ agentId, members, includeTotals });
 
   return buildPaginatedResult(items, {
     total,
@@ -645,20 +657,22 @@ const mapAdminCustomerSummary = (customer, totals = {}) => {
   };
 };
 
-const hydrateAdminCustomers = async ({ customers, agentId = '', totalsByCustomer = null }) => {
+const hydrateAdminCustomers = async ({ customers, agentId = '', totalsByCustomer = null, includeTotals = true }) => {
   if (!customers.length) {
     return [];
   }
 
   const customerIds = customers.map((customer) => customer._id);
-  const totals = totalsByCustomer || await getTotalsGroupedByField(
-    'customerId',
-    agentId ? { agentId } : {},
-    { scopedIds: customerIds }
-  );
+  const totals = includeTotals
+    ? totalsByCustomer || await getTotalsGroupedByField(
+      'customerId',
+      agentId ? { agentId } : {},
+      { scopedIds: customerIds }
+    )
+    : {};
 
   return customers.map((customer) =>
-    mapAdminCustomerSummary(customer, totals[customer._id.toString()] || {})
+    mapAdminCustomerSummary(customer, totals[customer._id.toString()] || EMPTY_MEMBER_TOTALS)
   );
 };
 
@@ -667,6 +681,7 @@ const listAdminCustomers = async ({
   search = '',
   status = '',
   sortBy = 'recent',
+  includeTotals = true,
   paginated = false,
   page = 1,
   limit = 24,
@@ -675,6 +690,7 @@ const listAdminCustomers = async ({
   const normalizedQuery = normalizeAdminCustomerQuery({ agentId, search, status, sortBy });
   const filter = buildAdminCustomerFilter(normalizedQuery);
   const mongoSort = buildAdminCustomerSort(normalizedQuery.sortBy);
+  const shouldIncludeTotals = includeTotals || !mongoSort;
 
   if (mongoSort) {
     const query = User.find(filter)
@@ -685,14 +701,22 @@ const listAdminCustomers = async ({
 
     if (!paginated) {
       const customers = await query;
-      return hydrateAdminCustomers({ customers, agentId: normalizedQuery.agentId });
+      return hydrateAdminCustomers({
+        customers,
+        agentId: normalizedQuery.agentId,
+        includeTotals: shouldIncludeTotals
+      });
     }
 
     const [total, customers] = await Promise.all([
       User.countDocuments(filter),
       query.skip(skip).limit(limit)
     ]);
-    const items = await hydrateAdminCustomers({ customers, agentId: normalizedQuery.agentId });
+    const items = await hydrateAdminCustomers({
+      customers,
+      agentId: normalizedQuery.agentId,
+      includeTotals: shouldIncludeTotals
+    });
 
     return buildPaginatedResult(items, {
       total,
@@ -741,7 +765,8 @@ const listAdminCustomers = async ({
   const items = await hydrateAdminCustomers({
     customers: orderedCustomers,
     agentId: normalizedQuery.agentId,
-    totalsByCustomer
+    totalsByCustomer,
+    includeTotals: true
   });
 
   if (!paginated) {
@@ -755,7 +780,14 @@ const listAdminCustomers = async ({
   });
 };
 
-const searchMembersForBetting = async ({ actorId, actorRole, search = '', agentId = '', limit = 20 }) => {
+const searchMembersForBetting = async ({
+  actorId,
+  actorRole,
+  search = '',
+  agentId = '',
+  limit = 20,
+  includeTotals = true
+}) => {
   const filter = { role: 'customer' };
   if (actorRole === 'agent') {
     filter.agentId = actorId;
@@ -781,12 +813,14 @@ const searchMembersForBetting = async ({ actorId, actorRole, search = '', agentI
     .limit(Math.max(1, Math.min(50, Number(limit) || 20)))
     .populate('agentId', 'name username');
 
-  const totalsByCustomer = await getTotalsGroupedByField('customerId', {
-    ...(actorRole === 'agent' ? { agentId: actorId } : {}),
-    ...(actorRole === 'admin' && agentId ? { agentId } : {})
-  }, {
-    scopedIds: members.map((member) => member._id)
-  });
+  const totalsByCustomer = includeTotals
+    ? await getTotalsGroupedByField('customerId', {
+      ...(actorRole === 'agent' ? { agentId: actorId } : {}),
+      ...(actorRole === 'admin' && agentId ? { agentId } : {})
+    }, {
+      scopedIds: members.map((member) => member._id)
+    })
+    : {};
 
   const normalizedSearch = searchText.toLowerCase();
   const finalRows = members.filter((member) => {
@@ -823,7 +857,8 @@ const searchMembersForBetting = async ({ actorId, actorRole, search = '', agentI
 };
 
 const getMemberForBettingActor = async ({ actorId, actorRole, memberId }) => {
-  const member = await User.findById(memberId).select('-password');
+  const member = await User.findById(memberId)
+    .select('role name username phone creditBalance status isActive agentId');
 
   if (!member || member.role !== 'customer') {
     throw new Error('Member not found');
@@ -848,17 +883,15 @@ const getMemberForBettingActor = async ({ actorId, actorRole, memberId }) => {
   return member;
 };
 
-const getAgentMemberDetail = async ({ agentId, memberId }) => {
-  const [member, lotteries, rateProfiles] = await Promise.all([
-    User.findOne({ _id: memberId, agentId, role: 'customer' }).select('-password'),
-    loadActiveLotteries(),
-    loadActiveRateProfiles()
-  ]);
-
+const buildMemberDetailPayload = async ({ member, agentId }) => {
   if (!member) {
     throw new Error('Member not found');
   }
 
+  const [lotteries, rateProfiles] = await Promise.all([
+    loadActiveLotteries(),
+    loadActiveRateProfiles()
+  ]);
   const [lotteryConfigs, totals] = await Promise.all([
     getMemberConfigRows({ member, lotteries }),
     getBetTotals({ agentId, customerId: member._id })
@@ -889,15 +922,20 @@ const getAgentMemberDetail = async ({ agentId, memberId }) => {
   };
 };
 
+const getAgentMemberDetail = async ({ agentId, memberId }) => {
+  const member = await User.findOne({ _id: memberId, agentId, role: 'customer' }).select('-password');
+  return buildMemberDetailPayload({ member, agentId });
+};
+
 const getAdminMemberDetail = async ({ memberId }) => {
-  const member = await User.findOne({ _id: memberId, role: 'customer' }).select('agentId');
+  const member = await User.findOne({ _id: memberId, role: 'customer' }).select('-password');
   if (!member) {
     throw new Error('Member not found');
   }
 
-  return getAgentMemberDetail({
-    agentId: member.agentId,
-    memberId
+  return buildMemberDetailPayload({
+    member,
+    agentId: member.agentId
   });
 };
 
@@ -1112,6 +1150,7 @@ module.exports = {
   ONLINE_WINDOW_MS,
   DEFAULT_LIMITS,
   isUserOnline,
+  loadActiveLotteries,
   getAgentMemberBootstrap,
   getAdminMemberBootstrap,
   getAgentMembers,

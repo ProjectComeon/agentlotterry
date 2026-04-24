@@ -47,13 +47,18 @@ const buildPaginatedResult = (
   {
     total = 0,
     page = DEFAULT_PAGINATION_PAGE,
-    limit = DEFAULT_PAGINATION_LIMIT
+    limit = DEFAULT_PAGINATION_LIMIT,
+    totalPages,
+    hasNextPage
   } = {}
 ) => {
   const safeTotal = Math.max(0, Number(total) || 0);
   const safePage = normalizePositiveInteger(page, DEFAULT_PAGINATION_PAGE);
   const safeLimit = normalizePositiveInteger(limit, DEFAULT_PAGINATION_LIMIT);
-  const totalPages = Math.max(1, Math.ceil(safeTotal / safeLimit));
+  const safeTotalPages = normalizePositiveInteger(
+    totalPages,
+    Math.max(1, Math.ceil(safeTotal / safeLimit))
+  );
 
   return {
     items,
@@ -61,9 +66,9 @@ const buildPaginatedResult = (
       page: safePage,
       limit: safeLimit,
       total: safeTotal,
-      totalPages,
+      totalPages: safeTotalPages,
       hasPrevPage: safePage > 1,
-      hasNextPage: safePage < totalPages
+      hasNextPage: hasNextPage === undefined ? safePage < safeTotalPages : Boolean(hasNextPage)
     }
   };
 };

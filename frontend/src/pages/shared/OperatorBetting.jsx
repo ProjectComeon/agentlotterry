@@ -1,6 +1,6 @@
 ﻿import { useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { useDeferredValue } from 'react';
+import { startTransition, useDeferredValue } from 'react';
 import toast from 'react-hot-toast';
 import {
   FiAlertCircle,
@@ -48,14 +48,10 @@ import { formatDateTime, formatMoney as money, formatRoundLabel } from '../../ut
 import { buildSelectableRounds, shouldFetchRoundsForLottery } from '../../utils/operatorBettingRounds';
 import { getEnabledFieldOrder, getFastKeyboardAction } from '../../utils/operatorBettingKeyboard';
 import { buildSlipDisplayGroups } from '../../utils/slipGrouping';
-import { copySlipPreviewImage } from '../../utils/slipImage';
 
 const RECENT_MARKETS_LIMIT = 6;
 const CLOSING_SOON_LIMIT = 6;
 const FAVORITE_MARKETS_LIMIT = 8;
-const MEMBER_CONTEXT_PREFETCH_LIMIT = 1;
-const MEMBER_CONTEXT_PREFETCH_STAGGER_MS = 250;
-const MEMBER_CONTEXT_WARM_MARK_TTL_MS = 15000;
 const MARKET_CATEGORY_ORDER = ['main', 'stock_am', 'stock_pm', 'vip', 'foreign', 'daily', 'other'];
 const MARKET_CATEGORY_LABELS = {
   main: 'หวยหลัก',
@@ -259,6 +255,7 @@ const dedupeOrderedNumbers = (numbers = []) => {
     return true;
   });
 };
+const shouldDedupeFastNumbersForPricing = (fastFamily) => fastFamily === '2';
 const buildNumberCountMap = (numbers = []) => {
   const counts = new Map();
   (numbers || []).forEach((value) => {
@@ -1094,8 +1091,8 @@ const OperatorBetting = () => {
   const draftAutosaveTimerRef = useRef(null);
   const draftLoadedScopeRef = useRef('');
   const roundsRequestRef = useRef('');
+  const recentItemsRequestRef = useRef('');
   const memberContextRequestRef = useRef(0);
-  const warmedMemberContextIdsRef = useRef(new Map());
 
   const flatLotteries = useMemo(() => flattenLotteries(catalog), [catalog]);
   const selectedLottery = useMemo(() => flatLotteries.find((item) => item.id === selection.lotteryId) || null, [flatLotteries, selection.lotteryId]);
@@ -1311,6 +1308,10 @@ const OperatorBetting = () => {
     () => dedupeOrderedNumbers(activeFastCandidateEntries),
     [activeFastCandidateEntries]
   );
+  const pricedFastNumbers = useMemo(
+    () => shouldDedupeFastNumbersForPricing(fastFamily) ? activeFastNumbers : activeFastCandidateEntries,
+    [activeFastCandidateEntries, activeFastNumbers, fastFamily]
+  );
   const activeFastNumberSet = useMemo(() => new Set(activeFastNumbers), [activeFastNumbers]);
   const parsedFastEntryCount = useMemo(
     () => parsedFastCandidateEntries.length,
@@ -1327,8 +1328,8 @@ const OperatorBetting = () => {
       getFastDraftSummary({
         parsedCandidates: parsedFastCandidates,
         activeNumbers: activeFastNumbers,
-        parsedEntryCount: parsedFastEntryCount,
-        selectedEntryCount: activeFastEntryCount,
+        parsedEntryCount: shouldDedupeFastNumbersForPricing(fastFamily) ? parsedFastCandidates.length : parsedFastEntryCount,
+        selectedEntryCount: shouldDedupeFastNumbersForPricing(fastFamily) ? activeFastNumbers.length : activeFastEntryCount,
         fastFamily,
         includeDoubleSet,
         reverse,
@@ -1346,7 +1347,7 @@ const OperatorBetting = () => {
     return buildFastDraftItems({
       fastFamily,
       rawInput,
-      numbers: activeFastCandidateEntries,
+      numbers: pricedFastNumbers,
       reverse,
       includeDoubleSet,
       rates: selectedRateProfile?.rates || {},
@@ -1355,7 +1356,7 @@ const OperatorBetting = () => {
       closedBetTypes: roundClosedBetTypes,
       candidateCounts: fastCandidateCountMap
     });
-  }, [activeFastCandidateEntries, fastAmounts, fastCandidateCountMap, fastFamily, helperFastNumbers, includeDoubleSet, mode, rawInput, reverse, roundClosedBetTypes, selectedLottery, selectedRateProfile]);
+  }, [fastAmounts, fastCandidateCountMap, fastFamily, includeDoubleSet, mode, pricedFastNumbers, rawInput, reverse, roundClosedBetTypes, selectedLottery, selectedRateProfile]);
   const gridDraftItems = useMemo(() => {
     if (mode !== 'grid') return [];
 
@@ -1390,6 +1391,8 @@ const OperatorBetting = () => {
   const deferredCombinedDraftMemo = useDeferredValue(combinedDraftMemo);
   const hasSavedDraftEntries = savedDraftEntries.length > 0;
   const hasPendingSlip = combinedDraftItems.length > 0;
+  const hasCatalogContext = Boolean(selectedMember?.id && catalog);
+  const isMemberContextHydrating = Boolean(selectedMember?.id && catalogLoading && !catalog);
 
   const supportedGridColumns = useMemo(() => {
     const supported = new Set(selectedLottery?.supportedBetTypes || []);
@@ -1399,79 +1402,6 @@ const OperatorBetting = () => {
       return acc;
     }, {});
   }, [gridColumns, roundClosedBetTypes, selectedLottery]);
-
-  const prefetchMemberContext = (memberId) => {
-    if (!memberId) return;
-    const now = Date.now();
-    const warmedAt = warmedMemberContextIdsRef.current.get(memberId);
-    if (warmedAt && now - warmedAt < MEMBER_CONTEXT_WARM_MARK_TTL_MS) return;
-    warmedMemberContextIdsRef.current.set(memberId, now);
-    copy.getContext(memberId).catch(() => {
-      warmedMemberContextIdsRef.current.delete(memberId);
-    });
-  };
-
-  const fetchMemberContext = async (memberId, options = {}) => {
-    const { silent = false } = options;
-    if (!memberId) return;
-    const requestId = memberContextRequestRef.current + 1;
-    memberContextRequestRef.current = requestId;
-    if (!silent) setCatalogLoading(true);
-    try {
-      const response = await copy.getContext(memberId);
-      if (memberContextRequestRef.current !== requestId) return;
-      const nextCatalog = response.data.catalog;
-      const nextMember = response.data.member;
-      const defaults = nextCatalog?.selectionDefaults || {};
-      const nextLotteries = flattenLotteries(nextCatalog);
-      const nextLottery = nextLotteries.find((item) => item.id === defaults.lotteryId) || nextLotteries[0] || null;
-
-      setSelectedMember(nextMember);
-      setCatalog(nextCatalog);
-      setRounds(nextLottery?.activeRound ? [nextLottery.activeRound] : []);
-      setLoadedRoundsLotteryId('');
-      roundsRequestRef.current = '';
-      setSearchText('');
-      setSearchResults([]);
-      setSelection({
-        lotteryId: nextLottery?.id || '',
-        roundId: nextLottery?.activeRound?.id || defaults.roundId || '',
-        rateProfileId: nextLottery?.defaultRateProfileId || nextLottery?.rateProfiles?.[0]?.id || defaults.rateProfileId || ''
-      });
-      setPreview(null);
-      setSearchParams({ memberId });
-    } catch (error) {
-      if (memberContextRequestRef.current !== requestId) return;
-      console.error(error);
-      toast.error(error.response?.data?.message || 'โหลดสิทธิ์การแทงของสมาชิกไม่สำเร็จ');
-    } finally {
-      if (!silent && memberContextRequestRef.current === requestId) setCatalogLoading(false);
-    }
-  };
-
-  const fetchRecentItems = async ({ memberId, marketId, roundDate }) => {
-    if (!memberId || !marketId) {
-      setRecentItems([]);
-      return;
-    }
-
-    setRecentLoading(true);
-    try {
-      const response = await copy.getRecentItems({
-        customerId: memberId,
-        marketId,
-        roundDate,
-        limit: 8
-      });
-      setRecentItems(response.data || []);
-    } catch (error) {
-      console.error(error);
-      setRecentItems([]);
-      toast.error(error.response?.data?.message || 'โหลดรายการโพยล่าสุดไม่สำเร็จ');
-    } finally {
-      setRecentLoading(false);
-    }
-  };
 
   const clearComposerFields = () => {
     setPreview(null);
@@ -1486,6 +1416,129 @@ const OperatorBetting = () => {
     setGridRows(buildInitialGridRows);
     setGridBulkAmounts(buildEmptyGridAmounts());
     setMemo('');
+  };
+
+  const resetMemberWorkspace = () => {
+    setCatalog(null);
+    setRounds([]);
+    setLoadedRoundsLotteryId('');
+    roundsRequestRef.current = '';
+    recentItemsRequestRef.current = '';
+    setSelection({ lotteryId: '', roundId: '', rateProfileId: '' });
+    setSavedDraftEntries([]);
+    setRecentItems([]);
+    setExpandedRecentGroups({});
+    setRecentLoading(false);
+    setShowRates(false);
+    setMarketPickerOpen(false);
+    clearComposerFields();
+  };
+
+  const fetchMemberContext = async (memberId, options = {}) => {
+    const { silent = false, seedMember = null } = options;
+    if (!memberId) return;
+    const requestId = memberContextRequestRef.current + 1;
+    memberContextRequestRef.current = requestId;
+    if (!silent && seedMember) {
+      setSelectedMember((current) => ({ ...(current || {}), ...seedMember, id: seedMember.id || memberId }));
+      resetMemberWorkspace();
+      setSearchText('');
+      setSearchResults([]);
+    }
+    if (!silent) setCatalogLoading(true);
+    try {
+      if (silent && catalog) {
+        const response = await copy.getContext(memberId, { includeCatalog: false, force: true });
+        if (memberContextRequestRef.current !== requestId) return;
+        if (response.data.member) {
+          startTransition(() => setSelectedMember(response.data.member));
+        }
+        return;
+      }
+
+      const shouldLoadShellFirst = !silent && !seedMember;
+      if (shouldLoadShellFirst) {
+        copy.getContext(memberId, { includeCatalog: false }).then((response) => {
+          if (memberContextRequestRef.current !== requestId || !response.data.member) return;
+          startTransition(() => {
+            setSelectedMember(response.data.member);
+            setSearchText('');
+            setSearchResults([]);
+          });
+        }).catch(() => {});
+      }
+
+      const response = await copy.getContext(memberId);
+      if (memberContextRequestRef.current !== requestId) return;
+      const nextCatalog = response.data.catalog;
+      const nextMember = response.data.member;
+      const defaults = nextCatalog?.selectionDefaults || {};
+      const nextLotteries = flattenLotteries(nextCatalog);
+      const nextLottery = nextLotteries.find((item) => item.id === defaults.lotteryId) || nextLotteries[0] || null;
+
+      startTransition(() => {
+        setSelectedMember(nextMember);
+        setCatalog(nextCatalog);
+        setRounds(nextLottery?.activeRound ? [nextLottery.activeRound] : []);
+        setLoadedRoundsLotteryId('');
+        roundsRequestRef.current = '';
+        setSearchText('');
+        setSearchResults([]);
+        setSelection({
+          lotteryId: nextLottery?.id || '',
+          roundId: nextLottery?.activeRound?.id || defaults.roundId || '',
+          rateProfileId: nextLottery?.defaultRateProfileId || nextLottery?.rateProfiles?.[0]?.id || defaults.rateProfileId || ''
+        });
+        setPreview(null);
+        setSearchParams({ memberId });
+      });
+    } catch (error) {
+      if (memberContextRequestRef.current !== requestId) return;
+      console.error(error);
+      if (!silent) {
+        startTransition(() => {
+          setSelectedMember(null);
+          resetMemberWorkspace();
+          setMemberPickerOpen(true);
+          setSearchParams({});
+        });
+      }
+      toast.error(error.response?.data?.message || 'โหลดสิทธิ์การแทงของสมาชิกไม่สำเร็จ');
+    } finally {
+      if (!silent && memberContextRequestRef.current === requestId) setCatalogLoading(false);
+    }
+  };
+
+  const fetchRecentItems = async ({ memberId, marketId, roundDate }) => {
+    if (!memberId || !marketId) {
+      recentItemsRequestRef.current = '';
+      setRecentItems([]);
+      setRecentLoading(false);
+      return;
+    }
+
+    const requestKey = `${memberId}:${marketId}:${roundDate || ''}`;
+    recentItemsRequestRef.current = requestKey;
+    setRecentLoading(true);
+    try {
+      const response = await copy.getRecentItems({
+        customerId: memberId,
+        marketId,
+        roundDate,
+        limit: 8
+      });
+      if (recentItemsRequestRef.current !== requestKey) return;
+      setRecentItems(response.data || []);
+    } catch (error) {
+      if (recentItemsRequestRef.current !== requestKey) return;
+      console.error(error);
+      setRecentItems([]);
+      toast.error(error.response?.data?.message || 'โหลดรายการโพยล่าสุดไม่สำเร็จ');
+    } finally {
+      if (recentItemsRequestRef.current === requestKey) {
+        setRecentLoading(false);
+      }
+    }
   };
 
   const buildDraftSnapshot = () => ({
@@ -1772,6 +1825,7 @@ const OperatorBetting = () => {
     try {
       const nextPreview = buildSlipImagePreview();
       if (!nextPreview) return;
+      const { copySlipPreviewImage } = await import('../../utils/slipImage');
       const result = await copySlipPreviewImage({
         preview: nextPreview,
         selectedMember,
@@ -1801,14 +1855,7 @@ const OperatorBetting = () => {
     if (!persisted) return;
 
     setSelectedMember(null);
-    setCatalog(null);
-    setRounds([]);
-    setLoadedRoundsLotteryId('');
-    roundsRequestRef.current = '';
-    setSelection({ lotteryId: '', roundId: '', rateProfileId: '' });
-    setSavedDraftEntries([]);
-    setPreview(null);
-    setRecentItems([]);
+    resetMemberWorkspace();
     setSearchText('');
     setSearchResults([]);
     setMemberPickerOpen(true);
@@ -1816,12 +1863,14 @@ const OperatorBetting = () => {
     window.requestAnimationFrame(() => searchInputRef.current?.focus());
   };
 
-  const handleSelectMember = async (memberId) => {
+  const handleSelectMember = async (member) => {
+    const memberId = member?.id || '';
+    if (!memberId) return;
     const persisted = await persistCurrentScopeDraft({ silent: false });
     if (!persisted) return;
 
-    await fetchMemberContext(memberId);
     setMemberPickerOpen(false);
+    await fetchMemberContext(memberId, { seedMember: member });
   };
 
   const ensureRoundsLoaded = async ({ lottery = selectedLottery, requiresHistoricalRounds = false } = {}) => {
@@ -2477,7 +2526,7 @@ const OperatorBetting = () => {
     const timer = window.setTimeout(async () => {
       setSearching(true);
       try {
-        const response = await copy.search({ q: searchText.trim(), limit: 12 });
+        const response = await copy.search({ q: searchText.trim(), limit: 12, includeTotals: '0' });
         setSearchResults(sortMembersByActivity(response.data || []));
       } catch (error) {
         console.error(error);
@@ -2488,18 +2537,6 @@ const OperatorBetting = () => {
     }, searchText.trim() ? 250 : 0);
     return () => window.clearTimeout(timer);
   }, [copy, memberPickerOpen, searchText]);
-
-  useEffect(() => {
-    if (!memberPickerOpen || searching || !sortedSearchResults.length) return undefined;
-
-    const timers = sortedSearchResults
-      .slice(0, MEMBER_CONTEXT_PREFETCH_LIMIT)
-      .map((member, index) =>
-        window.setTimeout(() => prefetchMemberContext(member.id), index * MEMBER_CONTEXT_PREFETCH_STAGGER_MS)
-      );
-
-    return () => timers.forEach((timer) => window.clearTimeout(timer));
-  }, [memberPickerOpen, searching, sortedSearchResults]);
 
   useEffect(() => {
     roundsRequestRef.current = '';
@@ -2700,16 +2737,9 @@ const OperatorBetting = () => {
   }, [selectedMember?.id, selection.lotteryId, selection.roundId]);
 
   useEffect(() => {
-    if (!selectedMember?.id || !recentMarketId) {
-      setRecentItems([]);
-      return;
-    }
-
-    fetchRecentItems({
-      memberId: selectedMember.id,
-      marketId: recentMarketId,
-      roundDate: recentRoundCode
-    });
+    recentItemsRequestRef.current = '';
+    setRecentItems([]);
+    setRecentLoading(false);
   }, [recentMarketId, recentRoundCode, selectedMember?.id]);
 
   useEffect(() => {
@@ -2821,13 +2851,15 @@ const OperatorBetting = () => {
                     key={member.id}
                     type="button"
                     className="operator-search-option"
-                    onMouseEnter={() => prefetchMemberContext(member.id)}
-                    onFocus={() => prefetchMemberContext(member.id)}
-                    onTouchStart={() => prefetchMemberContext(member.id)}
-                    onClick={() => handleSelectMember(member.id)}
+                    onClick={() => handleSelectMember(member)}
                   >
                     <span>{member.name}</span>
-                    <small>{member.totals?.totalBets || 0} {copyText.itemsSuffix} • {money(member.totals?.totalAmount)} {copyText.baht}</small>
+                    <small>
+                      @{member.username}
+                      {member.phone ? ` • ${member.phone}` : ''}
+                      {' • '}
+                      {money(member.creditBalance)} {copyText.baht}
+                    </small>
                   </button>
                 ))}
                 {!searching && !sortedSearchResults.length ? <div className="operator-search-empty">ไม่พบสมาชิก</div> : null}
@@ -2838,6 +2870,7 @@ const OperatorBetting = () => {
           {selectedMember ? (
             <div className="operator-search-selection">
               <span className="operator-search-selection-name">{selectedMember.name}</span>
+              {isMemberContextHydrating ? <span className="operator-search-selection-status">กำลังโหลดสิทธิ์…</span> : null}
               <button type="button" className="btn btn-secondary btn-sm" onClick={clearSelectedMember}>
                 <FiX /> {copyText.clearSelection}
               </button>
@@ -2845,6 +2878,32 @@ const OperatorBetting = () => {
           ) : null}
 
             {selectedMember ? (
+              isMemberContextHydrating ? (
+                <div className="operator-context-shell" aria-live="polite">
+                  <div className="operator-context-shell-head">
+                    <div>
+                      <strong>กำลังโหลดข้อมูลสมาชิก</strong>
+                      <p>กำลังดึงตลาด สิทธิ์ และงวดล่าสุดของ {selectedMember.name}</p>
+                    </div>
+                    <span className="operator-context-shell-pill">
+                      <FiRefreshCw className="spin-animation" /> กำลังโหลด
+                    </span>
+                  </div>
+                  <div className="operator-context-shell-grid">
+                    <div className="operator-context-shell-card">
+                      <span className="operator-context-shell-line is-long" />
+                      <span className="operator-context-shell-line" />
+                    </div>
+                    <div className="operator-context-shell-card">
+                      <span className="operator-context-shell-line is-medium" />
+                      <span className="operator-context-shell-line is-short" />
+                    </div>
+                  </div>
+                  <div className="operator-context-shell-note">
+                    ระบบจะแสดงหน้าซื้อแทนทันทีที่ context พร้อม โดยไม่รอ render ทั้งหน้าใหม่
+                  </div>
+                </div>
+              ) : hasCatalogContext ? (
               <>
                 <div className="operator-select-grid">
                   <div className="operator-market-picker" ref={marketPickerRef}>
@@ -3286,6 +3345,16 @@ const OperatorBetting = () => {
                 </div>
                 <div className="bet-note" style={{ marginTop: 16 }}><FiAlertCircle /><span>{copyText.validationNote}</span></div>
               </>
+              ) : (
+                <div className="operator-context-shell is-error">
+                  <div className="operator-context-shell-head">
+                    <div>
+                      <strong>ยังโหลด context ของสมาชิกไม่สำเร็จ</strong>
+                      <p>เลือกสมาชิกใหม่อีกครั้ง หรือรีเซ็ตการเลือกก่อน</p>
+                    </div>
+                  </div>
+                </div>
+              )
             ) : null}
           </section>
 
@@ -3297,7 +3366,12 @@ const OperatorBetting = () => {
               </button>
               </div>
 
-            {!hasPendingSlip ? (
+            {isMemberContextHydrating ? (
+              <div className="operator-preview-loading">
+                <FiRefreshCw className="spin-animation" />
+                <span>กำลังเตรียมหน้าซื้อแทนของสมาชิก</span>
+              </div>
+            ) : !hasPendingSlip ? (
               <div className="empty-state operator-preview-empty">
                 <div className="empty-state-icon"><FiLayers /></div>
                 <div className="empty-state-text">คีย์เลขแล้วกดสั่งซื้อ เพื่อรวมเข้าโพยรอบนี้</div>

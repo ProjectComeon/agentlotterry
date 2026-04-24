@@ -90,6 +90,7 @@ const bootstrapApp = async () => {
 };
 
 app.set('trust proxy', trustProxy);
+app.set('etag', false);
 
 morgan.token('request-id', (req) => req.requestId || '-');
 
@@ -104,6 +105,12 @@ app.use(morgan(requestLogFormat, {
 }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+app.use('/api', (req, res, next) => {
+  res.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+  res.set('Pragma', 'no-cache');
+  res.set('Expires', '0');
+  next();
+});
 
 app.use('/api/auth', authRoutes);
 app.use('/api/admin', adminRoutes);

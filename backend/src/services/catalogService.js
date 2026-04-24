@@ -9,7 +9,15 @@ const RateProfile = require('../models/RateProfile');
 const ResultRecord = require('../models/ResultRecord');
 const User = require('../models/User');
 const { getStoredLatestExternalResults } = require('./externalResultFeedService');
-const { getMemberConfigRows, normalizeEnabledBetTypes } = require('./memberManagementService');
+const {
+  getMemberConfigRows,
+  normalizeEnabledBetTypes,
+  loadActiveLotteries
+} = require('./memberManagementService');
+const {
+  createReferenceDataCache,
+  loadWithReferenceCache
+} = require('../utils/referenceDataCache');
 const {
   DEFAULT_RATE_TIERS,
   LOTTERY_LEAGUES,
@@ -35,10 +43,16 @@ const CATALOG_OVERVIEW_STALE_MAX_MS = Math.max(
   CATALOG_OVERVIEW_SNAPSHOT_TTL_MS,
   Number(process.env.CATALOG_OVERVIEW_STALE_MAX_MS || 10 * 60 * 1000)
 );
+const CATALOG_REFERENCE_CACHE_MS = Math.max(
+  1000,
+  Number(process.env.CATALOG_REFERENCE_CACHE_MS || Math.min(CATALOG_OVERVIEW_CACHE_MS, 15000))
+);
 let catalogSeedPromise = null;
 let catalogReadinessPromise = null;
 const catalogOverviewCache = new Map();
 const catalogOverviewInFlight = new Map();
+const activeLeaguesCache = createReferenceDataCache({ ttlMs: CATALOG_REFERENCE_CACHE_MS });
+const activeRoundsCache = createReferenceDataCache({ ttlMs: CATALOG_REFERENCE_CACHE_MS });
 const toIdString = (value) => value?._id?.toString?.() || value?.toString?.() || '';
 const normalizeBettingOverride = (value) => (value === 'open' || value === 'closed' ? value : 'auto');
 const normalizeRateMap = (value = {}, fallbackRates = {}) =>
@@ -52,6 +66,34 @@ const upsertByCode = (Model, code, payload) => Model.findOneAndUpdate(
   { $set: payload },
   { new: true, upsert: true }
 );
+
+const loadActiveLeagues = async () =>
+  loadWithReferenceCache(activeLeaguesCache, () =>
+    LotteryLeague.find({ isActive: true })
+      .sort({ sortOrder: 1, name: 1 })
+      .select('code name description sortOrder isActive')
+      .lean()
+  );
+
+const loadCatalogActiveRounds = async () =>
+  loadWithReferenceCache(activeRoundsCache, () =>
+    DrawRound.find({ isActive: true, drawAt: { $gte: new Date(Date.now() - 5 * DAY_MS) } })
+      .sort({ drawAt: 1 })
+      .select([
+        'lotteryTypeId',
+        'code',
+        'title',
+        'openAt',
+        'closeAt',
+        'drawAt',
+        'isManualTiming',
+        'timingUpdatedAt',
+        'bettingOverride',
+        'closedBetTypes',
+        'resultPublishedAt'
+      ].join(' '))
+      .lean()
+  );
 
 const getBangkokWeekday = (date) => {
   const shifted = new Date(date.getTime() + 7 * 60 * 60 * 1000);
@@ -500,21 +542,28 @@ const getAnnouncementFilter = (viewer = null) => {
   };
 };
 
-const getCatalogOverviewCacheKey = (viewer = null, variant = 'full') => {
+const getCatalogOverviewCacheKey = (viewer = null, variant = 'full', options = {}) => {
   const role = viewer?.role || 'anonymous';
   const viewerId = toIdString(viewer?._id || viewer?.id);
-  return `${variant}:${role}:${viewerId}`;
+  const includeAnnouncements = options.includeAnnouncements !== false ? '1' : '0';
+  const includeRecentResults = options.includeRecentResults !== false ? '1' : '0';
+  return `${variant}:ann${includeAnnouncements}:recent${includeRecentResults}:${role}:${viewerId}`;
 };
 
 const canUseCatalogOverviewSnapshot = (viewer = null, options = {}) => {
   if (viewer?.role === 'customer') {
-    return false;
+    return options.cacheVariant === 'betting' &&
+      options.includeAnnouncements === false &&
+      options.includeRecentResults === false;
   }
 
-  return options.cacheVariant === 'full' &&
-    options.includeAnnouncements !== false &&
-    options.includeRecentResults !== false;
+  return ['full', 'betting', 'lottery-page'].includes(options.cacheVariant || 'full');
 };
+
+const escapeRegExp = (value = '') => String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+const matchesCatalogOverviewSnapshotUser = (key = '', userId = '') =>
+  Boolean(userId) && String(key || '').endsWith(`:${userId}`);
 
 const clearCatalogOverviewCache = ({ includeSnapshots = true } = {}) => {
   catalogOverviewCache.clear();
@@ -527,6 +576,31 @@ const clearCatalogOverviewCache = ({ includeSnapshots = true } = {}) => {
   }
 
   return Promise.resolve();
+};
+
+const clearCatalogOverviewCacheForUsers = ({ userIds = [] } = {}) => {
+  const ids = [...new Set((Array.isArray(userIds) ? userIds : [userIds]).map(toIdString).filter(Boolean))];
+  if (!ids.length) {
+    return Promise.resolve();
+  }
+
+  for (const key of catalogOverviewCache.keys()) {
+    if (ids.some((id) => matchesCatalogOverviewSnapshotUser(key, id))) {
+      catalogOverviewCache.delete(key);
+    }
+  }
+
+  for (const key of catalogOverviewInFlight.keys()) {
+    if (ids.some((id) => matchesCatalogOverviewSnapshotUser(key, id))) {
+      catalogOverviewInFlight.delete(key);
+    }
+  }
+
+  return CatalogOverviewSnapshot.deleteMany({
+    $or: ids.map((id) => ({ key: { $regex: `:customer:${escapeRegExp(id)}$` } }))
+  }).catch((error) => {
+    console.warn('Failed to clear member catalog overview snapshots:', error.message);
+  });
 };
 
 const pruneCatalogOverviewCache = (now = Date.now()) => {
@@ -643,16 +717,9 @@ const buildCatalogOverview = async (viewer = null, options = {}) => {
   await ensureCatalogReady();
 
   const [leagues, lotteries, rounds, announcements, recentResults] = await Promise.all([
-    LotteryLeague.find({ isActive: true }).sort({ sortOrder: 1, name: 1 }).lean(),
-    LotteryType.find({ isActive: true })
-      .sort({ sortOrder: 1, name: 1 })
-      .populate('leagueId', 'code name')
-      .populate('rateProfileIds')
-      .populate('defaultRateProfileId')
-      .lean(),
-    DrawRound.find({ isActive: true, drawAt: { $gte: new Date(Date.now() - 5 * DAY_MS) } })
-      .sort({ drawAt: 1 })
-      .lean(),
+    loadActiveLeagues(),
+    loadActiveLotteries(),
+    loadCatalogActiveRounds(),
     includeAnnouncements
       ? Announcement.find(getAnnouncementFilter(viewer)).sort({ publishedAt: -1 }).limit(5).lean()
       : Promise.resolve([]),
@@ -663,7 +730,7 @@ const buildCatalogOverview = async (viewer = null, options = {}) => {
 
   let memberConfigMap = null;
   if (viewer?.role === 'customer') {
-    const memberConfigRows = await getMemberConfigRows({ member: viewer, lotteries });
+    const memberConfigRows = await getMemberConfigRows({ member: viewer, lotteries, ensureMissing: false });
     memberConfigMap = memberConfigRows.reduce((acc, row) => {
       acc[row.lotteryTypeId] = row;
       return acc;
@@ -676,6 +743,7 @@ const buildCatalogOverview = async (viewer = null, options = {}) => {
     acc[key].push(round);
     return acc;
   }, {});
+  const now = new Date();
 
   const resultsByLottery = recentResults.reduce((acc, result) => {
     if (!result.lotteryTypeId) return acc;
@@ -714,8 +782,7 @@ const buildCatalogOverview = async (viewer = null, options = {}) => {
     const supportedBetTypes = memberConfig?.enabledBetTypes?.length
       ? normalizeEnabledBetTypes(memberConfig.enabledBetTypes, lottery.supportedBetTypes)
       : lottery.supportedBetTypes;
-    const lotteryRounds = (roundsByLottery[lottery._id.toString()] || []).sort((a, b) => a.drawAt - b.drawAt);
-    const now = new Date();
+    const lotteryRounds = roundsByLottery[lottery._id.toString()] || [];
     const activeRound =
       lotteryRounds.find((round) => now <= round.closeAt) ||
       lotteryRounds.find((round) => now <= round.drawAt) ||
@@ -815,7 +882,7 @@ const buildCatalogOverview = async (viewer = null, options = {}) => {
 
 const getCachedCatalogOverview = async (viewer = null, options = {}) => {
   const { cacheVariant = 'full', ...buildOptions } = options;
-  const cacheKey = getCatalogOverviewCacheKey(viewer, cacheVariant);
+  const cacheKey = getCatalogOverviewCacheKey(viewer, cacheVariant, buildOptions);
   const now = Date.now();
   const shouldUseSnapshot = canUseCatalogOverviewSnapshot(viewer, { cacheVariant, ...buildOptions });
   pruneCatalogOverviewCache(now);
@@ -825,8 +892,11 @@ const getCachedCatalogOverview = async (viewer = null, options = {}) => {
     return cached.data;
   }
 
+  const allowStaleSnapshot = viewer?.role !== 'customer';
+
   if (
     shouldUseSnapshot &&
+    allowStaleSnapshot &&
     cached?.data &&
     isCatalogOverviewSnapshotUsable(cached.builtAt || cached.cachedAt, now)
   ) {
@@ -835,7 +905,7 @@ const getCachedCatalogOverview = async (viewer = null, options = {}) => {
   }
 
   if (shouldUseSnapshot) {
-    const snapshot = await loadCatalogOverviewSnapshotState(cacheKey, now, { allowStale: true });
+    const snapshot = await loadCatalogOverviewSnapshotState(cacheKey, now, { allowStale: allowStaleSnapshot });
     if (snapshot) {
       catalogOverviewCache.set(cacheKey, {
         cachedAt: Date.now(),
@@ -881,22 +951,22 @@ const getCachedCatalogOverview = async (viewer = null, options = {}) => {
   return request;
 };
 
-const getCatalogOverview = async (viewer = null) => getCachedCatalogOverview(viewer, {
-  cacheVariant: 'full',
-  includeAnnouncements: true,
-  includeRecentResults: true
+const getCatalogOverview = async (viewer = null, options = {}) => getCachedCatalogOverview(viewer, {
+  cacheVariant: options.cacheVariant || 'full',
+  includeAnnouncements: options.includeAnnouncements !== false,
+  includeRecentResults: options.includeRecentResults !== false
 });
 
-const rebuildCatalogOverviewSnapshot = async (viewer = null) => {
-  const options = {
-    cacheVariant: 'full',
-    includeAnnouncements: true,
-    includeRecentResults: true
+const rebuildCatalogOverviewSnapshot = async (viewer = null, options = {}) => {
+  const normalizedOptions = {
+    cacheVariant: options.cacheVariant || 'full',
+    includeAnnouncements: options.includeAnnouncements !== false,
+    includeRecentResults: options.includeRecentResults !== false
   };
-  const cacheKey = getCatalogOverviewCacheKey(viewer, options.cacheVariant);
+  const cacheKey = getCatalogOverviewCacheKey(viewer, normalizedOptions.cacheVariant, normalizedOptions);
   const overview = await buildCatalogOverview(viewer, {
-    includeAnnouncements: options.includeAnnouncements,
-    includeRecentResults: options.includeRecentResults
+    includeAnnouncements: normalizedOptions.includeAnnouncements,
+    includeRecentResults: normalizedOptions.includeRecentResults
   });
 
   catalogOverviewCache.set(cacheKey, {
@@ -925,17 +995,26 @@ const rebuildOperatorCatalogOverviewSnapshots = async ({ limit = 50 } = {}) => {
     errors: []
   };
 
+  const variants = [
+    { cacheVariant: 'full', includeAnnouncements: true, includeRecentResults: true },
+    { cacheVariant: 'betting', includeAnnouncements: false, includeRecentResults: false },
+    { cacheVariant: 'lottery-page', includeAnnouncements: false, includeRecentResults: false }
+  ];
+
   for (const operator of operators) {
-    try {
-      await rebuildCatalogOverviewSnapshot(operator);
-      summary.rebuilt += 1;
-    } catch (error) {
-      summary.failed += 1;
-      summary.errors.push({
-        userId: toIdString(operator._id),
-        role: operator.role,
-        message: error.message
-      });
+    for (const variantOptions of variants) {
+      try {
+        await rebuildCatalogOverviewSnapshot(operator, variantOptions);
+        summary.rebuilt += 1;
+      } catch (error) {
+        summary.failed += 1;
+        summary.errors.push({
+          userId: toIdString(operator._id),
+          role: operator.role,
+          variant: variantOptions.cacheVariant,
+          message: error.message
+        });
+      }
     }
   }
 
@@ -981,66 +1060,20 @@ const markAnnouncementRead = async ({ viewer, announcementId }) => {
 };
 
 const getLotteryOptions = async (viewer = null) => {
-  if (viewer?.role === 'customer') {
-    const overview = await getCatalogOverview(viewer);
-    return overview.leagues.flatMap((league) =>
-      league.lotteries.map((lottery) => ({
-        id: lottery.id,
-        name: lottery.name,
-        code: lottery.code,
-        leagueId: league.id,
-        leagueName: league.name,
-        supportedBetTypes: lottery.supportedBetTypes || [],
-        roundId: lottery.activeRound?.id || null,
-        roundTitle: lottery.activeRound?.title || null,
-        defaultRateProfileId: lottery.defaultRateProfileId
-      }))
-    );
-  }
-
-  await ensureCatalogReady();
-
-  const [lotteries, rounds] = await Promise.all([
-    LotteryType.find({ isActive: true })
-      .sort({ sortOrder: 1, name: 1 })
-      .select('code name supportedBetTypes leagueId defaultRateProfileId')
-      .populate('leagueId', 'name')
-      .lean(),
-    DrawRound.find({ isActive: true, drawAt: { $gte: new Date(Date.now() - 5 * DAY_MS) } })
-      .sort({ drawAt: 1 })
-      .select('lotteryTypeId title drawAt closeAt')
-      .lean()
-  ]);
-
-  const roundsByLottery = rounds.reduce((acc, round) => {
-    const key = round.lotteryTypeId?.toString?.() || String(round.lotteryTypeId || '');
-    if (!key) return acc;
-    acc[key] = acc[key] || [];
-    acc[key].push(round);
-    return acc;
-  }, {});
-  const now = new Date();
-
-  return lotteries.map((lottery) => {
-    const lotteryRounds = roundsByLottery[lottery._id.toString()] || [];
-    const activeRound =
-      lotteryRounds.find((round) => now <= round.closeAt) ||
-      lotteryRounds.find((round) => now <= round.drawAt) ||
-      lotteryRounds[0] ||
-      null;
-
-    return {
-      id: lottery._id.toString(),
+  const overview = await getCatalogOverview(viewer);
+  return (overview.leagues || []).flatMap((league) =>
+    (league.lotteries || []).map((lottery) => ({
+      id: lottery.id,
       name: lottery.name,
       code: lottery.code,
-      leagueId: lottery.leagueId?._id?.toString?.() || lottery.leagueId?.toString?.() || '',
-      leagueName: lottery.leagueId?.name || '',
+      leagueId: league.id,
+      leagueName: league.name,
       supportedBetTypes: lottery.supportedBetTypes || [],
-      roundId: activeRound?._id?.toString?.() || null,
-      roundTitle: activeRound?.title || null,
-      defaultRateProfileId: lottery.defaultRateProfileId?.toString?.() || null
-    };
-  });
+      roundId: lottery.activeRound?.id || null,
+      roundTitle: lottery.activeRound?.title || null,
+      defaultRateProfileId: lottery.defaultRateProfileId
+    }))
+  );
 };
 
 const getRoundsByLottery = async (lotteryId, viewer = null) => {
@@ -1091,6 +1124,7 @@ module.exports = {
   ensureCatalogSeed,
   ensureCatalogReady,
   clearCatalogOverviewCache,
+  clearCatalogOverviewCacheForUsers,
   getCatalogOverview,
   rebuildCatalogOverviewSnapshot,
   rebuildOperatorCatalogOverviewSnapshots,

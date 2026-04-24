@@ -1,12 +1,12 @@
-import { useEffect, useMemo, useState } from 'react';
+import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
-import { FiArrowLeft, FiDollarSign, FiPhone, FiRefreshCw, FiRepeat, FiSave, FiWifi } from 'react-icons/fi';
+import { FiArrowLeft, FiDollarSign, FiPhone, FiRefreshCw, FiSave, FiWifi } from 'react-icons/fi';
 import PageSkeleton, { SectionSkeleton } from '../../components/PageSkeleton';
 import { useAuth } from '../../context/AuthContext';
 import { agentCopy } from '../../i18n/th/agent';
-import { getBetTypeLabel, getUserStatusLabel, getWalletDirectionLabel, getWalletEntryTypeLabel, getWalletReasonLabel } from '../../i18n/th/labels';
-import { getAgentMemberBootstrap, getAgentMemberDetail, getWalletHistory, getWalletSummary, transferWalletCredit, updateAgentMemberProfile } from '../../services/api';
+import { getBetTypeLabel, getUserStatusLabel } from '../../i18n/th/labels';
+import { getAgentMemberDetail, getWalletHistory, getWalletSummary, transferWalletCredit, updateAgentMemberProfile } from '../../services/api';
 import { formatDateTime, formatMoney as money, toNumber } from '../../utils/formatters';
 import { MEMBER_WALLET_TAB, shouldLoadMemberWalletSection } from '../../utils/memberDetailLoading';
 import {
@@ -21,12 +21,18 @@ import {
 const tabs = ['ข้อมูลทั่วไป', 'สิทธิ์หวย', 'กระเป๋า'];
 const statusOptions = ['active', 'inactive', 'suspended'];
 const betTypeKeys = ['3top', '3front', '3bottom', '3tod', '2top', '2bottom', 'run_top', 'run_bottom', 'lao_set4'];
+const AgentMemberWalletSection = lazy(() => import('./AgentMemberWalletSection'));
+const buildFormBootstrapFromDetail = (detail) => ({
+  defaults: {},
+  rateProfiles: detail?.rateProfiles || [],
+  lotteries: detail?.lotteryConfigs || []
+});
 
 const AgentMemberDetail = () => {
   const navigate = useNavigate();
   const { memberId } = useParams();
   const { checkAuth } = useAuth();
-  const [bootstrap, setBootstrap] = useState(null);
+  const detailRequestRef = useRef(0);
   const [detail, setDetail] = useState(null);
   const [form, setForm] = useState(null);
   const [tab, setTab] = useState('ข้อมูลทั่วไป');
@@ -41,14 +47,20 @@ const AgentMemberDetail = () => {
   const [walletEntries, setWalletEntries] = useState([]);
   const [transferForm, setTransferForm] = useState({ direction: 'to_member', amount: '', note: '' });
 
-  const load = async (silent = false) => {
+  const load = async (silent = false, { force = false } = {}) => {
+    const requestId = ++detailRequestRef.current;
     if (!silent) setLoading(true);
     try {
-      const [bootstrapRes, detailRes] = await Promise.all([getAgentMemberBootstrap(), getAgentMemberDetail(memberId)]);
-      setBootstrap(bootstrapRes.data);
-      setDetail(detailRes.data);
-      setForm(createMemberFormFromDetail(detailRes.data, bootstrapRes.data));
+      const nextDetail = await getAgentMemberDetail(memberId, { force }).then((response) => response.data);
+      if (requestId !== detailRequestRef.current) {
+        return;
+      }
+      setDetail(nextDetail);
+      setForm(createMemberFormFromDetail(nextDetail, buildFormBootstrapFromDetail(nextDetail)));
     } catch (error) {
+      if (requestId !== detailRequestRef.current) {
+        return;
+      }
       console.error(error);
       toast.error(error.response?.data?.message || 'โหลดข้อมูลสมาชิกไม่สำเร็จ');
       navigate('/agent/customers');
@@ -78,6 +90,8 @@ const AgentMemberDetail = () => {
   };
 
   useEffect(() => {
+    setDetail(null);
+    setForm(null);
     setAgentWallet(null);
     setMemberWallet(null);
     setWalletEntries([]);
@@ -94,7 +108,10 @@ const AgentMemberDetail = () => {
     loadWalletData();
   }, [tab, walletLoaded, walletLoading, memberId]);
 
-  const groupedLotteries = useMemo(() => groupLotterySettingsByLeague(form?.lotterySettings || []), [form?.lotterySettings]);
+  const groupedLotteries = useMemo(
+    () => (tab === 'à¸ªà¸´à¸—à¸˜à¸´à¹Œà¸«à¸§à¸¢' ? groupLotterySettingsByLeague(form?.lotterySettings || []) : {}),
+    [form?.lotterySettings, tab]
+  );
   const updateAccount = (field, value) => setForm((current) => ({ ...current, account: { ...current.account, [field]: value } }));
   const updateProfile = (field, value) => setForm((current) => ({ ...current, profile: { ...current.profile, [field]: value } }));
   const patchLottery = (lotteryTypeId, patch) => setForm((current) => ({ ...current, lotterySettings: updateLotterySetting(current.lotterySettings, lotteryTypeId, patch) }));
@@ -114,7 +131,7 @@ const AgentMemberDetail = () => {
     try {
       const res = await updateAgentMemberProfile(memberId, buildMemberFormPayload(form));
       setDetail(res.data);
-      setForm(createMemberFormFromDetail(res.data, bootstrap));
+      setForm(createMemberFormFromDetail(res.data, buildFormBootstrapFromDetail(res.data)));
       toast.success('อัปเดตข้อมูลสมาชิกแล้ว');
     } catch (error) {
       console.error(error);
@@ -127,7 +144,7 @@ const AgentMemberDetail = () => {
   const refresh = async () => {
     setRefreshing(true);
     try {
-      const tasks = [load(true)];
+      const tasks = [load(true, { force: true })];
       if (walletLoaded || tab === MEMBER_WALLET_TAB) {
         tasks.push(loadWalletData(true));
       }
@@ -149,7 +166,7 @@ const AgentMemberDetail = () => {
     try {
       await transferWalletCredit({ memberId, direction: transferForm.direction, amount, note: transferForm.note });
       setTransferForm({ direction: transferForm.direction, amount: '', note: '' });
-      await Promise.all([load(true), loadWalletData(true), checkAuth()]);
+      await Promise.all([load(true, { force: true }), loadWalletData(true), checkAuth()]);
       toast.success('โอนเครดิตเรียบร้อย');
     } catch (error) {
       console.error(error);
@@ -162,6 +179,7 @@ const AgentMemberDetail = () => {
   if (loading || !form || !detail) return <PageSkeleton statCount={4} rows={5} sidebar compactSidebar />;
 
   const member = detail.member;
+  const rateProfiles = detail?.rateProfiles || [];
 
   return (
     <div className="agent-member-detail animate-fade-in">
@@ -222,7 +240,7 @@ const AgentMemberDetail = () => {
             <label><span>ชื่อแสดงผล</span><input value={form.account.name} onChange={(event) => updateAccount('name', event.target.value)} /></label>
             <label><span>เบอร์โทร</span><input value={form.account.phone} onChange={(event) => updateAccount('phone', event.target.value)} /></label>
             <label><span>สถานะ</span><select value={form.profile.status} onChange={(event) => updateProfile('status', event.target.value)}>{statusOptions.map((status) => <option key={status} value={status}>{getUserStatusLabel(status)}</option>)}</select></label>
-            <label><span>เรทเริ่มต้น</span><select value={form.profile.defaultRateProfileId} onChange={(event) => updateProfile('defaultRateProfileId', event.target.value)}>{(bootstrap?.rateProfiles || []).map((profile) => <option key={profile.id} value={profile.id}>{profile.name}</option>)}</select></label>
+            <label><span>เรทเริ่มต้น</span><select value={form.profile.defaultRateProfileId} onChange={(event) => updateProfile('defaultRateProfileId', event.target.value)}>{rateProfiles.map((profile) => <option key={profile.id} value={profile.id}>{profile.name}</option>)}</select></label>
             <label><span>หุ้น %</span><input type="number" min="0" max="100" value={form.profile.stockPercent} onChange={(event) => updateProfile('stockPercent', event.target.value)} /></label>
             <label><span>เจ้าของ %</span><input type="number" min="0" max="100" value={form.profile.ownerPercent} onChange={(event) => updateProfile('ownerPercent', event.target.value)} /></label>
             <label><span>เก็บ %</span><input type="number" min="0" max="100" value={form.profile.keepPercent} onChange={(event) => updateProfile('keepPercent', event.target.value)} /></label>
@@ -301,54 +319,18 @@ const AgentMemberDetail = () => {
 
       {tab === 'กระเป๋า' ? (
         <section className="detail-stack">
-          {walletLoading ? <SectionSkeleton rows={5} /> : (
-            <>
-              <section className="detail-summary-grid">
-                <article className="detail-summary-card"><span>ยอดเจ้ามือ</span><strong>{money(agentWallet?.account?.creditBalance)}</strong><small>กระเป๋าเจ้ามือ</small></article>
-                <article className="detail-summary-card"><span>ยอดสมาชิก</span><strong>{money(memberWallet?.account?.creditBalance)}</strong><small>กระเป๋าสมาชิก</small></article>
-                <article className="detail-summary-card"><span>เครดิตเข้า</span><strong>{money(memberWallet?.totals?.totalCreditIn)}</strong><small>ยอดรับเครดิตสะสม</small></article>
-                <article className="detail-summary-card"><span>รายการในสมุดเครดิต</span><strong>{money(memberWallet?.totals?.transactionCount)}</strong><small>จำนวนแถวประวัติ</small></article>
-              </section>
-
-              <section className="wallet-grid">
-                <section className="card detail-panel">
-                  <div className="panel-head"><div><div className="panel-eyebrow">จัดการเครดิต</div><h3 className="card-title">โอนเครดิต</h3></div></div>
-                  <form className="detail-stack" onSubmit={submitTransfer}>
-                    <div className="detail-grid">
-                      <label><span>ทิศทาง</span><select value={transferForm.direction} onChange={(event) => setTransferForm((current) => ({ ...current, direction: event.target.value }))}><option value="to_member">จากเจ้ามือไปสมาชิก</option><option value="from_member">จากสมาชิกไปเจ้ามือ</option></select></label>
-                      <label><span>จำนวนเครดิต</span><input type="number" min="0" step="0.01" value={transferForm.amount} onChange={(event) => setTransferForm((current) => ({ ...current, amount: event.target.value }))} /></label>
-                      <label className="full"><span>หมายเหตุ</span><textarea rows="4" value={transferForm.note} onChange={(event) => setTransferForm((current) => ({ ...current, note: event.target.value }))} placeholder={agentCopy.memberDetail.walletNotePlaceholder} /></label>
-                    </div>
-                    <div className="inline-actions"><button className="btn btn-primary" type="submit" disabled={walletSubmitting}><FiRepeat />{walletSubmitting ? 'กำลังโอน...' : 'ยืนยันโอนเครดิต'}</button></div>
-                  </form>
-                </section>
-
-                <section className="card detail-panel">
-                  <div className="panel-head"><div><div className="panel-eyebrow">ประวัติสมุดเครดิต</div><h3 className="card-title">ความเคลื่อนไหวล่าสุด</h3></div></div>
-                  {walletEntries.length === 0 ? <div className="empty-state"><div className="empty-state-text">{agentCopy.memberDetail.noWalletActivity}</div></div> : (
-                    <div className="detail-stack">
-                      {walletEntries.map((entry) => (
-                        <article key={entry.id} className={`wallet-row wallet-${entry.direction}`}>
-                          <div className="wallet-main">
-                            <div className="wallet-topline">
-                              <strong>{getWalletEntryTypeLabel(entry.entryType)}</strong>
-                              <span className={`wallet-direction-pill wallet-direction-${entry.direction}`}>{getWalletDirectionLabel(entry.direction)}</span>
-                            </div>
-                            <div className="wallet-meta">{entry.counterparty?.name || entry.performedBy?.name || agentCopy.memberDetail.systemActor} • {getWalletReasonLabel(entry.reasonCode)} • คงเหลือ {money(entry.balanceAfter)}</div>
-                            {entry.note ? <div className="wallet-note-text">{entry.note}</div> : null}
-                          </div>
-                          <div className="wallet-right">
-                            <strong className={entry.direction === 'credit' ? 'wallet-credit-text' : 'wallet-debit-text'}>{entry.direction === 'credit' ? '+' : '-'}{money(entry.amount)}</strong>
-                            <span>{formatDateTime(entry.createdAt, { fallback: agentCopy.memberDetail.noRecentActivity })}</span>
-                          </div>
-                        </article>
-                      ))}
-                    </div>
-                  )}
-                </section>
-              </section>
-            </>
-          )}
+          <Suspense fallback={<SectionSkeleton rows={5} />}>
+            <AgentMemberWalletSection
+              walletLoading={walletLoading}
+              agentWallet={agentWallet}
+              memberWallet={memberWallet}
+              walletEntries={walletEntries}
+              transferForm={transferForm}
+              setTransferForm={setTransferForm}
+              submitTransfer={submitTransfer}
+              walletSubmitting={walletSubmitting}
+            />
+          </Suspense>
         </section>
       ) : null}
 

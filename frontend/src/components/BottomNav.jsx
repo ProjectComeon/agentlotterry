@@ -1,6 +1,6 @@
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { preloadAppRouteForPath, warmAppRouteDataForPath } from '../utils/appPreload';
+import { preloadAppRouteForPath } from '../utils/appPreload';
 import {
   FiAward,
   FiDollarSign,
@@ -37,7 +37,6 @@ const BottomNav = () => {
 
   const preloadItem = (path) => {
     preloadAppRouteForPath(path, user?.role);
-    warmAppRouteDataForPath(path, user?.role);
   };
 
   if (!visibleItems) return null;

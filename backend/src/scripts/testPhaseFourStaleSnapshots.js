@@ -11,7 +11,8 @@ const schedulerService = read('services/readModelSnapshotService.js');
 
 assert(catalogService.includes('CATALOG_OVERVIEW_STALE_MAX_MS'), 'catalog service must define a max stale window');
 assert(catalogService.includes('loadCatalogOverviewSnapshotState'), 'catalog service must load snapshot freshness metadata');
-assert(catalogService.includes('allowStale: true'), 'catalog read path must allow stale persistent snapshots');
+assert(catalogService.includes("viewer?.role !== 'customer'"), 'catalog read path must keep customer betting snapshots fresh-only');
+assert(catalogService.includes('allowStale: allowStaleSnapshot'), 'catalog read path must allow stale persistent snapshots for non-customer readers');
 assert(catalogService.includes('catalog-stale-memory-read'), 'catalog read path must serve stale memory snapshots and refresh in background');
 assert(catalogService.includes('catalog-stale-persistent-read'), 'catalog read path must serve stale persistent snapshots and refresh in background');
 assert(catalogService.includes("targets: ['catalog']"), 'catalog stale reads should schedule catalog-only rebuilds');

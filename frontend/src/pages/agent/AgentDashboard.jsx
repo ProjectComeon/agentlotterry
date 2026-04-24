@@ -9,15 +9,40 @@ import { agentCopy } from '../../i18n/th/agent';
 import { getBetResultLabel, getBetTypeLabel } from '../../i18n/th/labels';
 import { getAgentDashboard } from '../../services/api';
 import { groupRecentBetsBySlip } from '../../utils/recentSlipGroups';
-import { copySavedSlipImage } from '../../utils/slipImage';
 import { formatDateTime, formatMoney as money } from '../../utils/formatters';
 
 const AgentDashboard = () => {
-  const { announcements, markAnnouncementRead } = useCatalog();
+  const { announcements, ensureCatalogLoaded, markAnnouncementRead } = useCatalog();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [selectedSlip, setSelectedSlip] = useState(null);
   const [copyingSlipImage, setCopyingSlipImage] = useState(false);
+
+  useEffect(() => {
+    let idleId = null;
+    let timeoutId = null;
+
+    const loadAnnouncements = () => {
+      void ensureCatalogLoaded?.({ includeAnnouncements: true });
+    };
+
+    if (typeof window !== 'undefined' && typeof window.requestIdleCallback === 'function') {
+      idleId = window.requestIdleCallback(loadAnnouncements, { timeout: 600 });
+    } else if (typeof window !== 'undefined') {
+      timeoutId = window.setTimeout(loadAnnouncements, 180);
+    } else {
+      loadAnnouncements();
+    }
+
+    return () => {
+      if (idleId !== null && typeof window !== 'undefined' && typeof window.cancelIdleCallback === 'function') {
+        window.cancelIdleCallback(idleId);
+      }
+      if (timeoutId !== null && typeof window !== 'undefined') {
+        window.clearTimeout(timeoutId);
+      }
+    };
+  }, [ensureCatalogLoaded]);
 
   useEffect(() => {
     const load = async () => {
@@ -79,6 +104,7 @@ const AgentDashboard = () => {
     if (!selectedSlip) return;
     setCopyingSlipImage(true);
     try {
+      const { copySavedSlipImage } = await import('../../utils/slipImage');
       const result = await copySavedSlipImage({
         slip: {
           ...selectedSlip,

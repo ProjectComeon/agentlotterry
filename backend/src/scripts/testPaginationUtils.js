@@ -76,4 +76,25 @@ assert.deepStrictEqual(
   }
 );
 
+assert.deepStrictEqual(
+  buildPaginatedResult(['a'], {
+    total: 19,
+    page: 1,
+    limit: 18,
+    totalPages: 2,
+    hasNextPage: true
+  }),
+  {
+    items: ['a'],
+    pagination: {
+      page: 1,
+      limit: 18,
+      total: 19,
+      totalPages: 2,
+      hasPrevPage: false,
+      hasNextPage: true
+    }
+  }
+);
+
 console.log('testPaginationUtils: ok');

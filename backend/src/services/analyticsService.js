@@ -5,7 +5,61 @@ const { Types } = require('mongoose');
 const { normalizeLotteryCode } = require('../utils/lotteryCode');
 const { buildPaginatedResult } = require('../utils/pagination');
 
+const DEFAULT_ANALYTICS_READ_CACHE_TTL_MS = 5000;
+const analyticsReadCacheTtlMs = Math.max(
+  0,
+  Number(process.env.ANALYTICS_READ_CACHE_TTL_MS || DEFAULT_ANALYTICS_READ_CACHE_TTL_MS)
+);
+const analyticsReadCache = new Map();
+const analyticsReadInFlight = new Map();
+
 const toObjectId = (value) => (Types.ObjectId.isValid(value) ? new Types.ObjectId(value) : value);
+
+const buildAnalyticsReadCacheKey = (scope, params = {}) =>
+  `${scope}:${JSON.stringify(
+    Object.entries(params)
+      .filter(([, value]) => value !== undefined)
+      .sort(([left], [right]) => left.localeCompare(right))
+  )}`;
+
+const loadWithAnalyticsReadCache = async (key, loader) => {
+  if (!analyticsReadCacheTtlMs) {
+    return loader();
+  }
+
+  const now = Date.now();
+  const cached = analyticsReadCache.get(key);
+  if (cached && cached.expiresAt > now) {
+    return cached.value;
+  }
+
+  if (analyticsReadInFlight.has(key)) {
+    return analyticsReadInFlight.get(key);
+  }
+
+  const promise = Promise.resolve()
+    .then(loader)
+    .then((value) => {
+      analyticsReadCache.set(key, {
+        value,
+        expiresAt: Date.now() + analyticsReadCacheTtlMs
+      });
+      analyticsReadInFlight.delete(key);
+      return value;
+    })
+    .catch((error) => {
+      analyticsReadInFlight.delete(key);
+      throw error;
+    });
+
+  analyticsReadInFlight.set(key, promise);
+  return promise;
+};
+
+const clearAnalyticsReadCache = () => {
+  analyticsReadCache.clear();
+  analyticsReadInFlight.clear();
+};
 
 const buildSubmittedItemMatch = ({ agentId, customerId, startDate, endDate } = {}) => {
   const match = { status: 'submitted' };
@@ -123,6 +177,46 @@ const mapUserReference = (user) => {
   };
 };
 
+const getReferenceKey = (value) => value?._id?.toString?.() || value?.toString?.() || String(value || '');
+
+const loadUserReferenceMap = async (userIds = []) => {
+  const ids = [...new Set(userIds.map(getReferenceKey).filter(Boolean))];
+  if (!ids.length) {
+    return {};
+  }
+
+  const users = await User.find({ _id: { $in: ids } })
+    .select('name username')
+    .lean();
+
+  return users.reduce((acc, user) => {
+    acc[user._id.toString()] = user;
+    return acc;
+  }, {});
+};
+
+const attachUserReferences = async (items = []) => {
+  const userIds = new Set();
+  items.forEach((item) => {
+    const customerId = getReferenceKey(item.customerId);
+    const agentId = getReferenceKey(item.agentId);
+    if (customerId) userIds.add(customerId);
+    if (agentId) userIds.add(agentId);
+  });
+
+  if (!userIds.size) {
+    return items;
+  }
+
+  const usersById = await loadUserReferenceMap([...userIds]);
+
+  return items.map((item) => ({
+    ...item,
+    customerId: usersById[getReferenceKey(item.customerId)] || item.customerId,
+    agentId: usersById[getReferenceKey(item.agentId)] || item.agentId
+  }));
+};
+
 const mapBetItemToLegacyShape = (item) => ({
   _id: item._id.toString(),
   customerId: mapUserReference(item.customerId),
@@ -146,6 +240,58 @@ const mapBetItemToLegacyShape = (item) => ({
   createdAt: item.createdAt,
   updatedAt: item.updatedAt
 });
+
+const mapBetItemToSlipSummaryItem = (item) => ({
+  _id: item._id?.toString?.() || String(item._id || ''),
+  betType: item.betType,
+  number: item.number,
+  amount: item.amount,
+  payRate: item.payRate,
+  potentialPayout: item.potentialPayout,
+  sequence: Number.isFinite(Number(item.sequence)) ? Number(item.sequence) : null,
+  result: item.result,
+  wonAmount: item.wonAmount || 0,
+  isLocked: item.isLocked,
+  createdAt: item.createdAt,
+  updatedAt: item.updatedAt
+});
+
+const mapSlipToSummaryShape = ({ slip, items = [], usersById = {} }) => {
+  const sortedItems = sortSlipItemsForDisplay(items);
+  const totalStake = sortedItems.reduce((sum, item) => sum + Number(item.amount || 0), 0);
+  const totalWon = sortedItems.reduce((sum, item) => sum + Number(item.wonAmount || 0), 0);
+  const totalPotentialPayout = sortedItems.reduce((sum, item) => sum + Number(item.potentialPayout || 0), 0);
+  const hasPending = sortedItems.some((item) => (item.result || 'pending') === 'pending');
+  const hasWon = sortedItems.some((item) => (item.result || 'pending') === 'won' || Number(item.wonAmount || 0) > 0);
+  const slipId = slip._id?.toString?.() || String(slip._id || '');
+  const customer = usersById[getReferenceKey(slip.customerId)] || slip.customerId;
+  const agent = usersById[getReferenceKey(slip.agentId)] || slip.agentId;
+
+  return {
+    key: slipId,
+    slipId,
+    slipNumber: slip.slipNumber || '',
+    customer: mapUserReference(customer),
+    agent: mapUserReference(agent),
+    marketId: slip.lotteryCode || '',
+    marketName: slip.lotteryName || '',
+    roundDate: slip.roundCode || '',
+    roundLabel: slip.roundTitle || slip.roundCode || '',
+    roundTitle: slip.roundTitle || '',
+    createdAt: slip.createdAt,
+    updatedAt: slip.updatedAt,
+    memo: slip.memo || '',
+    totalStake,
+    totalWon,
+    totalPotentialPayout,
+    result: hasPending ? 'pending' : hasWon ? 'won' : 'lost',
+    hasPending,
+    hasWon,
+    canCancel: hasPending,
+    itemCount: Number(slip.itemCount || sortedItems.length || 0),
+    items: sortedItems.map(mapBetItemToSlipSummaryItem)
+  };
+};
 
 const sortSlipItemsForDisplay = (items = []) =>
   [...items].sort((left, right) => {
@@ -250,7 +396,8 @@ const getTotalsGroupedByField = async (field, match = {}, { scopedIds = [] } = {
   }, {});
 };
 
-const getAgentReportRows = async ({ agentId, roundDate, marketId, startDate, endDate } = {}) => {
+const getAgentReportRows = async ({ agentId, roundDate, marketId, startDate, endDate, limit = 200 } = {}) => {
+  const safeLimit = Math.min(Math.max(Number(limit) || 200, 1), 500);
   const pipeline = buildItemWithSlipPipeline({ agentId, roundDate, marketId, startDate, endDate });
 
   pipeline.push(
@@ -272,47 +419,14 @@ const getAgentReportRows = async ({ agentId, roundDate, marketId, startDate, end
     }
   );
 
-  if (!agentId) {
-    pipeline.push(
-      {
-        $lookup: {
-          from: User.collection.name,
-          localField: '_id.agentId',
-          foreignField: '_id',
-          as: 'agent'
-        }
-      },
-      {
-        $unwind: {
-          path: '$agent',
-          preserveNullAndEmptyArrays: true
-        }
-      },
-      {
-        $project: {
-          _id: 0,
-          roundDate: '$_id.roundDate',
-          marketId: '$_id.marketId',
-          marketName: '$_id.marketName',
-          agentName: '$agent.name',
-          agentUsername: '$agent.username',
-          totalAmount: 1,
-          totalWon: 1,
-          netProfit: { $subtract: ['$totalAmount', '$totalWon'] },
-          betCount: 1,
-          wonCount: 1,
-          lostCount: 1,
-          pendingCount: 1
-        }
-      }
-    );
-  } else {
-    pipeline.push({
+  pipeline.push(
+    {
       $project: {
         _id: 0,
         roundDate: '$_id.roundDate',
         marketId: '$_id.marketId',
         marketName: '$_id.marketName',
+        agentId: '$_id.agentId',
         totalAmount: 1,
         totalWon: 1,
         netProfit: { $subtract: ['$totalAmount', '$totalWon'] },
@@ -321,22 +435,145 @@ const getAgentReportRows = async ({ agentId, roundDate, marketId, startDate, end
         lostCount: 1,
         pendingCount: 1
       }
-    });
-  }
+    },
+    {
+      $sort: {
+        roundDate: -1,
+        marketName: 1
+      }
+    },
+    { $limit: safeLimit }
+  );
 
-  pipeline.push({
-    $sort: {
-      roundDate: -1,
-      marketName: 1
-    }
+  const rows = await BetItem.aggregate(pipeline);
+  const usersById = await loadUserReferenceMap(rows.map((row) => row.agentId));
+
+  return rows.map((row) => {
+    const agent = usersById[getReferenceKey(row.agentId)] || {};
+    return {
+      ...row,
+      agentId: getReferenceKey(row.agentId),
+      agentName: agent.name || '',
+      agentUsername: agent.username || ''
+    };
   });
-
-  return BetItem.aggregate(pipeline);
 };
 
-const getAgentReportOverview = async ({ agentId, customerId, roundDate, marketId, startDate, endDate } = {}) => {
+const ADMIN_REPORT_SECTION_NAMES = new Set([
+  'overview',
+  'rows'
+]);
+
+const normalizeAdminReportSections = (sections = []) => {
+  const rawSections = Array.isArray(sections)
+    ? sections
+    : String(sections || '').split(',');
+
+  return new Set(
+    rawSections
+      .map((section) => String(section || '').trim())
+      .filter((section) => ADMIN_REPORT_SECTION_NAMES.has(section))
+  );
+};
+
+const createEmptyAdminReportOverview = () => ({
+  totalAmount: 0,
+  totalWon: 0,
+  betCount: 0,
+  wonCount: 0,
+  lostCount: 0,
+  pendingCount: 0,
+  totalAgents: 0,
+  netProfit: 0
+});
+
+const getAdminReportOverview = async ({ agentId, roundDate, marketId, startDate, endDate } = {}) => {
+  const needsSlipLookup = Boolean(roundDate || marketId);
+  const basePipeline = needsSlipLookup
+    ? buildItemWithSlipPipeline({ agentId, roundDate, marketId, startDate, endDate })
+    : [{ $match: buildSubmittedItemMatch({ agentId, startDate, endDate }) }];
+
   const rows = await BetItem.aggregate([
-    ...buildItemWithSlipPipeline({ agentId, customerId, roundDate, marketId, startDate, endDate }),
+    ...basePipeline,
+    {
+      $group: {
+        _id: null,
+        totalAmount: { $sum: '$amount' },
+        totalWon: { $sum: '$wonAmount' },
+        betCount: { $sum: 1 },
+        wonCount: { $sum: { $cond: [{ $eq: ['$result', 'won'] }, 1, 0] } },
+        lostCount: { $sum: { $cond: [{ $eq: ['$result', 'lost'] }, 1, 0] } },
+        pendingCount: { $sum: { $cond: [{ $eq: ['$result', 'pending'] }, 1, 0] } },
+        agentIds: { $addToSet: '$agentId' }
+      }
+    }
+  ]);
+
+  const summary = rows[0];
+  if (!summary) {
+    return createEmptyAdminReportOverview();
+  }
+
+  return {
+    totalAmount: summary.totalAmount || 0,
+    totalWon: summary.totalWon || 0,
+    betCount: summary.betCount || 0,
+    wonCount: summary.wonCount || 0,
+    lostCount: summary.lostCount || 0,
+    pendingCount: summary.pendingCount || 0,
+    totalAgents: summary.agentIds?.length || 0,
+    netProfit: (summary.totalAmount || 0) - (summary.totalWon || 0)
+  };
+};
+
+const getAdminReportsBundle = async ({ agentId, roundDate, marketId, startDate, endDate, limit = 200, sections } = {}) =>
+  loadWithAnalyticsReadCache(
+    buildAnalyticsReadCacheKey('admin-reports-bundle', {
+      agentId: agentId?.toString?.() || agentId || '',
+      roundDate: roundDate || '',
+      marketId: normalizeLotteryCode(marketId),
+      startDate: startDate || '',
+      endDate: endDate || '',
+      limit,
+      sections: Array.isArray(sections) ? sections.join(',') : String(sections || '')
+    }),
+    async () => {
+      const sectionSet = normalizeAdminReportSections(sections);
+      const includeAllSections = sectionSet.size === 0;
+      const shouldLoad = (section) => includeAllSections || sectionSet.has(section);
+      const [overview, rows] = await Promise.all([
+        shouldLoad('overview')
+          ? getAdminReportOverview({ agentId, roundDate, marketId, startDate, endDate })
+          : Promise.resolve(null),
+        shouldLoad('rows')
+          ? getAgentReportRows({ agentId, roundDate, marketId, startDate, endDate, limit })
+          : Promise.resolve(null)
+      ]);
+
+      return {
+        generatedAt: new Date().toISOString(),
+        filters: {
+          roundDate: roundDate || '',
+          marketId: normalizeLotteryCode(marketId),
+          agentId: agentId || '',
+          startDate: startDate || '',
+          endDate: endDate || ''
+        },
+        overview: overview || createEmptyAdminReportOverview(),
+        rows: rows || [],
+        loadedSections: includeAllSections ? [...ADMIN_REPORT_SECTION_NAMES] : [...sectionSet]
+      };
+    }
+  );
+
+const getAgentReportOverview = async ({ agentId, customerId, roundDate, marketId, startDate, endDate } = {}) => {
+  const needsSlipLookup = Boolean(roundDate || marketId);
+  const basePipeline = needsSlipLookup
+    ? buildItemWithSlipPipeline({ agentId, customerId, roundDate, marketId, startDate, endDate })
+    : [{ $match: buildSubmittedItemMatch({ agentId, customerId, startDate, endDate }) }];
+
+  const rows = await BetItem.aggregate([
+    ...basePipeline,
     {
       $group: {
         _id: null,
@@ -572,72 +809,152 @@ const listAgentReportItems = async ({
   limit = 100,
   sort = { createdAt: -1 }
 } = {}) => {
-  const slipIds = await BetSlip.find(
+  const slips = await BetSlip.find(
     buildSlipMatch({ agentId, customerId, roundDate, marketId })
-  ).select('_id');
+  )
+    .select('_id slipNumber lotteryCode lotteryName roundCode roundTitle')
+    .lean();
 
-  if (!slipIds.length) {
+  if (!slips.length) {
     return [];
   }
+  const slipById = slips.reduce((acc, slip) => {
+    acc[slip._id.toString()] = slip;
+    return acc;
+  }, {});
 
-  const items = await BetItem.find({
+  const rawItems = await BetItem.find({
     ...buildSubmittedItemMatch({ agentId, customerId, startDate, endDate }),
     ...(result ? { result } : {}),
-    slipId: { $in: slipIds.map((item) => item._id) }
+    slipId: { $in: slips.map((item) => item._id) }
   })
+    .select('_id customerId agentId slipId betType number amount payRate potentialPayout sequence result wonAmount isLocked createdAt updatedAt')
     .sort(sort)
     .limit(limit)
-    .populate('customerId', 'name username')
-    .populate('agentId', 'name username')
-    .populate('slipId', 'slipNumber lotteryCode lotteryName roundCode roundTitle');
+    .lean();
+  const items = await attachUserReferences(rawItems);
 
   return items.map((item) => ({
-    ...mapBetItemToLegacyShape(item),
+    ...mapBetItemToLegacyShape({
+      ...item,
+      slipId: slipById[getReferenceKey(item.slipId)] || item.slipId
+    }),
     netRisk: (item.potentialPayout || 0) - (item.amount || 0)
   }));
 };
 
-const getAgentReportsBundle = async ({ agentId, roundDate, marketId, customerId, startDate, endDate } = {}) => {
-  const [overview, salesSummary, projectedRows, exposureRows, profitLossRows, pendingRows, winnerRows] = await Promise.all([
-    getAgentReportOverview({ agentId, customerId, roundDate, marketId, startDate, endDate }),
-    getAgentSalesSummary({ agentId, customerId, roundDate, marketId, startDate, endDate }),
-    getAgentProjectedRows({ agentId, customerId, roundDate, marketId, startDate, endDate }),
-    getAgentExposureRows({ agentId, customerId, roundDate, marketId, startDate, endDate }),
-    getAgentProfitLossRows({ agentId, customerId, roundDate, marketId, startDate, endDate }),
-    listAgentReportItems({ agentId, roundDate, customerId, marketId, startDate, endDate, result: 'pending', limit: 100, sort: { potentialPayout: -1, createdAt: -1 } }),
-    listAgentReportItems({ agentId, roundDate, customerId, marketId, startDate, endDate, result: 'won', limit: 100, sort: { wonAmount: -1, createdAt: -1 } })
-  ]);
+const REPORT_SECTION_NAMES = new Set([
+  'overview',
+  'salesSummary',
+  'projectedRows',
+  'exposureRows',
+  'profitLossRows',
+  'pendingRows',
+  'winnerRows'
+]);
 
-  return {
-    generatedAt: new Date().toISOString(),
-    filters: {
+const normalizeReportSections = (sections = []) => {
+  const rawSections = Array.isArray(sections)
+    ? sections
+    : String(sections || '').split(',');
+
+  return new Set(
+    rawSections
+      .map((section) => String(section || '').trim())
+      .filter((section) => REPORT_SECTION_NAMES.has(section))
+  );
+};
+
+const createEmptyReportOverview = () => ({
+  totalSales: 0,
+  totalPayout: 0,
+  totalPotentialPayout: 0,
+  totalItems: 0,
+  totalSlips: 0,
+  totalCustomers: 0,
+  wonItems: 0,
+  lostItems: 0,
+  pendingItems: 0,
+  pendingStake: 0,
+  pendingPotentialPayout: 0,
+  resolvedSales: 0,
+  resolvedPayout: 0,
+  resolvedNetProfit: 0,
+  projectedLiability: 0
+});
+
+const getAgentReportsBundle = async ({ agentId, roundDate, marketId, customerId, startDate, endDate, sections } = {}) =>
+  loadWithAnalyticsReadCache(
+    buildAnalyticsReadCacheKey('agent-reports-bundle', {
+      agentId: agentId?.toString?.() || agentId || '',
       roundDate: roundDate || '',
       marketId: normalizeLotteryCode(marketId),
       customerId: customerId || '',
       startDate: startDate || '',
-      endDate: endDate || ''
-    },
-    overview,
-    salesSummary,
-    projectedRows,
-    exposureRows,
-    profitLossRows,
-    pendingRows,
-    winnerRows,
-    legacyRows: salesSummary.map((row) => ({
-      roundDate: row.roundDate,
-      marketId: row.marketId,
-      marketName: row.marketName,
-      totalAmount: row.totalSales,
-      totalWon: row.totalPayout,
-      netProfit: row.netProfit,
-      betCount: row.itemCount,
-      wonCount: row.wonItems,
-      lostCount: row.lostItems,
-      pendingCount: row.pendingItems
-    }))
-  };
-};
+      endDate: endDate || '',
+      sections: Array.isArray(sections) ? sections.join(',') : String(sections || '')
+    }),
+    async () => {
+      const sectionSet = normalizeReportSections(sections);
+      const includeAllSections = sectionSet.size === 0;
+      const shouldLoad = (section) => includeAllSections || sectionSet.has(section);
+      const [overview, salesSummary, projectedRows, exposureRows, profitLossRows, pendingRows, winnerRows] = await Promise.all([
+        shouldLoad('overview')
+          ? getAgentReportOverview({ agentId, customerId, roundDate, marketId, startDate, endDate })
+          : Promise.resolve(null),
+        shouldLoad('salesSummary')
+          ? getAgentSalesSummary({ agentId, customerId, roundDate, marketId, startDate, endDate })
+          : Promise.resolve(null),
+        shouldLoad('projectedRows')
+          ? getAgentProjectedRows({ agentId, customerId, roundDate, marketId, startDate, endDate })
+          : Promise.resolve(null),
+        shouldLoad('exposureRows')
+          ? getAgentExposureRows({ agentId, customerId, roundDate, marketId, startDate, endDate })
+          : Promise.resolve(null),
+        shouldLoad('profitLossRows')
+          ? getAgentProfitLossRows({ agentId, customerId, roundDate, marketId, startDate, endDate })
+          : Promise.resolve(null),
+        shouldLoad('pendingRows')
+          ? listAgentReportItems({ agentId, roundDate, customerId, marketId, startDate, endDate, result: 'pending', limit: 100, sort: { potentialPayout: -1, createdAt: -1 } })
+          : Promise.resolve(null),
+        shouldLoad('winnerRows')
+          ? listAgentReportItems({ agentId, roundDate, customerId, marketId, startDate, endDate, result: 'won', limit: 100, sort: { wonAmount: -1, createdAt: -1 } })
+          : Promise.resolve(null)
+      ]);
+      const resolvedSalesSummary = salesSummary || [];
+
+      return {
+        generatedAt: new Date().toISOString(),
+        filters: {
+          roundDate: roundDate || '',
+          marketId: normalizeLotteryCode(marketId),
+          customerId: customerId || '',
+          startDate: startDate || '',
+          endDate: endDate || ''
+        },
+        overview: overview || createEmptyReportOverview(),
+        salesSummary: resolvedSalesSummary,
+        projectedRows: projectedRows || [],
+        exposureRows: exposureRows || [],
+        profitLossRows: profitLossRows || [],
+        pendingRows: pendingRows || [],
+        winnerRows: winnerRows || [],
+        loadedSections: includeAllSections ? [...REPORT_SECTION_NAMES] : [...sectionSet],
+        legacyRows: resolvedSalesSummary.map((row) => ({
+          roundDate: row.roundDate,
+          marketId: row.marketId,
+          marketName: row.marketName,
+          totalAmount: row.totalSales,
+          totalWon: row.totalPayout,
+          netProfit: row.netProfit,
+          betCount: row.itemCount,
+          wonCount: row.wonItems,
+          lostCount: row.lostItems,
+          pendingCount: row.pendingItems
+        }))
+      };
+    }
+  );
 
 const mapBetItemsBySlip = (items = []) => {
   const itemsBySlip = new Map();
@@ -670,78 +987,137 @@ const listAgentBetItems = async ({
   limit = 300,
   paginated = false,
   page = 1,
-  skip = 0
-} = {}) => {
-  if (paginated) {
-    const slipMatch = buildSlipMatch({ agentId, customerId, roundDate, marketId });
-    const [total, slips] = await Promise.all([
-      BetSlip.countDocuments(slipMatch),
-      BetSlip.find(slipMatch)
-        .sort({ createdAt: -1, _id: -1 })
-        .skip(skip)
-        .limit(limit)
-        .select('_id')
-        .lean()
-    ]);
+  skip = 0,
+  summary = false
+} = {}) =>
+  loadWithAnalyticsReadCache(
+    buildAnalyticsReadCacheKey('agent-bet-items', {
+      agentId: agentId?.toString?.() || agentId || '',
+      roundDate: roundDate || '',
+      customerId: customerId || '',
+      marketId: normalizeLotteryCode(marketId),
+      limit,
+      paginated,
+      page,
+      skip,
+      summary
+    }),
+    async () => {
+      if (paginated) {
+        const slipMatch = buildSlipMatch({ agentId, customerId, roundDate, marketId });
+        const slipsPlusOne = await BetSlip.find(slipMatch)
+          .sort({ createdAt: -1, _id: -1 })
+          .skip(skip)
+          .limit(limit + 1)
+          .select('_id customerId agentId slipNumber lotteryCode lotteryName roundCode roundTitle memo itemCount totalAmount potentialPayout createdAt updatedAt')
+          .lean();
+        const hasNextPage = slipsPlusOne.length > limit;
+        const slips = hasNextPage ? slipsPlusOne.slice(0, limit) : slipsPlusOne;
+        const estimatedTotal = skip + slips.length + (hasNextPage ? 1 : 0);
+        const totalPages = hasNextPage ? page + 1 : page;
 
-    if (!slips.length) {
-      return buildPaginatedResult([], { total, page, limit });
+        if (!slips.length) {
+          return buildPaginatedResult([], {
+            total: skip,
+            page,
+            limit,
+            totalPages: page,
+            hasNextPage: false
+          });
+        }
+
+        const orderedSlipIds = slips.map((slip) => slip._id.toString());
+        const slipById = slips.reduce((acc, slip) => {
+          acc[slip._id.toString()] = slip;
+          return acc;
+        }, {});
+        const [rawItems, usersById] = await Promise.all([
+          BetItem.find({
+            ...buildSubmittedItemMatch({ agentId, customerId }),
+            slipId: { $in: slips.map((slip) => slip._id) }
+          })
+            .select('_id customerId agentId slipId betType number amount payRate potentialPayout sequence result wonAmount isLocked createdAt updatedAt')
+            .lean(),
+          loadUserReferenceMap(slips.flatMap((slip) => [slip.customerId, slip.agentId]))
+        ]);
+        const items = rawItems.map((item) => ({
+          ...item,
+          customerId: usersById[getReferenceKey(item.customerId)] || item.customerId,
+          agentId: usersById[getReferenceKey(item.agentId)] || item.agentId
+        }));
+
+        if (summary) {
+          const itemsBySlip = mapBetItemsBySlip(items);
+          return buildPaginatedResult(
+            orderedSlipIds.map((slipId) =>
+              mapSlipToSummaryShape({
+                slip: slipById[slipId],
+                items: itemsBySlip.get(slipId) || [],
+                usersById
+              })
+            ),
+            {
+              total: estimatedTotal,
+              page,
+              limit,
+              totalPages,
+              hasNextPage
+            }
+          );
+        }
+
+        const itemsWithSlips = items.map((item) => {
+          const slipId = item.slipId?.toString?.() || String(item.slipId || '');
+          return {
+            ...item,
+            slipId: slipById[slipId] || item.slipId
+          };
+        });
+
+        return buildPaginatedResult(
+          formatItemsForOrderedSlips(orderedSlipIds, itemsWithSlips),
+          {
+            total: estimatedTotal,
+            page,
+            limit,
+            totalPages,
+            hasNextPage
+          }
+        );
+      }
+
+      const safeLimit = Math.min(Math.max(Number(limit) || 12, 1), 50);
+      const itemPipeline = buildItemWithSlipPipeline({ agentId, customerId, roundDate, marketId });
+      itemPipeline.push(
+        { $sort: { createdAt: -1, _id: -1 } },
+        { $limit: safeLimit },
+        {
+          $project: {
+            _id: 1,
+            customerId: 1,
+            agentId: 1,
+            slipId: '$slip',
+            betType: 1,
+            number: 1,
+            amount: 1,
+            payRate: 1,
+            potentialPayout: 1,
+            sequence: 1,
+            result: 1,
+            wonAmount: 1,
+            isLocked: 1,
+            createdAt: 1,
+            updatedAt: 1
+          }
+        }
+      );
+
+      const rawItems = await BetItem.aggregate(itemPipeline);
+      const items = await attachUserReferences(rawItems);
+
+      return items.map(mapBetItemToLegacyShape);
     }
-
-    const orderedSlipIds = slips.map((slip) => slip._id.toString());
-    const items = await BetItem.find({
-      ...buildSubmittedItemMatch({ agentId, customerId }),
-      slipId: { $in: orderedSlipIds }
-    })
-      .populate('customerId', 'name username')
-      .populate('agentId', 'name username')
-      .populate('slipId', 'slipNumber lotteryCode lotteryName roundCode roundTitle memo');
-
-    return buildPaginatedResult(
-      formatItemsForOrderedSlips(orderedSlipIds, items),
-      { total, page, limit }
-    );
-  }
-
-  const slipIds = await BetSlip.find(
-    buildSlipMatch({ agentId, customerId, roundDate, marketId })
-  ).select('_id');
-
-  if (!slipIds.length) {
-    return [];
-  }
-
-  const recentItems = await BetItem.find({
-    ...buildSubmittedItemMatch({ agentId, customerId }),
-    slipId: { $in: slipIds.map((item) => item._id) }
-  })
-    .sort({ createdAt: -1, _id: -1 })
-    .limit(limit)
-    .select('slipId');
-
-  if (!recentItems.length) {
-    return [];
-  }
-
-  const orderedSlipIds = [];
-  const seenSlipIds = new Set();
-  recentItems.forEach((item) => {
-    const slipId = item.slipId?.toString?.() || String(item.slipId || '');
-    if (!slipId || seenSlipIds.has(slipId)) return;
-    seenSlipIds.add(slipId);
-    orderedSlipIds.push(slipId);
-  });
-
-  const items = await BetItem.find({
-    ...buildSubmittedItemMatch({ agentId, customerId }),
-    slipId: { $in: orderedSlipIds }
-  })
-    .populate('customerId', 'name username')
-    .populate('agentId', 'name username')
-    .populate('slipId', 'slipNumber lotteryCode lotteryName roundCode roundTitle memo');
-
-  return formatItemsForOrderedSlips(orderedSlipIds, items);
-};
+  );
 
 const listBettingRecentItems = async ({
   actorRole,
@@ -766,10 +1142,13 @@ module.exports = {
   getRecentBetItems,
   getTotalsGroupedByField,
   getAgentReportRows,
+  getAdminReportsBundle,
   listAgentBetItems,
   listBettingRecentItems,
   getAgentReportsBundle,
+  clearAnalyticsReadCache,
   __test: {
-    buildGroupedTotalsMatch
+    buildGroupedTotalsMatch,
+    DEFAULT_ANALYTICS_READ_CACHE_TTL_MS
   }
 };

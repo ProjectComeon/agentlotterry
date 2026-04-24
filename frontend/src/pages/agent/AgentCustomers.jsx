@@ -1,11 +1,11 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { FiBarChart2, FiChevronRight, FiClock, FiCreditCard, FiDollarSign, FiPhone, FiPlus, FiRefreshCw, FiSearch, FiTrendingUp, FiUsers, FiWifi, FiXCircle } from 'react-icons/fi';
 import Modal from '../../components/Modal';
-import PageSkeleton from '../../components/PageSkeleton';
+import PageSkeleton, { SectionSkeleton } from '../../components/PageSkeleton';
 import { agentCopy } from '../../i18n/th/agent';
-import { getBetTypeLabel, getUserStatusLabel } from '../../i18n/th/labels';
+import { getUserStatusLabel } from '../../i18n/th/labels';
 import { createAgentMember, deleteCustomer, getAgentMemberBootstrap, getAgentMembers } from '../../services/api';
 import { formatDateTime, formatNumber, getInitial, toNumber } from '../../utils/formatters';
 import {
@@ -31,6 +31,7 @@ const copy = agentCopy.customers;
 const steps = copy.steps;
 const statusOptions = ['', 'active', 'inactive', 'suspended'];
 const onlineOptions = ['', 'true', 'false'];
+const MemberLotterySettingsStep = lazy(() => import('../shared/MemberLotterySettingsStep'));
 const sortOptions = [
   { value: 'recent', label: copy.sortOptions.recent },
   { value: 'credit_desc', label: copy.sortOptions.credit_desc },
@@ -56,14 +57,24 @@ const filterActionsCopy = {
   loadingMore: 'กำลังโหลด...'
 };
 
+const markMembersTotalsState = (items = [], totalsLoaded = true) =>
+  (items || []).map((item) => ({
+    ...item,
+    __totalsLoaded: totalsLoaded
+  }));
+
+const hasMemberTotalsLoaded = (member) => member?.__totalsLoaded !== false;
+
 const AgentCustomers = () => {
   const navigate = useNavigate();
+  const memberRequestRef = useRef(0);
   const [bootstrap, setBootstrap] = useState(null);
   const [members, setMembers] = useState([]);
   const [memberPagination, setMemberPagination] = useState(DEFAULT_PAGINATION_META);
   const [loading, setLoading] = useState(true);
   const [loadingMoreMembers, setLoadingMoreMembers] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [totalsHydrating, setTotalsHydrating] = useState(false);
   const [showWizard, setShowWizard] = useState(false);
   const [wizardStep, setWizardStep] = useState(0);
   const [saving, setSaving] = useState(false);
@@ -71,7 +82,6 @@ const AgentCustomers = () => {
   const [appliedFilters, setAppliedFilters] = useState(() => ({ ...DEFAULT_MEMBER_LIST_FILTERS }));
   const [sortBy, setSortBy] = useState('recent');
   const [form, setForm] = useState(null);
-  const hasBootstrappedRef = useRef(false);
 
   const loadMembers = async (
     query = appliedFilters,
@@ -79,23 +89,32 @@ const AgentCustomers = () => {
     {
       force = false,
       page = 1,
-      append = false
+      append = false,
+      includeTotals = true
     } = {}
   ) => {
+    const requestId = ++memberRequestRef.current;
     if (!silent) setLoading(true);
     try {
       const res = await getAgentMembers({
         ...normalizeMemberListFilters(query),
         paginated: '1',
         page,
-        limit: MEMBER_PAGE_LIMIT
+        limit: MEMBER_PAGE_LIMIT,
+        includeTotals: includeTotals ? '1' : '0'
       }, { force });
+      if (requestId !== memberRequestRef.current) {
+        return { ignored: true };
+      }
       const nextItems = getPaginatedItems(res.data);
-      setMembers((current) => append ? [...current, ...nextItems] : nextItems);
+      const normalizedItems = markMembersTotalsState(nextItems, includeTotals);
+      setMembers((current) => append ? [...current, ...normalizedItems] : normalizedItems);
       setMemberPagination(getPaginatedMeta(res.data));
+      return { ignored: false, items: normalizedItems };
     } catch (error) {
       console.error(error);
       toast.error(copy.wizard.loadError);
+      return { ignored: true };
     } finally {
       if (!silent) setLoading(false);
     }
@@ -107,23 +126,53 @@ const AgentCustomers = () => {
     return res.data;
   };
 
-  useEffect(() => {
-    const load = async () => {
-      setLoading(true);
-      try {
-        await Promise.all([loadBootstrap(), loadMembers(appliedFilters, true)]);
-        hasBootstrappedRef.current = true;
-      } finally {
-        setLoading(false);
+  const loadMembersForView = async (query = appliedFilters, { force = false } = {}) => {
+    const shouldFastLoadMembers = sortBy !== 'sales_desc';
+    setTotalsHydrating(shouldFastLoadMembers);
+    try {
+      const baseResult = await loadMembers(query, false, {
+        force,
+        page: 1,
+        includeTotals: !shouldFastLoadMembers
+      });
+
+      if (shouldFastLoadMembers && !baseResult?.ignored) {
+        await loadMembers(query, true, {
+          force,
+          page: 1,
+          includeTotals: true
+        });
       }
-    };
-    load();
-  }, []);
+    } finally {
+      setTotalsHydrating(false);
+    }
+  };
 
   useEffect(() => {
-    if (!bootstrap || !hasBootstrappedRef.current) return;
-    loadMembers(appliedFilters, false, { page: 1 });
+    loadMembersForView(appliedFilters);
   }, [appliedFilters.search, appliedFilters.status, appliedFilters.online]);
+
+  useEffect(() => {
+    if (sortBy !== 'sales_desc' || members.every(hasMemberTotalsLoaded)) {
+      return;
+    }
+
+    let cancelled = false;
+    setTotalsHydrating(true);
+
+    loadMembers(appliedFilters, true, {
+      page: 1,
+      includeTotals: true
+    }).finally(() => {
+      if (!cancelled) {
+        setTotalsHydrating(false);
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [appliedFilters, members, sortBy]);
 
   const hasPendingFilterChanges = useMemo(
     () => !areMemberListFiltersEqual(draftFilters, appliedFilters),
@@ -136,12 +185,17 @@ const AgentCustomers = () => {
     totalCredit: members.reduce((sum, member) => sum + toNumber(member.creditBalance), 0),
     totalSales: members.reduce((sum, member) => sum + toNumber(member.totals?.totalAmount), 0)
   }), [memberPagination.total, members]);
+  const membersHaveTotals = useMemo(
+    () => members.every(hasMemberTotalsLoaded),
+    [members]
+  );
 
   const displayedMembers = useMemo(() => {
     const sorted = [...members];
 
     sorted.sort((left, right) => {
       if (sortBy === 'credit_desc') return toNumber(right.creditBalance) - toNumber(left.creditBalance);
+      if (sortBy === 'sales_desc' && !membersHaveTotals) return 0;
       if (sortBy === 'sales_desc') return toNumber(right.totals?.totalAmount) - toNumber(left.totals?.totalAmount);
       if (sortBy === 'online_first') return Number(Boolean(right.isOnline)) - Number(Boolean(left.isOnline));
       if (sortBy === 'name_asc') return String(left.name || '').localeCompare(String(right.name || ''), 'th');
@@ -152,11 +206,11 @@ const AgentCustomers = () => {
     });
 
     return sorted;
-  }, [members, sortBy]);
+  }, [members, membersHaveTotals, sortBy]);
 
   const groupedLotteries = useMemo(
-    () => groupLotterySettingsByLeague(form?.lotterySettings || []),
-    [form?.lotterySettings]
+    () => (wizardStep === 2 ? groupLotterySettingsByLeague(form?.lotterySettings || []) : {}),
+    [form?.lotterySettings, wizardStep]
   );
 
   const openWizard = async () => {
@@ -180,10 +234,11 @@ const AgentCustomers = () => {
   const refreshAll = async () => {
     setRefreshing(true);
     try {
-      await Promise.all([
-        loadBootstrap({ force: true }),
-        loadMembers(appliedFilters, true, { force: true, page: 1 })
-      ]);
+      const tasks = [loadMembersForView(appliedFilters, { force: true })];
+      if (bootstrap) {
+        tasks.unshift(loadBootstrap({ force: true }));
+      }
+      await Promise.all(tasks);
     } finally {
       setRefreshing(false);
     }
@@ -203,6 +258,13 @@ const AgentCustomers = () => {
     setAppliedFilters(nextFilters);
   };
 
+  const toggleWizardLotteryBetType = (lotteryTypeId, betType) => {
+    setForm((current) => ({
+      ...current,
+      lotterySettings: toggleBetType(current.lotterySettings, lotteryTypeId, betType)
+    }));
+  };
+
   const loadMoreMembers = async () => {
     if (!memberPagination.hasNextPage || loadingMoreMembers) return;
 
@@ -210,7 +272,8 @@ const AgentCustomers = () => {
     try {
       await loadMembers(appliedFilters, true, {
         page: memberPagination.page + 1,
-        append: true
+        append: true,
+        includeTotals: true
       });
     } finally {
       setLoadingMoreMembers(false);
@@ -238,7 +301,7 @@ const AgentCustomers = () => {
       await createAgentMember(buildMemberFormPayload(form));
       toast.success(copy.wizard.createSuccess);
       closeWizard();
-      await loadMembers(appliedFilters, true, { force: true, page: 1 });
+      await loadMembersForView(appliedFilters, { force: true });
     } catch (error) {
       console.error(error);
       toast.error(error.response?.data?.message || copy.wizard.createError);
@@ -252,7 +315,7 @@ const AgentCustomers = () => {
     try {
       await deleteCustomer(member.id);
       toast.success(copy.wizard.deactivateSuccess);
-      await loadMembers(appliedFilters, true, { force: true, page: 1 });
+      await loadMembersForView(appliedFilters, { force: true });
     } catch (error) {
       console.error(error);
       toast.error(error.response?.data?.message || copy.wizard.deactivateError);
@@ -315,7 +378,7 @@ const AgentCustomers = () => {
             <span className="summary-icon"><FiTrendingUp /></span>
             <span className="summary-label">{copy.totalSales}</span>
           </div>
-          <strong>{formatNumber(summary.totalSales)}</strong>
+          <strong>{membersHaveTotals || !totalsHydrating ? formatNumber(summary.totalSales) : '...'}</strong>
           <p>{copy.totalSalesHint}</p>
         </div>
       </section>
@@ -388,6 +451,7 @@ const AgentCustomers = () => {
         {displayedMembers.length === 0 ? (
           <div className="empty-state"><div className="empty-state-icon"><FiUsers /></div><div className="empty-state-text">{copy.empty}</div></div>
         ) : displayedMembers.map((member) => {
+          const totalsLoaded = hasMemberTotalsLoaded(member);
           const purchasedSlips = toNumber(member.totals?.slipCount ?? member.totals?.totalBets);
           const profitLoss = toNumber(member.totals?.netProfit);
           const profitLossClass = profitLoss > 0 ? 'metric-positive' : profitLoss < 0 ? 'metric-negative' : '';
@@ -420,24 +484,26 @@ const AgentCustomers = () => {
               </div>
             </div>
 
-            <div className="member-metrics">
-              <div>
-                <span>{copy.purchasedSlips}</span>
-                <strong>{formatNumber(purchasedSlips)}</strong>
+              <div className="member-metrics">
+                <div>
+                  <span>{copy.purchasedSlips}</span>
+                  <strong>{totalsLoaded ? formatNumber(purchasedSlips) : '...'}</strong>
+                </div>
+                <div>
+                  <span>{copy.purchaseAmount}</span>
+                  <strong>{totalsLoaded ? formatNumber(member.totals?.totalAmount) : '...'}</strong>
+                </div>
+                <div>
+                  <span>{copy.won}</span>
+                  <strong>{totalsLoaded ? formatNumber(member.totals?.totalWon) : '...'}</strong>
+                </div>
+                <div>
+                  <span>{copy.profitLoss}</span>
+                  <strong className={totalsLoaded ? profitLossClass : ''}>
+                    {totalsLoaded ? formatSignedNumber(profitLoss) : '...'}
+                  </strong>
+                </div>
               </div>
-              <div>
-                <span>{copy.purchaseAmount}</span>
-                <strong>{formatNumber(member.totals?.totalAmount)}</strong>
-              </div>
-              <div>
-                <span>{copy.won}</span>
-                <strong>{formatNumber(member.totals?.totalWon)}</strong>
-              </div>
-              <div>
-                <span>{copy.profitLoss}</span>
-                <strong className={profitLossClass}>{formatSignedNumber(profitLoss)}</strong>
-              </div>
-            </div>
 
             <div className="member-actions">
               <div className="member-actions-copy">
@@ -531,62 +597,17 @@ const AgentCustomers = () => {
             )}
 
             {wizardStep === 2 && (
-              <div className="lottery-groups">
-                {Object.entries(groupedLotteries).map(([leagueName, items]) => (
-                  <div key={leagueName} className="lottery-group">
-                    <div className="lottery-group-title">{leagueName}</div>
-                    {items.map((lottery) => (
-                      <div key={lottery.lotteryTypeId} className={`lottery-card ${lottery.isEnabled ? '' : 'muted'}`}>
-                        <div className="lottery-card-header">
-                          <div>
-                            <strong>{lottery.lotteryName}</strong>
-                            <span>{lottery.lotteryCode}</span>
-                          </div>
-                          <label className="inline-check"><input type="checkbox" checked={lottery.isEnabled} onChange={(event) => patchLottery(lottery.lotteryTypeId, { isEnabled: event.target.checked })} />{copy.wizard.lottery.enabled}</label>
-                        </div>
-
-                        <div className="wizard-grid">
-                          <label><span>{copy.wizard.lottery.rateProfile}</span><select value={lottery.rateProfileId} onChange={(event) => patchLottery(lottery.lotteryTypeId, { rateProfileId: event.target.value })}>{lottery.availableRateProfiles.map((profile) => <option key={profile.id} value={profile.id}>{profile.name}</option>)}</select></label>
-                          <label><span>{copy.wizard.lottery.minimumBet}</span><input type="number" min="0" value={lottery.minimumBet} onChange={(event) => patchLottery(lottery.lotteryTypeId, { minimumBet: event.target.value })} /></label>
-                          <label><span>{copy.wizard.lottery.maximumBet}</span><input type="number" min="0" value={lottery.maximumBet} onChange={(event) => patchLottery(lottery.lotteryTypeId, { maximumBet: event.target.value })} /></label>
-                          <label><span>{copy.wizard.lottery.maximumPerNumber}</span><input type="number" min="0" value={lottery.maximumPerNumber} onChange={(event) => patchLottery(lottery.lotteryTypeId, { maximumPerNumber: event.target.value })} /></label>
-                          <label><span>{copy.wizard.profile.stockPercent}</span><input type="number" min="0" max="100" value={lottery.stockPercent} onChange={(event) => patchLottery(lottery.lotteryTypeId, { stockPercent: event.target.value })} /></label>
-                          <label><span>{copy.wizard.profile.ownerPercent}</span><input type="number" min="0" max="100" value={lottery.ownerPercent} onChange={(event) => patchLottery(lottery.lotteryTypeId, { ownerPercent: event.target.value })} /></label>
-                          <label><span>{copy.wizard.profile.keepPercent}</span><input type="number" min="0" max="100" value={lottery.keepPercent} onChange={(event) => patchLottery(lottery.lotteryTypeId, { keepPercent: event.target.value })} /></label>
-                          <label><span>{copy.wizard.profile.commissionRate}</span><input type="number" min="0" max="100" value={lottery.commissionRate} onChange={(event) => patchLottery(lottery.lotteryTypeId, { commissionRate: event.target.value })} /></label>
-                          <label><span>{copy.wizard.lottery.keepMode}</span><select value={lottery.keepMode} onChange={(event) => patchLottery(lottery.lotteryTypeId, { keepMode: event.target.value })}><option value="off">{copy.wizard.lottery.keepModes.off}</option><option value="cap">{copy.wizard.lottery.keepModes.cap}</option></select></label>
-                          <label><span>{copy.wizard.lottery.keepCapAmount}</span><input type="number" min="0" value={lottery.keepCapAmount} onChange={(event) => patchLottery(lottery.lotteryTypeId, { keepCapAmount: event.target.value })} /></label>
-                        </div>
-
-                        <div className="bet-type-row">
-                          {lottery.supportedBetTypes.map((betType) => (
-                            <button key={betType} type="button" className={`bet-chip ${lottery.enabledBetTypes.includes(betType) ? 'active' : ''}`} onClick={() => setForm((current) => ({ ...current, lotterySettings: toggleBetType(current.lotterySettings, lottery.lotteryTypeId, betType) }))}>
-                              {getBetTypeLabel(betType)}
-                            </button>
-                          ))}
-                        </div>
-
-                        <div className="lottery-advanced-row">
-                          <label className="inline-check"><input type="checkbox" checked={lottery.useCustomRates} onChange={(event) => patchLottery(lottery.lotteryTypeId, { useCustomRates: event.target.checked })} />{copy.wizard.lottery.customRates}</label>
-                        </div>
-
-                        {lottery.useCustomRates && (
-                          <div className="wizard-grid">
-                            {lottery.supportedBetTypes.map((betType) => (
-                              <label key={betType}><span>{getBetTypeLabel(betType)}</span><input type="number" min="0" value={lottery.customRates?.[betType] || 0} onChange={(event) => patchLottery(lottery.lotteryTypeId, { customRates: { ...lottery.customRates, [betType]: event.target.value } })} /></label>
-                            ))}
-                          </div>
-                        )}
-
-                        <label className="wizard-grid-textarea">
-                          <span>{copy.wizard.lottery.blockedNumbers}</span>
-                          <textarea rows="3" value={(lottery.blockedNumbers || []).join('\n')} onChange={(event) => patchLottery(lottery.lotteryTypeId, { blockedNumbers: event.target.value.split(/\r?\n|,/).map((item) => item.trim()).filter(Boolean) })} placeholder={copy.wizard.lottery.blockedNumbersPlaceholder} />
-                        </label>
-                      </div>
-                    ))}
-                  </div>
-                ))}
-              </div>
+              <Suspense fallback={<SectionSkeleton rows={5} />}>
+                <MemberLotterySettingsStep
+                  groupedLotteries={groupedLotteries}
+                  lotteryCopy={copy.wizard.lottery}
+                  profileCopy={copy.wizard.profile}
+                  betTypeKeys={betTypeKeys}
+                  customRateBetTypesByLottery={(lottery, fallback) => lottery.supportedBetTypes?.length ? lottery.supportedBetTypes : fallback}
+                  patchLottery={patchLottery}
+                  toggleBetTypeForLottery={toggleWizardLotteryBetType}
+                />
+              </Suspense>
             )}
 
             <div className="modal-footer wizard-footer">

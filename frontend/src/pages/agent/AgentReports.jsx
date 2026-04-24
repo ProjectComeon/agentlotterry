@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { FiRefreshCw, FiTrendingDown, FiTrendingUp } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 import PageSkeleton from '../../components/PageSkeleton';
@@ -29,6 +29,36 @@ const defaultFilters = {
   marketId: '',
   startDate: '',
   endDate: ''
+};
+const reportSectionByTab = {
+  sales: 'salesSummary',
+  projected: 'projectedRows',
+  exposure: 'exposureRows',
+  profit: 'profitLossRows',
+  pending: 'pendingRows',
+  winners: 'winnerRows'
+};
+const emptyReport = {
+  overview: {},
+  salesSummary: [],
+  projectedRows: [],
+  exposureRows: [],
+  profitLossRows: [],
+  pendingRows: [],
+  winnerRows: [],
+  filters: { ...defaultFilters },
+  loadedSections: []
+};
+const normalizeReportFilters = (value = {}) => ({
+  roundDate: value.roundDate || '',
+  marketId: value.marketId || '',
+  startDate: value.startDate || '',
+  endDate: value.endDate || ''
+});
+const areReportFiltersEqual = (left = {}, right = {}) => {
+  const normalizedLeft = normalizeReportFilters(left);
+  const normalizedRight = normalizeReportFilters(right);
+  return Object.keys(defaultFilters).every((key) => normalizedLeft[key] === normalizedRight[key]);
 };
 
 const renderTable = ({ columns, rows }) => {
@@ -63,6 +93,7 @@ const renderTable = ({ columns, rows }) => {
 const AgentReports = () => {
   const [report, setReport] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [tableLoading, setTableLoading] = useState(false);
   const [activeTab, setActiveTab] = useState('sales');
   const [sortBy, setSortBy] = useState('default');
   const [marketOptions, setMarketOptions] = useState([]);
@@ -70,22 +101,89 @@ const AgentReports = () => {
   const [roundsLoading, setRoundsLoading] = useState(false);
   const [draftFilters, setDraftFilters] = useState(defaultFilters);
   const [filters, setFilters] = useState(defaultFilters);
+  const initialLoadRef = useRef(true);
+  const reportRequestRef = useRef(0);
 
   const selectedMarket = useMemo(
     () => marketOptions.find((option) => option.code === draftFilters.marketId) || null,
     [draftFilters.marketId, marketOptions]
   );
+  const activeSection = reportSectionByTab[activeTab] || reportSectionByTab.sales;
 
-  const load = async (nextFilters = filters) => {
-    setLoading(true);
+  const load = async (nextFilters = filters, nextActiveTab = activeTab, options = {}) => {
+    const requestId = ++reportRequestRef.current;
+    if (options.background) {
+      setTableLoading(true);
+    } else {
+      setLoading(true);
+    }
     try {
-      const res = await getAgentReports(nextFilters);
-      setReport(res.data);
+      const section = reportSectionByTab[nextActiveTab] || reportSectionByTab.sales;
+      const requestFilters = normalizeReportFilters(nextFilters);
+      const hasReusableOverview = report &&
+        areReportFiltersEqual(report.filters, requestFilters) &&
+        (report.loadedSections || []).includes('overview');
+      const shouldLoadOverview = options.forceOverview || !hasReusableOverview;
+      const requestedSections = Array.isArray(options.sections) && options.sections.length
+        ? options.sections
+        : (shouldLoadOverview ? ['overview', section] : [section]);
+      const res = await getAgentReports({
+        ...requestFilters,
+        sections: requestedSections.join(',')
+      });
+
+      if (requestId !== reportRequestRef.current) {
+        return;
+      }
+
+      setReport((current) => {
+        const base = current && areReportFiltersEqual(current.filters, requestFilters)
+          ? current
+          : emptyReport;
+        const loadedSections = res.data?.loadedSections || [];
+        const responseIncludesOverview = loadedSections.includes('overview');
+        const nextReport = {
+          ...emptyReport,
+          ...base,
+          overview: responseIncludesOverview ? (res.data?.overview || {}) : (base.overview || {}),
+          filters: normalizeReportFilters(res.data?.filters || requestFilters),
+          loadedSections: Array.from(new Set([
+            ...(base.loadedSections || []),
+            ...loadedSections
+          ]))
+        };
+        loadedSections.forEach((loadedSection) => {
+          if (loadedSection !== 'overview') {
+            nextReport[loadedSection] = res.data?.[loadedSection] || [];
+          }
+        });
+        return {
+          ...nextReport,
+          legacyRows: nextReport.salesSummary.map((row) => ({
+            roundDate: row.roundDate,
+            marketId: row.marketId,
+            marketName: row.marketName,
+            totalAmount: row.totalSales,
+            totalWon: row.totalPayout,
+            netProfit: row.netProfit,
+            betCount: row.itemCount,
+            wonCount: row.wonItems,
+            lostCount: row.lostItems,
+            pendingCount: row.pendingItems
+          }))
+        };
+      });
     } catch (error) {
       console.error(error);
       toast.error(copy.loadError);
     } finally {
-      setLoading(false);
+      if (requestId === reportRequestRef.current) {
+        if (options.background) {
+          setTableLoading(false);
+        } else {
+          setLoading(false);
+        }
+      }
     }
   };
 
@@ -104,8 +202,27 @@ const AgentReports = () => {
   }, []);
 
   useEffect(() => {
-    load(filters);
-  }, [filters.roundDate, filters.marketId, filters.startDate, filters.endDate]);
+    let cancelled = false;
+
+    const run = async () => {
+      if (initialLoadRef.current) {
+        initialLoadRef.current = false;
+        await load(filters, activeTab, { sections: ['overview'] });
+        if (!cancelled) {
+          load(filters, activeTab, { sections: [activeSection], background: true });
+        }
+        return;
+      }
+
+      load(filters, activeTab);
+    };
+
+    run();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeSection, activeTab, filters.roundDate, filters.marketId, filters.startDate, filters.endDate]);
 
   useEffect(() => {
     const loadRounds = async () => {
@@ -234,15 +351,20 @@ const AgentReports = () => {
     sorted.sort((left, right) => getMetric(right) - getMetric(left));
     return sorted;
   };
-
-  const tabContent = {
-    sales: renderTable({ columns: salesColumns, rows: sortRows(report?.salesSummary || []) }),
-    projected: renderTable({ columns: projectedColumns, rows: sortRows(report?.projectedRows || []) }),
-    exposure: renderTable({ columns: exposureColumns, rows: sortRows(report?.exposureRows || []) }),
-    profit: renderTable({ columns: profitColumns, rows: sortRows(report?.profitLossRows || []) }),
-    pending: renderTable({ columns: pendingColumns, rows: sortRows(report?.pendingRows || []) }),
-    winners: renderTable({ columns: winnerColumns, rows: sortRows(report?.winnerRows || []) })
+  const columnsByTab = {
+    sales: salesColumns,
+    projected: projectedColumns,
+    exposure: exposureColumns,
+    profit: profitColumns,
+    pending: pendingColumns,
+    winners: winnerColumns
   };
+  const activeRows = useMemo(
+    () => sortRows(report?.[activeSection] || []),
+    [activeSection, report, sortBy]
+  );
+  const hasOverviewLoaded = Boolean(report && (report.loadedSections || []).includes('overview'));
+  const hasActiveSectionLoaded = Boolean(report && (report.loadedSections || []).includes(activeSection));
 
   const overviewCards = [
     { label: copy.overviewCards.totalSales.label, value: `${money(overview.totalSales)} บาท`, hint: copy.overviewCards.totalSales.hint },
@@ -253,7 +375,7 @@ const AgentReports = () => {
     { label: copy.overviewCards.totalCustomers.label, value: money(overview.totalCustomers), hint: copy.overviewCards.totalCustomers.hint }
   ];
 
-  if (loading && !report) return <PageSkeleton statCount={6} rows={6} sidebar={false} />;
+  if (loading && !hasOverviewLoaded) return <PageSkeleton statCount={6} rows={6} sidebar={false} />;
 
   return (
     <div className="agent-report-page animate-fade-in">
@@ -274,8 +396,12 @@ const AgentReports = () => {
             </small>
           </div>
 
-          <button className="btn btn-secondary" onClick={() => load(filters)} disabled={loading}>
-            <FiRefreshCw className={loading ? 'spin-animation' : ''} />
+          <button
+            className="btn btn-secondary"
+            onClick={() => load(filters, activeTab, { forceOverview: true })}
+            disabled={loading || tableLoading}
+          >
+            <FiRefreshCw className={loading || tableLoading ? 'spin-animation' : ''} />
             {copy.refresh}
           </button>
         </div>
@@ -391,7 +517,9 @@ const AgentReports = () => {
       </section>
 
       <section className="card report-table-card">
-        {loading ? <div className="loading-container"><div className="spinner"></div></div> : tabContent[activeTab]}
+        {(tableLoading && !hasActiveSectionLoaded) || (loading && !hasActiveSectionLoaded) ? (
+          <div className="loading-container"><div className="spinner"></div></div>
+        ) : renderTable({ columns: columnsByTab[activeTab], rows: activeRows })}
       </section>
 
       <style>{`

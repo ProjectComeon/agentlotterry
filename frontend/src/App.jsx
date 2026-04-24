@@ -1,4 +1,4 @@
-import { Suspense, lazy, useEffect } from 'react';
+import { Suspense, lazy } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import { AuthProvider, useAuth } from './context/AuthContext';
@@ -7,7 +7,7 @@ import Navbar from './components/Navbar';
 import BottomNav from './components/BottomNav';
 import PageSkeleton from './components/PageSkeleton';
 import ProtectedRoute from './components/ProtectedRoute';
-import { preloadRoleRouteChunks, routeLoaders } from './utils/appPreload';
+import { routeLoaders } from './utils/appPreload';
 import { getAppRouteForRole } from './utils/roleRoutes';
 
 // Pages
@@ -29,11 +29,6 @@ const OperatorBetting = lazy(routeLoaders.operatorBetting);
 const AppLayout = ({ children }) => {
   const { user } = useAuth();
   const showBottomNav = user?.role === 'agent';
-
-  useEffect(() => {
-    if (!user?.role) return;
-    preloadRoleRouteChunks(user.role);
-  }, [user?.role]);
 
   return (
     <div className="app-layout">
