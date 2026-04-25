@@ -1,10 +1,12 @@
 import { getBetTypeLabel } from '../../i18n/th/labels';
 
+const defaultBetTypeKeys = ['3top', '3front', '3bottom', '3tod', '2top', '2bottom', 'run_top', 'run_bottom', 'lao_set4'];
+
 const MemberLotterySettingsStep = ({
   groupedLotteries,
   lotteryCopy,
   profileCopy,
-  betTypeKeys,
+  betTypeKeys = defaultBetTypeKeys,
   customRateBetTypesByLottery,
   patchLottery,
   toggleBetTypeForLottery

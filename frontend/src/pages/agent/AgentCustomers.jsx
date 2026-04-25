@@ -31,6 +31,7 @@ const copy = agentCopy.customers;
 const steps = copy.steps;
 const statusOptions = ['', 'active', 'inactive', 'suspended'];
 const onlineOptions = ['', 'true', 'false'];
+const betTypeKeys = ['3top', '3front', '3bottom', '3tod', '2top', '2bottom', 'run_top', 'run_bottom', 'lao_set4'];
 const MemberLotterySettingsStep = lazy(() => import('../shared/MemberLotterySettingsStep'));
 const sortOptions = [
   { value: 'recent', label: copy.sortOptions.recent },
