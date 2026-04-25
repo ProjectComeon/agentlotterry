@@ -2150,6 +2150,69 @@ const AdminLottery = ({ viewerRole = 'admin' }) => {
           }
         }
 
+        @media (min-width: 560px) and (max-width: 1200px) {
+          .lottery-grid-layout {
+            grid-template-columns: minmax(0, 1fr) minmax(240px, 0.78fr);
+            gap: 12px;
+            align-items: start;
+          }
+
+          .lottery-detail-card {
+            position: sticky;
+            top: 92px;
+            max-height: calc(100svh - 112px);
+            overflow-y: auto;
+          }
+
+          .lottery-detail-card .detail-top {
+            margin-bottom: 12px;
+          }
+
+          .lottery-detail-card .detail-market-meta h2 {
+            font-size: 1.45rem;
+          }
+
+          .lottery-detail-card .detail-market-date,
+          .lottery-detail-card .round-toggle-copy span,
+          .lottery-detail-card .round-toggle-text,
+          .lottery-detail-card .detail-provider-note {
+            font-size: 0.82rem;
+          }
+
+          .lottery-detail-card .detail-status-pill,
+          .lottery-detail-card .round-toggle-reset {
+            padding: 7px 10px;
+            font-size: 0.78rem;
+          }
+
+          .lottery-detail-card .round-toggle-panel,
+          .lottery-detail-card .round-timing-panel,
+          .lottery-detail-card .detail-result-hero,
+          .lottery-detail-card .detail-result-item,
+          .lottery-detail-card .detail-empty {
+            padding: 12px;
+            border-radius: 16px;
+          }
+
+          .lottery-detail-card .detail-result-headline {
+            margin-top: 6px;
+            font-size: 1.85rem;
+          }
+
+          .lottery-detail-card .detail-result-grid {
+            gap: 8px;
+            margin-top: 10px;
+          }
+
+          .lottery-detail-card .detail-result-item strong {
+            font-size: 1.08rem;
+          }
+
+          .lottery-detail-card .round-toggle-panel {
+            margin-top: 12px;
+          }
+        }
+
         @media (max-width: 980px) {
           .market-grid {
             grid-template-columns: 1fr;
