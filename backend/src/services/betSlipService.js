@@ -149,7 +149,8 @@ const normalizePreviewItem = (entry = {}) => ({
   payRate: Number(entry.payRate || 0),
   sourceFlags: {
     fromReverse: Boolean(entry.sourceFlags?.fromReverse),
-    fromDoubleSet: Boolean(entry.sourceFlags?.fromDoubleSet)
+    fromDoubleSet: Boolean(entry.sourceFlags?.fromDoubleSet),
+    fromRood: Boolean(entry.sourceFlags?.fromRood)
   }
 });
 
@@ -160,9 +161,11 @@ const combineEntries = (entries) => {
     const key = `${entry.betType}:${entry.number}`;
     const current = grouped.get(key);
     if (current) {
-      if (UNIQUE_NUMBER_BET_TYPES.has(entry.betType)) {
+      const shouldKeepDuplicateStake = current.sourceFlags.fromRood || entry.sourceFlags.fromRood;
+      if (UNIQUE_NUMBER_BET_TYPES.has(entry.betType) && !shouldKeepDuplicateStake) {
         current.sourceFlags.fromReverse = current.sourceFlags.fromReverse || entry.sourceFlags.fromReverse;
         current.sourceFlags.fromDoubleSet = current.sourceFlags.fromDoubleSet || entry.sourceFlags.fromDoubleSet;
+        current.sourceFlags.fromRood = current.sourceFlags.fromRood || entry.sourceFlags.fromRood;
         return;
       }
 
@@ -170,6 +173,7 @@ const combineEntries = (entries) => {
       current.potentialPayout = current.amount * current.payRate;
       current.sourceFlags.fromReverse = current.sourceFlags.fromReverse || entry.sourceFlags.fromReverse;
       current.sourceFlags.fromDoubleSet = current.sourceFlags.fromDoubleSet || entry.sourceFlags.fromDoubleSet;
+      current.sourceFlags.fromRood = current.sourceFlags.fromRood || entry.sourceFlags.fromRood;
       return;
     }
 
@@ -254,7 +258,8 @@ const buildFastPreviewEntries = ({
         payRate,
         sourceFlags: {
           fromReverse: reverse && expandedNumber !== number,
-          fromDoubleSet: false
+          fromDoubleSet: false,
+          fromRood: false
         }
       });
     });
@@ -273,7 +278,8 @@ const buildFastPreviewEntries = ({
         payRate,
         sourceFlags: {
           fromReverse: false,
-          fromDoubleSet: true
+          fromDoubleSet: true,
+          fromRood: false
         }
       });
     });
@@ -295,7 +301,8 @@ const buildManualPreviewEntries = ({ context, items = [] }) => {
       amount: Number(item?.amount || 0),
       sourceFlags: {
         fromReverse: Boolean(item?.sourceFlags?.fromReverse),
-        fromDoubleSet: Boolean(item?.sourceFlags?.fromDoubleSet)
+        fromDoubleSet: Boolean(item?.sourceFlags?.fromDoubleSet),
+        fromRood: Boolean(item?.sourceFlags?.fromRood)
       }
     }))
     .filter((item) => item.betType && item.number && item.amount > 0);
@@ -1048,5 +1055,8 @@ module.exports = {
   listBetItems,
   cancelSlip,
   cancelSlipByActor,
-  getMemberSummary
+  getMemberSummary,
+  __private: {
+    combineEntries
+  }
 };

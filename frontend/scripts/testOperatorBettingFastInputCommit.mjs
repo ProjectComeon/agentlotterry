@@ -55,6 +55,10 @@ assert.ok(
   componentSource.includes('shouldDedupeFastNumbersForPricing(fastFamily, fastTab) ? activeFastNumbers : activeFastCandidateEntries'),
   'fast pricing should use repeated candidate entries when the active tab is rood/win instead of direct 2-digit entry'
 );
+assert.ok(
+  componentSource.includes('fromRood: fastTab === \'rood\''),
+  'rood fast entries should carry a source flag so the backend preserves repeated stakes'
+);
 
 assert.ok(
   componentSource.includes('operator-fast-excluded-panel'),

@@ -974,6 +974,7 @@ const buildFastWorkingNumbers = ({
 
 const buildFastDraftItems = ({
   fastFamily,
+  fastTab,
   rawInput,
   numbers,
   reverse,
@@ -994,6 +995,7 @@ const buildFastDraftItems = ({
     ? numbers.filter((number) => normalizeDigits(number).length === config.digits)
     : buildFastWorkingNumbers({
         fastFamily,
+        fastTab,
         rawInput,
         reverse,
         includeDoubleSet
@@ -1015,7 +1017,10 @@ const buildFastDraftItems = ({
           betType: column.betType,
           number: expandedNumber,
           amount,
-          payRate
+          payRate,
+          sourceFlags: {
+            fromRood: fastTab === 'rood'
+          }
         });
       });
     });
@@ -1346,6 +1351,7 @@ const OperatorBetting = () => {
 
     return buildFastDraftItems({
       fastFamily,
+      fastTab,
       rawInput,
       numbers: pricedFastNumbers,
       reverse,
@@ -1356,7 +1362,7 @@ const OperatorBetting = () => {
       closedBetTypes: roundClosedBetTypes,
       candidateCounts: fastCandidateCountMap
     });
-  }, [fastAmounts, fastCandidateCountMap, fastFamily, includeDoubleSet, mode, pricedFastNumbers, rawInput, reverse, roundClosedBetTypes, selectedLottery, selectedRateProfile]);
+  }, [fastAmounts, fastCandidateCountMap, fastFamily, fastTab, includeDoubleSet, mode, pricedFastNumbers, rawInput, reverse, roundClosedBetTypes, selectedLottery, selectedRateProfile]);
   const gridDraftItems = useMemo(() => {
     if (mode !== 'grid') return [];
 

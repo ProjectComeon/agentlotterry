@@ -122,6 +122,10 @@ const betItemSchema = new mongoose.Schema({
     fromDoubleSet: {
       type: Boolean,
       default: false
+    },
+    fromRood: {
+      type: Boolean,
+      default: false
     }
   }
 }, {
