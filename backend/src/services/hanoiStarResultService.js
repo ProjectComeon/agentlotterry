@@ -1,14 +1,43 @@
 const axios = require('axios');
 const { createBangkokDate, formatBangkokDate } = require('../utils/bangkokTime');
 
-const HANOI_STAR_PROVIDER_NAME = 'Exphuay Minh Ngoc Star';
+const HANOI_STAR_PROVIDER_NAME = 'Hanoi Star Official Sources';
 const HANOI_STAR_MARKET_ID = 'hanoi_star';
 const HANOI_STAR_MARKET_NAME = 'ฮานอยสตาร์';
 const HANOI_STAR_SITE_URL = process.env.HANOI_STAR_SITE_URL || 'https://exphuay.com/result/minhngocstar';
 const HANOI_STAR_HISTORY_URL = process.env.HANOI_STAR_HISTORY_URL || 'https://exphuay.com/backward/minhngocstar';
+const HANOI_STAR_SIAMGLO_URL = process.env.HANOI_STAR_SIAMGLO_URL || 'https://siamglo.com/lotto_stat/12';
 const HANOI_STAR_TIMEOUT_MS = Number(process.env.HANOI_STAR_TIMEOUT_MS || 15000);
 
 const RESULT_ENTRY_PATTERN = /lottosName:"minhngocstar"[\s\S]{0,500}?lottosDate:"([^"]+)"[\s\S]{0,300}?lottosTime:"([^"]+)"[\s\S]{0,300}?lottosNumber:"([^"]+)"[\s\S]{0,200}?lottosUnder:"([^"]+)"/g;
+const SIAMGLO_RESULT_ROW_PATTERN = /<tr\b[^>]*data-month="[^"]*"[^>]*>[\s\S]*?<span class="text-white fw-bold">\s*([^<]+?)\s*<\/span>[\s\S]*?<span class="num-3">([^<]+)<\/span>[\s\S]*?<span class="num-2">([^<]+)<\/span>[\s\S]*?<span class="num-full">([^<]+)<\/span>[\s\S]*?<\/tr>/g;
+const SIAMGLO_DRAW_TIME = '12:30';
+const THAI_MONTHS = {
+  'ม.ค.': 1,
+  'มกราคม': 1,
+  'ก.พ.': 2,
+  'กุมภาพันธ์': 2,
+  'มี.ค.': 3,
+  'มีนาคม': 3,
+  'เม.ย.': 4,
+  'เมษายน': 4,
+  'พ.ค.': 5,
+  'พฤษภาคม': 5,
+  'มิ.ย.': 6,
+  'มิถุนายน': 6,
+  'ก.ค.': 7,
+  'กรกฎาคม': 7,
+  'ส.ค.': 8,
+  'สิงหาคม': 8,
+  'ก.ย.': 9,
+  'กันยายน': 9,
+  'ต.ค.': 10,
+  'ตุลาคม': 10,
+  'พ.ย.': 11,
+  'พฤศจิกายน': 11,
+  'ธ.ค.': 12,
+  'ธันวาคม': 12
+};
 
 const http = axios.create({
   timeout: HANOI_STAR_TIMEOUT_MS,
@@ -51,6 +80,20 @@ const parseRoundCode = (value) => {
   const match = normalized.match(/^(\d{4})-(\d{2})-(\d{2})/);
   if (!match) return '';
   return `${match[1]}-${match[2]}-${match[3]}`;
+};
+
+const parseThaiRoundDate = (value) => {
+  const normalized = stringValue(value).replace(/\s+/g, ' ');
+  const match = normalized.match(/^(\d{1,2})\s+([ก-๙.]+)\s+(\d{4})$/u);
+  if (!match) return '';
+
+  const day = Number(match[1]);
+  const month = THAI_MONTHS[match[2]];
+  const buddhistYear = Number(match[3]);
+  const year = buddhistYear > 2400 ? buddhistYear - 543 : buddhistYear;
+
+  if (!day || !month || !year) return '';
+  return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
 };
 
 const parsePublishedAt = (roundCode, drawTime) => {
@@ -136,9 +179,38 @@ const extractSnapshotsFromHtml = (html, sourceUrl, limit = 10) => {
   return snapshots;
 };
 
+const extractSiamgloSnapshotsFromHtml = (html, sourceUrl, limit = 10) => {
+  const snapshots = [];
+  const byRoundCode = new Map();
+  let match;
+  SIAMGLO_RESULT_ROW_PATTERN.lastIndex = 0;
+
+  while ((match = SIAMGLO_RESULT_ROW_PATTERN.exec(html)) && snapshots.length < limit) {
+    const snapshot = buildSnapshot({
+      roundCode: parseThaiRoundDate(match[1]),
+      drawTime: SIAMGLO_DRAW_TIME,
+      firstPrize: match[4] || match[2],
+      twoBottom: match[3],
+      sourceUrl
+    });
+
+    if (snapshot && !byRoundCode.has(snapshot.roundCode)) {
+      byRoundCode.set(snapshot.roundCode, snapshot);
+      snapshots.push(snapshot);
+    }
+  }
+
+  return snapshots;
+};
+
 const fetchSnapshotsFromUrl = async (url, limit) => {
   const response = await http.get(url);
   return extractSnapshotsFromHtml(stringValue(response.data), url, limit);
+};
+
+const fetchSiamgloSnapshotsFromUrl = async (url, limit) => {
+  const response = await http.get(url);
+  return extractSiamgloSnapshotsFromHtml(stringValue(response.data), url, limit);
 };
 
 const mergeSnapshots = (snapshotGroups, limit) => {
@@ -177,7 +249,11 @@ const fetchSnapshotsSafely = async (fetcher, url, limit) => {
   }
 };
 
-const fetchHanoiStarSnapshotsWithFetcher = async ({ limit = 10, fetcher = fetchSnapshotsFromUrl } = {}) => {
+const fetchHanoiStarSnapshotsWithFetcher = async ({
+  limit = 10,
+  fetcher = fetchSnapshotsFromUrl,
+  siamgloFetcher = fetchSiamgloSnapshotsFromUrl
+} = {}) => {
   const normalizedLimit = Math.max(1, Number(limit) || 1);
   const primary = await fetchSnapshotsSafely(fetcher, HANOI_STAR_SITE_URL, normalizedLimit);
 
@@ -194,7 +270,12 @@ const fetchHanoiStarSnapshotsWithFetcher = async ({ limit = 10, fetcher = fetchS
     return merged;
   }
 
-  const errors = [primary, fallback]
+  const siamglo = await fetchSnapshotsSafely(siamgloFetcher, HANOI_STAR_SIAMGLO_URL, normalizedLimit);
+  if (siamglo.snapshots.length) {
+    return mergeSnapshots([siamglo.snapshots], normalizedLimit);
+  }
+
+  const errors = [primary, fallback, siamglo]
     .filter((attempt) => attempt.error)
     .map((attempt) => formatFetchError(attempt.url, attempt.error));
 
@@ -218,12 +299,15 @@ module.exports = {
   HANOI_STAR_MARKET_NAME,
   HANOI_STAR_SITE_URL,
   HANOI_STAR_HISTORY_URL,
+  HANOI_STAR_SIAMGLO_URL,
   fetchHanoiStarSnapshots,
   fetchLatestHanoiStarSnapshot,
   __test: {
     buildSnapshot,
     extractSnapshotsFromHtml,
+    extractSiamgloSnapshotsFromHtml,
     fetchHanoiStarSnapshotsWithFetcher,
+    parseThaiRoundDate,
     parseRoundCode
   }
 };

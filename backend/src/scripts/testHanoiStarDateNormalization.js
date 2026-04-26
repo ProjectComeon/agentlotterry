@@ -3,6 +3,7 @@ const assert = require('assert');
 const {
   HANOI_STAR_SITE_URL,
   HANOI_STAR_HISTORY_URL,
+  HANOI_STAR_SIAMGLO_URL,
   __test
 } = require('../services/hanoiStarResultService');
 
@@ -50,6 +51,50 @@ const {
   assert.strictEqual(fetchedSnapshots[0].roundCode, '2026-04-25');
   assert.strictEqual(fetchedSnapshots[0].headline, '337');
   assert.strictEqual(fetchedSnapshots[0].twoBottom, '43');
+
+  assert.strictEqual(__test.parseThaiRoundDate('26 เม.ย. 2569'), '2026-04-26');
+
+  const siamgloHtml = `
+    <tr data-month="2026-04">
+      <td>1</td>
+      <td><span class="text-white fw-bold">26 เม.ย. 2569</span></td>
+      <td><span class="num-3">029</span></td>
+      <td><span class="num-2">78</span></td>
+      <td><span class="num-full">41029</span></td>
+    </tr>
+  `;
+  const siamgloExtracted = __test.extractSiamgloSnapshotsFromHtml(
+    siamgloHtml,
+    HANOI_STAR_SIAMGLO_URL,
+    1
+  );
+  assert.strictEqual(siamgloExtracted.length, 1);
+  assert.strictEqual(siamgloExtracted[0].roundCode, '2026-04-26');
+  assert.strictEqual(siamgloExtracted[0].headline, '029');
+  assert.strictEqual(siamgloExtracted[0].twoTop, '29');
+  assert.strictEqual(siamgloExtracted[0].twoBottom, '78');
+
+  const allBlockedUrls = [];
+  const siamgloFallbackSnapshots = await __test.fetchHanoiStarSnapshotsWithFetcher({
+    limit: 1,
+    fetcher: async (url) => {
+      allBlockedUrls.push(url);
+      const error = new Error('Request failed with status code 403');
+      error.response = { status: 403 };
+      throw error;
+    },
+    siamgloFetcher: async (url) => {
+      allBlockedUrls.push(url);
+      return siamgloExtracted;
+    }
+  });
+  assert.deepStrictEqual(allBlockedUrls, [
+    HANOI_STAR_SITE_URL,
+    HANOI_STAR_HISTORY_URL,
+    HANOI_STAR_SIAMGLO_URL
+  ]);
+  assert.strictEqual(siamgloFallbackSnapshots.length, 1);
+  assert.strictEqual(siamgloFallbackSnapshots[0].roundCode, '2026-04-26');
 
   console.log('Hanoi Star date normalization tests passed');
 })().catch((error) => {
