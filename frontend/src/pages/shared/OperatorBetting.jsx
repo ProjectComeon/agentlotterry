@@ -255,7 +255,7 @@ const dedupeOrderedNumbers = (numbers = []) => {
     return true;
   });
 };
-const shouldDedupeFastNumbersForPricing = (fastFamily) => fastFamily === '2';
+const shouldDedupeFastNumbersForPricing = (fastFamily, fastTab) => fastFamily === '2' && fastTab === '2';
 const buildNumberCountMap = (numbers = []) => {
   const counts = new Map();
   (numbers || []).forEach((value) => {
@@ -1309,8 +1309,8 @@ const OperatorBetting = () => {
     [activeFastCandidateEntries]
   );
   const pricedFastNumbers = useMemo(
-    () => shouldDedupeFastNumbersForPricing(fastFamily) ? activeFastNumbers : activeFastCandidateEntries,
-    [activeFastCandidateEntries, activeFastNumbers, fastFamily]
+    () => shouldDedupeFastNumbersForPricing(fastFamily, fastTab) ? activeFastNumbers : activeFastCandidateEntries,
+    [activeFastCandidateEntries, activeFastNumbers, fastFamily, fastTab]
   );
   const activeFastNumberSet = useMemo(() => new Set(activeFastNumbers), [activeFastNumbers]);
   const parsedFastEntryCount = useMemo(
@@ -1328,8 +1328,8 @@ const OperatorBetting = () => {
       getFastDraftSummary({
         parsedCandidates: parsedFastCandidates,
         activeNumbers: activeFastNumbers,
-        parsedEntryCount: shouldDedupeFastNumbersForPricing(fastFamily) ? parsedFastCandidates.length : parsedFastEntryCount,
-        selectedEntryCount: shouldDedupeFastNumbersForPricing(fastFamily) ? activeFastNumbers.length : activeFastEntryCount,
+        parsedEntryCount: shouldDedupeFastNumbersForPricing(fastFamily, fastTab) ? parsedFastCandidates.length : parsedFastEntryCount,
+        selectedEntryCount: shouldDedupeFastNumbersForPricing(fastFamily, fastTab) ? activeFastNumbers.length : activeFastEntryCount,
         fastFamily,
         includeDoubleSet,
         reverse,
@@ -1337,7 +1337,7 @@ const OperatorBetting = () => {
         supportedBetTypes: selectedLottery?.supportedBetTypes || [],
         closedBetTypes: roundClosedBetTypes
       }),
-    [activeFastEntryCount, activeFastNumbers, fastAmounts, fastFamily, includeDoubleSet, parsedFastCandidates, parsedFastEntryCount, reverse, roundClosedBetTypes, selectedLottery]
+    [activeFastEntryCount, activeFastNumbers, fastAmounts, fastFamily, fastTab, includeDoubleSet, parsedFastCandidates, parsedFastEntryCount, reverse, roundClosedBetTypes, selectedLottery]
   );
   const gridDraftSummary = useMemo(() => getGridDraftSummary(gridRows), [gridRows]);
   const recentSlipGroups = useMemo(() => groupRecentItemsBySlip(recentItems), [recentItems]);
