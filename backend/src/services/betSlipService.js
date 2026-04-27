@@ -168,33 +168,17 @@ const calculatePotentialPayout = (entry) => {
   return entry.amount * entry.payRate;
 };
 
-const combineEntries = (entries) => {
-  const grouped = new Map();
-
-  entries.map(normalizePreviewItem).forEach((entry) => {
+const combineEntries = (entries) =>
+  entries.map(normalizePreviewItem).map((entry) => {
     if (entry.betType === LAO_SET_BET_TYPE) {
       validateLaoSetAmount(entry.amount);
     }
 
-    const key = `${entry.betType}:${entry.number}`;
-    const current = grouped.get(key);
-    if (current) {
-      current.amount += entry.amount;
-      current.potentialPayout = calculatePotentialPayout(current);
-      current.sourceFlags.fromReverse = current.sourceFlags.fromReverse || entry.sourceFlags.fromReverse;
-      current.sourceFlags.fromDoubleSet = current.sourceFlags.fromDoubleSet || entry.sourceFlags.fromDoubleSet;
-      current.sourceFlags.fromRood = current.sourceFlags.fromRood || entry.sourceFlags.fromRood;
-      return;
-    }
-
-    grouped.set(key, {
+    return {
       ...entry,
       potentialPayout: calculatePotentialPayout(entry)
-    });
+    };
   });
-
-  return [...grouped.values()];
-};
 
 const resolveBetTypeConfiguration = ({ context, betType }) => {
   if (!BET_TYPES.includes(betType)) {

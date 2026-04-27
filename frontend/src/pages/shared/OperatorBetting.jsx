@@ -949,8 +949,31 @@ const buildFastWorkingNumbers = ({
   includeDoubleSet
 }) => {
   const config = getFastFamilyConfig(fastFamily);
+  const buildNormalWorkingNumbers = (sourceNumbers = []) => {
+    const previewBetType = config.columns[0]?.betType || '';
+    const workingNumbers = [];
+
+    sourceNumbers.forEach((number) => {
+      expandFastDraftNumbers(number, previewBetType, reverse).forEach((expandedNumber) => {
+        if (normalizeDigits(expandedNumber).length === config.digits) {
+          workingNumbers.push(expandedNumber);
+        }
+      });
+    });
+
+    if (includeDoubleSet && config.digits > 1) {
+      buildDraftDoubleSet(config.digits).forEach((number) => workingNumbers.push(number));
+    }
+
+    return workingNumbers;
+  };
+
   if (Array.isArray(numbers)) {
-    return numbers.filter((number) => normalizeDigits(number).length === config.digits);
+    const sourceNumbers = numbers.filter((number) => normalizeDigits(number).length === config.digits);
+    if (fastTab === 'rood' || fastTab === 'win2' || fastTab === 'win3') {
+      return sourceNumbers;
+    }
+    return buildNormalWorkingNumbers(sourceNumbers);
   }
 
   if (fastTab === 'rood') {
@@ -967,22 +990,22 @@ const buildFastWorkingNumbers = ({
   }
 
   const sourceNumbers = extractFastNumbersByDigits(rawInput, config.digits);
-  const previewBetType = config.columns[0]?.betType || '';
-  const workingNumbers = [];
+  return buildNormalWorkingNumbers(sourceNumbers);
+};
 
-  sourceNumbers.forEach((number) => {
-    expandFastDraftNumbers(number, previewBetType, reverse).forEach((expandedNumber) => {
-      if (normalizeDigits(expandedNumber).length === config.digits) {
-        workingNumbers.push(expandedNumber);
-      }
+const buildFastSourceNumbers = ({ fastFamily, fastTab, rawInput }) => {
+  const config = getFastFamilyConfig(fastFamily);
+  if (fastTab === 'rood' || fastTab === 'win2' || fastTab === 'win3') {
+    return buildFastWorkingNumbers({
+      fastFamily,
+      fastTab,
+      rawInput,
+      reverse: false,
+      includeDoubleSet: false
     });
-  });
-
-  if (includeDoubleSet && config.digits > 1) {
-    buildDraftDoubleSet(config.digits).forEach((number) => workingNumbers.push(number));
   }
 
-  return workingNumbers;
+  return extractFastNumbersByDigits(rawInput, config.digits);
 };
 
 const buildFastDraftItems = ({
@@ -1015,7 +1038,6 @@ const buildFastDraftItems = ({
       });
 
   const items = [];
-  const shouldExpandInline = !Array.isArray(numbers);
 
   const appendNumberItems = (number) => {
     config.columns.forEach((column) => {
@@ -1023,18 +1045,14 @@ const buildFastDraftItems = ({
       const payRate = Number(rates?.[column.betType] ?? fallbackFastRates[column.betType] ?? 0);
       if (!enabledColumns[column.key] || amount <= 0 || payRate <= 0) return;
 
-      const expandedNumbers = shouldExpandInline ? expandFastDraftNumbers(number, column.betType, reverse) : [number];
-
-      expandedNumbers.forEach((expandedNumber) => {
-        items.push({
-          betType: column.betType,
-          number: expandedNumber,
-          amount,
-          payRate,
-          sourceFlags: {
-            fromRood: fastTab === 'rood'
-          }
-        });
+      items.push({
+        betType: column.betType,
+        number,
+        amount,
+        payRate,
+        sourceFlags: {
+          fromRood: fastTab === 'rood'
+        }
       });
     });
   };
@@ -1043,12 +1061,6 @@ const buildFastDraftItems = ({
     if (normalizeDigits(number).length !== config.digits) return;
     appendNumberItems(number);
   });
-
-  if (includeDoubleSet && shouldExpandInline && config.digits > 1) {
-    buildDraftDoubleSet(config.digits).forEach((number) => {
-      appendNumberItems(number);
-    });
-  }
 
   return combineFastDraftItems(items);
 };
@@ -2279,12 +2291,19 @@ const OperatorBetting = () => {
   const commitFastOrderInput = () => {
     if (!String(rawInput || '').trim()) return false;
     const nextDiscardedTokens = extractFastDiscardedTokensByDigits(rawInput, getFastFamilyConfig(fastFamily).digits);
+    const nextEntries = buildFastSourceNumbers({
+      fastFamily,
+      fastTab,
+      rawInput
+    });
     if (nextDiscardedTokens.length) {
       setParsedFastDiscardedTokens((current) => [...current, ...nextDiscardedTokens]);
     }
-    setHelperFastNumbers(parsedFastCandidateEntries);
+    if (nextEntries.length) {
+      setHelperFastNumbers((current) => [...current, ...nextEntries]);
+    }
     setRawInput('');
-    return parsedFastCandidateEntries.length > 0;
+    return nextEntries.length > 0;
   };
 
   const handleFastOrderInputChange = (value) => {
@@ -2295,12 +2314,10 @@ const OperatorBetting = () => {
 
     const nextValue = String(value || '');
     const nextDiscardedTokens = extractFastDiscardedTokensByDigits(nextValue, getFastFamilyConfig(fastFamily).digits);
-    const nextEntries = buildFastWorkingNumbers({
+    const nextEntries = buildFastSourceNumbers({
       fastFamily,
       fastTab,
-      rawInput: nextValue,
-      reverse,
-      includeDoubleSet
+      rawInput: nextValue
     });
 
     if (!nextEntries.length) {
@@ -3223,7 +3240,7 @@ const OperatorBetting = () => {
                           type="button"
                           className={`btn ${reverse ? 'btn-primary' : 'btn-secondary'} btn-sm`}
                           onClick={() => {
-                            setHelperFastNumbers([]);
+                            setExcludedFastNumbers([]);
                             setReverse((value) => !value);
                           }}
                         >

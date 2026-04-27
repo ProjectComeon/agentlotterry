@@ -12,8 +12,12 @@ assert.ok(
 const commitHelper = componentSource.match(/const commitFastOrderInput = \(\) => \{[\s\S]*?\n  \};/);
 assert.ok(commitHelper, 'fast order commit helper should be extractable');
 assert.ok(
-  commitHelper[0].includes('setHelperFastNumbers(parsedFastCandidateEntries)'),
-  'fast order commit should keep parsed numbers visible after clearing the command input'
+  commitHelper[0].includes('buildFastSourceNumbers({'),
+  'fast order commit should store source numbers so reverse can be recalculated later'
+);
+assert.ok(
+  commitHelper[0].includes('setHelperFastNumbers((current) => [...current, ...nextEntries])'),
+  'fast order commit should append selected source numbers to the current batch'
 );
 assert.ok(
   commitHelper[0].includes("setRawInput('')"),
@@ -48,16 +52,20 @@ assert.ok(
   'fast order input change should keep discarded raw tokens visible after clearing the command input'
 );
 assert.ok(
-  componentSource.includes("const shouldDedupeFastNumbersForPricing = (fastFamily, fastTab) => fastFamily === '2' && fastTab === '2';"),
-  'normal 2-digit direct entry should dedupe pricing, but generated rood mode should keep repeated entries'
+  componentSource.includes('const shouldDedupeFastNumbersForPricing = () => false;'),
+  'fast pricing should not dedupe duplicate numbers'
 );
 assert.ok(
   componentSource.includes('shouldDedupeFastNumbersForPricing(fastFamily, fastTab) ? activeFastNumbers : activeFastCandidateEntries'),
-  'fast pricing should use repeated candidate entries when the active tab is rood/win instead of direct 2-digit entry'
+  'fast pricing should use repeated candidate entries when dedupe is disabled'
 );
 assert.ok(
   componentSource.includes('fromRood: fastTab === \'rood\''),
-  'rood fast entries should carry a source flag so the backend preserves repeated stakes'
+  'rood fast entries should carry a source flag for downstream display and auditing'
+);
+assert.ok(
+  componentSource.includes('setExcludedFastNumbers([]);\n                            setReverse((value) => !value);'),
+  'toggling reverse should not erase numbers already keyed into the batch'
 );
 
 assert.ok(

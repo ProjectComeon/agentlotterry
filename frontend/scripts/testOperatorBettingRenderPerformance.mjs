@@ -28,6 +28,7 @@ assert.ok(
 
 assert.ok(
   operatorSource.includes("import { useDeferredValue } from 'react';") ||
+    operatorSource.includes("import { startTransition, useDeferredValue } from 'react';") ||
     operatorSource.includes('import { useDeferredValue, useEffect, useMemo, useRef, useState } from \'react\';'),
   'operator betting should use deferred rendering for non-urgent preview work'
 );

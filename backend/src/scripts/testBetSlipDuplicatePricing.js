@@ -18,28 +18,28 @@ const directDuplicate = __private.combineEntries([
   makeItem({ number: '12', amount: 5 })
 ]);
 
-assert.equal(directDuplicate.length, 1, 'direct 2-digit duplicates can still be stored as one combined item');
-assert.equal(directDuplicate[0].amount, 10, 'direct duplicate stake should be preserved for totals and payout');
-assert.equal(directDuplicate[0].potentialPayout, 900, 'direct duplicate payout should use the combined stake');
+assert.equal(directDuplicate.length, 2, 'direct 2-digit duplicates should stay as separate priced items');
+assert.equal(directDuplicate.reduce((sum, item) => sum + item.amount, 0), 10, 'direct duplicate stake should be preserved for totals and payout');
+assert.equal(directDuplicate.reduce((sum, item) => sum + item.potentialPayout, 0), 900, 'direct duplicate payout should count every duplicate stake');
 
 const roodDuplicate = __private.combineEntries([
   makeItem({ number: '12', amount: 5, fromRood: true }),
   makeItem({ number: '12', amount: 5, fromRood: true })
 ]);
 
-assert.equal(roodDuplicate.length, 1, 'rood duplicate entries can still be stored as one combined item');
-assert.equal(roodDuplicate[0].amount, 10, 'rood duplicate stake should be preserved for totals and payout');
-assert.equal(roodDuplicate[0].potentialPayout, 900, 'rood duplicate payout should use the combined stake');
-assert.equal(roodDuplicate[0].sourceFlags.fromRood, true, 'rood source flag should survive combination');
+assert.equal(roodDuplicate.length, 2, 'rood duplicate entries should stay as separate priced items');
+assert.equal(roodDuplicate.reduce((sum, item) => sum + item.amount, 0), 10, 'rood duplicate stake should be preserved for totals and payout');
+assert.equal(roodDuplicate.reduce((sum, item) => sum + item.potentialPayout, 0), 900, 'rood duplicate payout should count every duplicate stake');
+assert.equal(roodDuplicate.every((item) => item.sourceFlags.fromRood), true, 'rood source flag should survive on every duplicate');
 
 const laoSetDuplicate = __private.combineEntries([
   { ...makeItem({ number: '1234', amount: 120 }), betType: 'lao_set4', payRate: 1 },
   { ...makeItem({ number: '1234', amount: 120 }), betType: 'lao_set4', payRate: 1 }
 ]);
 
-assert.equal(laoSetDuplicate.length, 1, 'Lao set duplicate numbers can be stored as one combined item');
-assert.equal(laoSetDuplicate[0].amount, 240, 'Lao set duplicate stakes should preserve one 120-baht stake per set');
-assert.equal(laoSetDuplicate[0].potentialPayout, 300000, 'Lao set potential payout should use 150,000 per set');
+assert.equal(laoSetDuplicate.length, 2, 'Lao set duplicate numbers should stay as separate priced items');
+assert.equal(laoSetDuplicate.reduce((sum, item) => sum + item.amount, 0), 240, 'Lao set duplicate stakes should preserve one 120-baht stake per set');
+assert.equal(laoSetDuplicate.reduce((sum, item) => sum + item.potentialPayout, 0), 300000, 'Lao set potential payout should use 150,000 per set');
 
 assert.throws(
   () => __private.combineEntries([
