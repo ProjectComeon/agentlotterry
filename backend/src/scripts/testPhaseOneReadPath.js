@@ -5,6 +5,7 @@ const path = require('path');
 const read = (relativePath) => fs.readFileSync(path.resolve(__dirname, '..', relativePath), 'utf8');
 
 const catalogSource = read('services/catalogService.js');
+const memberManagementSource = read('services/memberManagementService.js');
 const betItemModelSource = read('models/BetItem.js');
 const betSlipModelSource = read('models/BetSlip.js');
 const resultRecordModelSource = read('models/ResultRecord.js');
@@ -12,12 +13,13 @@ const userModelSource = read('models/User.js');
 
 assert.match(
   catalogSource,
-  /const getLotteryOptions = async \(viewer = null\) => \{[\s\S]*if \(viewer\?\.role === 'customer'\)[\s\S]*await ensureCatalogReady\(\);[\s\S]*LotteryType\.find\(\{ isActive: true \}\)[\s\S]*DrawRound\.find\(\{ isActive: true/,
-  'catalog lottery options should keep customer filtering but use a direct lightweight operator path'
+  /const getLotteryOptions = async \(viewer = null\) => \{[\s\S]*const overview = await getCatalogOverview\(viewer\);[\s\S]*\(overview\.leagues \|\| \[\]\)\.flatMap/,
+  'catalog lottery options should read from the catalog overview snapshot path'
 );
 assert.match(catalogSource, /\.populate\('drawRoundId', 'code title drawAt resultPublishedAt'\)\s*\.lean\(\)/, 'recent results should use lean reads');
 assert.match(catalogSource, /LotteryLeague\.find\(\{ isActive: true \}\)[\s\S]*\.lean\(\)/, 'catalog leagues should use lean reads');
-assert.match(catalogSource, /LotteryType\.find\(\{ isActive: true \}\)[\s\S]*\.populate\('defaultRateProfileId'\)[\s\S]*\.lean\(\)/, 'catalog lotteries should use lean reads');
+assert.match(catalogSource, /loadActiveLotteries\(\)/, 'catalog overview should use the shared active lottery helper');
+assert.match(memberManagementSource, /LotteryType\.find\(\{ isActive: true \}\)[\s\S]*\.populate\('defaultRateProfileId'[\s\S]*\.lean\(\)/, 'catalog lotteries should use lean reads');
 assert.match(catalogSource, /DrawRound\.find\(\{ isActive: true[\s\S]*\.lean\(\)/, 'catalog rounds should use lean reads');
 
 [

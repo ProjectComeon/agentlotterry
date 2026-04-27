@@ -24,6 +24,8 @@ const port = process.env.E2E_PORT || '5052';
 const baseURL = `http://127.0.0.1:${port}/api`;
 const uniqueSuffix = Date.now().toString().slice(-6);
 const shouldStartServer = process.env.E2E_SKIP_SERVER !== '1';
+const adminUsername = process.env.E2E_ADMIN_USERNAME || process.env.DEFAULT_ADMIN_USERNAME || 'admin';
+const adminPassword = process.env.E2E_ADMIN_PASSWORD || process.env.DEFAULT_ADMIN_PASSWORD || 'admin123';
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -252,7 +254,7 @@ const main = async () => {
     await waitForServer();
     summary.checks.push('health');
 
-    const adminLogin = await loginWithRetry('admin', 'admin123', 'Admin');
+    const adminLogin = await loginWithRetry(adminUsername, adminPassword, 'Admin');
     adminToken = adminLogin.token;
     summary.checks.push('admin-login');
 

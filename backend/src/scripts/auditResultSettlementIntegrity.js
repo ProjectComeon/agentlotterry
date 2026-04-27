@@ -1,6 +1,7 @@
-require('dotenv').config();
+require('dotenv').config({ path: require('path').join(__dirname, '..', '..', '.env') });
 
 const mongoose = require('mongoose');
+const connectDB = require('../config/db');
 const BetItem = require('../models/BetItem');
 const DrawRound = require('../models/DrawRound');
 const LotteryType = require('../models/LotteryType');
@@ -47,7 +48,7 @@ const connect = async () => {
     throw new Error('MONGODB_URI is required');
   }
 
-  await mongoose.connect(process.env.MONGODB_URI);
+  await connectDB();
 };
 
 const makeIssue = ({ severity = 'error', code, lotteryCode = '', roundCode = '', detail = {} }) => ({

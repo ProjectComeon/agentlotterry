@@ -462,6 +462,10 @@ const getRecentResults = async ({ lotteryId = null, limit = 50 } = {}) => {
 
   const mapped = results
     .filter((record) => {
+      if (record.drawRoundId?.resultPublishedAt) {
+        return true;
+      }
+
       const drawAt = record.drawRoundId?.drawAt ? new Date(record.drawRoundId.drawAt).getTime() : 0;
       return !drawAt || drawAt <= now;
     })

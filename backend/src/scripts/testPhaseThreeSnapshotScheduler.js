@@ -23,7 +23,10 @@ assert(scheduler.includes('pendingOptions'), 'scheduler must debounce and merge 
 
 assert(server.includes('startReadModelSnapshotAutoRefresh'), 'server must start read model snapshot auto refresh after startup');
 assert(externalFeedService.includes('readModelSnapshotSchedule'), 'external sync summary must expose scheduled snapshot rebuild');
-assert(externalFeedService.includes('includeAgents: Boolean(summary.settlements)'), 'external sync must target agent dashboards when settlement changes stats');
+assert(
+  /includeAgents:\s*Boolean\(summary\.settlements\s*\|\|\s*summary\.safetySettlements\)/.test(externalFeedService),
+  'external sync must target agent dashboards when settlement changes stats'
+);
 
 assert(lotteryRoutes.includes('scheduleSettlementRefresh'), 'lottery routes must schedule settlement read-model refresh');
 assert(lotteryRoutes.includes('scheduleCatalogRefresh'), 'lottery routes must schedule catalog read-model refresh');
