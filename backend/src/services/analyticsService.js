@@ -4,6 +4,12 @@ const User = require('../models/User');
 const { Types } = require('mongoose');
 const { normalizeLotteryCode } = require('../utils/lotteryCode');
 const { buildPaginatedResult } = require('../utils/pagination');
+const {
+  addBetTotals,
+  getArchivedBetTotals,
+  getArchivedTotalsGroupedByField,
+  mergeGroupedTotals
+} = require('./retentionArchiveService');
 
 const DEFAULT_ANALYTICS_READ_CACHE_TTL_MS = 5000;
 const analyticsReadCacheTtlMs = Math.max(
@@ -312,32 +318,35 @@ const sortSlipItemsForDisplay = (items = []) =>
   });
 
 const getBetTotals = async ({ agentId, customerId, startDate, endDate } = {}) => {
-  const summary = await BetItem.aggregate([
-    {
-      $match: buildSubmittedItemMatch({ agentId, customerId, startDate, endDate })
-    },
-    {
-      $group: {
-        _id: null,
-        totalAmount: { $sum: '$amount' },
-        totalWon: { $sum: '$wonAmount' },
-        totalBets: { $sum: 1 },
-        pendingBets: {
-          $sum: {
-            $cond: [{ $eq: ['$result', 'pending'] }, 1, 0]
+  const [summary, archivedTotals] = await Promise.all([
+    BetItem.aggregate([
+      {
+        $match: buildSubmittedItemMatch({ agentId, customerId, startDate, endDate })
+      },
+      {
+        $group: {
+          _id: null,
+          totalAmount: { $sum: '$amount' },
+          totalWon: { $sum: '$wonAmount' },
+          totalBets: { $sum: 1 },
+          pendingBets: {
+            $sum: {
+              $cond: [{ $eq: ['$result', 'pending'] }, 1, 0]
+            }
           }
         }
       }
-    }
+    ]),
+    getArchivedBetTotals({ agentId, customerId, startDate, endDate })
   ]);
 
-  return {
+  return addBetTotals({
     totalAmount: summary[0]?.totalAmount || 0,
     totalWon: summary[0]?.totalWon || 0,
     totalBets: summary[0]?.totalBets || 0,
     pendingBets: summary[0]?.pendingBets || 0,
     netProfit: (summary[0]?.totalAmount || 0) - (summary[0]?.totalWon || 0)
-  };
+  }, archivedTotals);
 };
 
 const getRecentBetItems = async ({ agentId, limit = 10 } = {}) => {
@@ -376,24 +385,29 @@ const getRecentBetItems = async ({ agentId, limit = 10 } = {}) => {
 };
 
 const getTotalsGroupedByField = async (field, match = {}, { scopedIds = [] } = {}) => {
-  const rows = await BetItem.aggregate([
-    { $match: buildGroupedTotalsMatch(field, match, scopedIds) },
-    {
-      $group: {
-        _id: `$${field}`,
-        totalAmount: { $sum: '$amount' },
-        totalWon: { $sum: '$wonAmount' },
-        count: { $sum: 1 }
+  const [rows, archivedRows] = await Promise.all([
+    BetItem.aggregate([
+      { $match: buildGroupedTotalsMatch(field, match, scopedIds) },
+      {
+        $group: {
+          _id: `$${field}`,
+          totalAmount: { $sum: '$amount' },
+          totalWon: { $sum: '$wonAmount' },
+          count: { $sum: 1 }
+        }
       }
-    }
+    ]),
+    getArchivedTotalsGroupedByField(field, match, { scopedIds })
   ]);
 
-  return rows.reduce((acc, row) => {
+  const liveRows = rows.reduce((acc, row) => {
     if (row._id) {
       acc[row._id.toString()] = row;
     }
     return acc;
   }, {});
+
+  return mergeGroupedTotals(liveRows, archivedRows);
 };
 
 const getAgentReportRows = async ({ agentId, roundDate, marketId, startDate, endDate, limit = 200 } = {}) => {
@@ -489,40 +503,45 @@ const createEmptyAdminReportOverview = () => ({
 
 const getAdminReportOverview = async ({ agentId, roundDate, marketId, startDate, endDate } = {}) => {
   const needsSlipLookup = Boolean(roundDate || marketId);
+  const includeArchivedTotals = !needsSlipLookup && !startDate && !endDate;
   const basePipeline = needsSlipLookup
     ? buildItemWithSlipPipeline({ agentId, roundDate, marketId, startDate, endDate })
     : [{ $match: buildSubmittedItemMatch({ agentId, startDate, endDate }) }];
 
-  const rows = await BetItem.aggregate([
-    ...basePipeline,
-    {
-      $group: {
-        _id: null,
-        totalAmount: { $sum: '$amount' },
-        totalWon: { $sum: '$wonAmount' },
-        betCount: { $sum: 1 },
-        wonCount: { $sum: { $cond: [{ $eq: ['$result', 'won'] }, 1, 0] } },
-        lostCount: { $sum: { $cond: [{ $eq: ['$result', 'lost'] }, 1, 0] } },
-        pendingCount: { $sum: { $cond: [{ $eq: ['$result', 'pending'] }, 1, 0] } },
-        agentIds: { $addToSet: '$agentId' }
+  const [rows, archivedTotals] = await Promise.all([
+    BetItem.aggregate([
+      ...basePipeline,
+      {
+        $group: {
+          _id: null,
+          totalAmount: { $sum: '$amount' },
+          totalWon: { $sum: '$wonAmount' },
+          betCount: { $sum: 1 },
+          wonCount: { $sum: { $cond: [{ $eq: ['$result', 'won'] }, 1, 0] } },
+          lostCount: { $sum: { $cond: [{ $eq: ['$result', 'lost'] }, 1, 0] } },
+          pendingCount: { $sum: { $cond: [{ $eq: ['$result', 'pending'] }, 1, 0] } },
+          agentIds: { $addToSet: '$agentId' }
+        }
       }
-    }
+    ]),
+    includeArchivedTotals
+      ? getArchivedBetTotals({ agentId })
+      : Promise.resolve(null)
   ]);
 
-  const summary = rows[0];
-  if (!summary) {
-    return createEmptyAdminReportOverview();
-  }
+  const summary = rows[0] || {};
+  const totalAmount = (summary.totalAmount || 0) + (archivedTotals?.totalAmount || 0);
+  const totalWon = (summary.totalWon || 0) + (archivedTotals?.totalWon || 0);
 
   return {
-    totalAmount: summary.totalAmount || 0,
-    totalWon: summary.totalWon || 0,
-    betCount: summary.betCount || 0,
-    wonCount: summary.wonCount || 0,
-    lostCount: summary.lostCount || 0,
-    pendingCount: summary.pendingCount || 0,
+    totalAmount,
+    totalWon,
+    betCount: (summary.betCount || 0) + (archivedTotals?.totalBets || 0),
+    wonCount: (summary.wonCount || 0) + (archivedTotals?.wonBets || 0),
+    lostCount: (summary.lostCount || 0) + (archivedTotals?.lostBets || 0),
+    pendingCount: (summary.pendingCount || 0) + (archivedTotals?.pendingBets || 0),
     totalAgents: summary.agentIds?.length || 0,
-    netProfit: (summary.totalAmount || 0) - (summary.totalWon || 0)
+    netProfit: totalAmount - totalWon
   };
 };
 
@@ -568,68 +587,59 @@ const getAdminReportsBundle = async ({ agentId, roundDate, marketId, startDate, 
 
 const getAgentReportOverview = async ({ agentId, customerId, roundDate, marketId, startDate, endDate } = {}) => {
   const needsSlipLookup = Boolean(roundDate || marketId);
+  const includeArchivedTotals = !needsSlipLookup && !startDate && !endDate;
   const basePipeline = needsSlipLookup
     ? buildItemWithSlipPipeline({ agentId, customerId, roundDate, marketId, startDate, endDate })
     : [{ $match: buildSubmittedItemMatch({ agentId, customerId, startDate, endDate }) }];
 
-  const rows = await BetItem.aggregate([
-    ...basePipeline,
-    {
-      $group: {
-        _id: null,
-        totalSales: { $sum: '$amount' },
-        totalPayout: { $sum: '$wonAmount' },
-        totalPotentialPayout: { $sum: '$potentialPayout' },
-        totalItems: { $sum: 1 },
-        slipIds: { $addToSet: '$slipId' },
-        customerIds: { $addToSet: '$customerId' },
-        wonItems: { $sum: { $cond: [{ $eq: ['$result', 'won'] }, 1, 0] } },
-        lostItems: { $sum: { $cond: [{ $eq: ['$result', 'lost'] }, 1, 0] } },
-        pendingItems: { $sum: { $cond: [{ $eq: ['$result', 'pending'] }, 1, 0] } },
-        pendingStake: { $sum: { $cond: [{ $eq: ['$result', 'pending'] }, '$amount', 0] } },
-        pendingPotentialPayout: { $sum: { $cond: [{ $eq: ['$result', 'pending'] }, '$potentialPayout', 0] } },
-        resolvedSales: { $sum: { $cond: [{ $ne: ['$result', 'pending'] }, '$amount', 0] } },
-        resolvedPayout: { $sum: { $cond: [{ $ne: ['$result', 'pending'] }, '$wonAmount', 0] } }
+  const [rows, archivedTotals] = await Promise.all([
+    BetItem.aggregate([
+      ...basePipeline,
+      {
+        $group: {
+          _id: null,
+          totalSales: { $sum: '$amount' },
+          totalPayout: { $sum: '$wonAmount' },
+          totalPotentialPayout: { $sum: '$potentialPayout' },
+          totalItems: { $sum: 1 },
+          slipIds: { $addToSet: '$slipId' },
+          customerIds: { $addToSet: '$customerId' },
+          wonItems: { $sum: { $cond: [{ $eq: ['$result', 'won'] }, 1, 0] } },
+          lostItems: { $sum: { $cond: [{ $eq: ['$result', 'lost'] }, 1, 0] } },
+          pendingItems: { $sum: { $cond: [{ $eq: ['$result', 'pending'] }, 1, 0] } },
+          pendingStake: { $sum: { $cond: [{ $eq: ['$result', 'pending'] }, '$amount', 0] } },
+          pendingPotentialPayout: { $sum: { $cond: [{ $eq: ['$result', 'pending'] }, '$potentialPayout', 0] } },
+          resolvedSales: { $sum: { $cond: [{ $ne: ['$result', 'pending'] }, '$amount', 0] } },
+          resolvedPayout: { $sum: { $cond: [{ $ne: ['$result', 'pending'] }, '$wonAmount', 0] } }
+        }
       }
-    }
+    ]),
+    includeArchivedTotals
+      ? getArchivedBetTotals({ agentId, customerId })
+      : Promise.resolve(null)
   ]);
 
-  const summary = rows[0];
-  if (!summary) {
-    return {
-      totalSales: 0,
-      totalPayout: 0,
-      totalPotentialPayout: 0,
-      totalItems: 0,
-      totalSlips: 0,
-      totalCustomers: 0,
-      wonItems: 0,
-      lostItems: 0,
-      pendingItems: 0,
-      pendingStake: 0,
-      pendingPotentialPayout: 0,
-      resolvedSales: 0,
-      resolvedPayout: 0,
-      resolvedNetProfit: 0,
-      projectedLiability: 0
-    };
-  }
+  const summary = rows[0] || {};
+  const totalSales = (summary.totalSales || 0) + (archivedTotals?.totalAmount || 0);
+  const totalPayout = (summary.totalPayout || 0) + (archivedTotals?.totalWon || 0);
+  const resolvedSales = (summary.resolvedSales || 0) + (archivedTotals?.totalAmount || 0);
+  const resolvedPayout = (summary.resolvedPayout || 0) + (archivedTotals?.totalWon || 0);
 
   return {
-    totalSales: summary.totalSales || 0,
-    totalPayout: summary.totalPayout || 0,
+    totalSales,
+    totalPayout,
     totalPotentialPayout: summary.totalPotentialPayout || 0,
-    totalItems: summary.totalItems || 0,
-    totalSlips: summary.slipIds?.length || 0,
+    totalItems: (summary.totalItems || 0) + (archivedTotals?.totalBets || 0),
+    totalSlips: (summary.slipIds?.length || 0) + (archivedTotals?.totalSlips || 0),
     totalCustomers: summary.customerIds?.length || 0,
-    wonItems: summary.wonItems || 0,
-    lostItems: summary.lostItems || 0,
-    pendingItems: summary.pendingItems || 0,
+    wonItems: (summary.wonItems || 0) + (archivedTotals?.wonBets || 0),
+    lostItems: (summary.lostItems || 0) + (archivedTotals?.lostBets || 0),
+    pendingItems: (summary.pendingItems || 0) + (archivedTotals?.pendingBets || 0),
     pendingStake: summary.pendingStake || 0,
     pendingPotentialPayout: summary.pendingPotentialPayout || 0,
-    resolvedSales: summary.resolvedSales || 0,
-    resolvedPayout: summary.resolvedPayout || 0,
-    resolvedNetProfit: (summary.resolvedSales || 0) - (summary.resolvedPayout || 0),
+    resolvedSales,
+    resolvedPayout,
+    resolvedNetProfit: resolvedSales - resolvedPayout,
     projectedLiability: Math.max(0, (summary.pendingPotentialPayout || 0) - (summary.pendingStake || 0))
   };
 };

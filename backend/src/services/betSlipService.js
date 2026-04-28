@@ -7,6 +7,7 @@ const RateProfile = require('../models/RateProfile');
 const User = require('../models/User');
 const { getRoundStatus } = require('./catalogService');
 const { getMemberLotteryAccess } = require('./memberManagementService');
+const { addBetTotals, getArchivedBetTotals } = require('./retentionArchiveService');
 const { BET_TYPES, DEFAULT_GLOBAL_RATES, LAO_SET_PRIZE_RATES, LAO_SET_UNIT_PRICE } = require('../constants/betting');
 const { normalizeLotteryCode } = require('../utils/lotteryCode');
 const { getPermutations } = require('../utils/numberHelpers');
@@ -947,16 +948,24 @@ const getMemberSummary = async ({
   if (resolvedRoundCode) {
     slipFilter.roundCode = resolvedRoundCode;
   }
+  const includeArchivedOverall = !resolvedRoundCode && !normalizedLotteryCode;
 
   const slips = await BetSlip.find(slipFilter).sort({ roundCode: -1, createdAt: -1 });
   if (!slips.length) {
+    const archivedOverall = includeArchivedOverall
+      ? await getArchivedBetTotals({
+        customerId,
+        lotteryTypeId: lotteryId
+      })
+      : { totalAmount: 0, totalWon: 0, totalBets: 0 };
+
     return {
       rounds: [],
       overall: {
-        totalAmount: 0,
-        totalWon: 0,
-        netResult: 0,
-        totalBets: 0
+        totalAmount: archivedOverall.totalAmount,
+        totalWon: archivedOverall.totalWon,
+        netResult: archivedOverall.totalWon - archivedOverall.totalAmount,
+        totalBets: archivedOverall.totalBets
       }
     };
   }
@@ -1030,13 +1039,26 @@ const getMemberSummary = async ({
       return right.roundCode.localeCompare(left.roundCode);
     });
 
+  const archivedOverall = includeArchivedOverall
+    ? await getArchivedBetTotals({
+      customerId,
+      lotteryTypeId: lotteryId
+    })
+    : { totalAmount: 0, totalWon: 0, totalBets: 0 };
+  const combinedOverall = addBetTotals({
+    totalAmount: overall.totalAmount,
+    totalWon: overall.totalWon,
+    totalBets: overall.totalBets,
+    pendingBets: 0
+  }, archivedOverall);
+
   return {
     rounds,
     overall: {
-      totalAmount: overall.totalAmount,
-      totalWon: overall.totalWon,
-      netResult: overall.totalWon - overall.totalAmount,
-      totalBets: overall.totalBets
+      totalAmount: combinedOverall.totalAmount,
+      totalWon: combinedOverall.totalWon,
+      netResult: combinedOverall.totalWon - combinedOverall.totalAmount,
+      totalBets: combinedOverall.totalBets
     }
   };
 };

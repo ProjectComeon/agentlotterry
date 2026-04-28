@@ -47,6 +47,10 @@ const autoSeedCatalog = parseBoolean(process.env.AUTO_SEED_CATALOG, !isProductio
 const resultSyncIntervalMs = Number(process.env.RESULT_SYNC_INTERVAL_MS || 300000);
 const resultSyncStartupDelayMs = Number(process.env.RESULT_SYNC_STARTUP_DELAY_MS || 60000);
 const cronSyncToken = toText(process.env.CRON_SYNC_TOKEN);
+const autoRetentionCleanup = parseBoolean(process.env.AUTO_RETENTION_CLEANUP, false);
+const retentionCleanupIntervalMs = Number(process.env.RETENTION_CLEANUP_INTERVAL_MS || 86400000);
+const retentionCleanupStartupDelayMs = Number(process.env.RETENTION_CLEANUP_STARTUP_DELAY_MS || 120000);
+const retentionKeepPreviousMonths = Number(process.env.RETENTION_KEEP_PREVIOUS_MONTHS || 1);
 
 const validateEnv = () => {
   const issues = [];
@@ -95,6 +99,18 @@ const validateEnv = () => {
     issues.push('CRON_SYNC_TOKEN must be at least 24 characters long when set');
   }
 
+  if (!Number.isFinite(retentionCleanupIntervalMs) || retentionCleanupIntervalMs < 60000) {
+    issues.push('RETENTION_CLEANUP_INTERVAL_MS must be a number >= 60000');
+  }
+
+  if (!Number.isFinite(retentionCleanupStartupDelayMs) || retentionCleanupStartupDelayMs < 0) {
+    issues.push('RETENTION_CLEANUP_STARTUP_DELAY_MS must be a number >= 0');
+  }
+
+  if (!Number.isFinite(retentionKeepPreviousMonths) || retentionKeepPreviousMonths < 1) {
+    issues.push('RETENTION_KEEP_PREVIOUS_MONTHS must be a number >= 1');
+  }
+
   if (issues.length) {
     const error = new Error(`Environment validation failed: ${issues.join('; ')}`);
     error.validationIssues = issues;
@@ -117,7 +133,11 @@ const getEnvSummary = () => ({
   autoSeedCatalog,
   resultSyncIntervalMs,
   resultSyncStartupDelayMs,
-  cronSyncTokenConfigured: Boolean(cronSyncToken)
+  cronSyncTokenConfigured: Boolean(cronSyncToken),
+  autoRetentionCleanup,
+  retentionCleanupIntervalMs,
+  retentionCleanupStartupDelayMs,
+  retentionKeepPreviousMonths
 });
 
 module.exports = {
@@ -138,6 +158,10 @@ module.exports = {
   resultSyncIntervalMs,
   resultSyncStartupDelayMs,
   cronSyncToken,
+  autoRetentionCleanup,
+  retentionCleanupIntervalMs,
+  retentionCleanupStartupDelayMs,
+  retentionKeepPreviousMonths,
   validateEnv,
   getEnvSummary
 };

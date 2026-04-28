@@ -9,6 +9,7 @@ const connectDB = require('./src/config/db');
 const {
   autoSeedAdmin,
   autoSeedCatalog,
+  autoRetentionCleanup,
   autoSyncResults,
   cronSyncToken,
   defaultAdminPassword,
@@ -17,6 +18,9 @@ const {
   frontendUrl,
   isProduction,
   logFormat,
+  retentionCleanupIntervalMs,
+  retentionCleanupStartupDelayMs,
+  retentionKeepPreviousMonths,
   resultSyncIntervalMs,
   resultSyncStartupDelayMs,
   trustProxy,
@@ -37,6 +41,7 @@ const presenceRoutes = require('./src/routes/presenceRoutes');
 const { ensureCatalogSeed } = require('./src/services/catalogService');
 const { startExternalResultAutoSync } = require('./src/services/externalResultFeedService');
 const { startReadModelSnapshotAutoRefresh } = require('./src/services/readModelSnapshotService');
+const { startRetentionAutoCleanup } = require('./src/services/retentionCleanupService');
 const User = require('./src/models/User');
 
 const app = express();
@@ -183,6 +188,19 @@ bootstrapApp()
 
     startReadModelSnapshotAutoRefresh();
     console.log('Read model snapshot auto-refresh enabled');
+
+    if (autoRetentionCleanup) {
+      startRetentionAutoCleanup({
+        intervalMs: retentionCleanupIntervalMs,
+        startupDelayMs: retentionCleanupStartupDelayMs,
+        keepPreviousMonths: retentionKeepPreviousMonths
+      });
+      console.log(
+        `Retention auto-cleanup enabled (keep current + ${retentionKeepPreviousMonths} previous month(s); interval ${retentionCleanupIntervalMs} ms)`
+      );
+    } else if (isProduction) {
+      console.log('Retention auto-cleanup disabled; set AUTO_RETENTION_CLEANUP=true after validating npm run retention:cleanup:dry');
+    }
 
     app.listen(PORT, () => {
       console.log(`Server running on port ${PORT}`);
