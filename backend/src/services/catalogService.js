@@ -62,6 +62,26 @@ const normalizeRateMap = (value = {}, fallbackRates = {}) =>
     return acc;
   }, {});
 
+const getViewerAgentRateDefaults = async (viewer = null) => {
+  if (viewer?.role !== 'customer' || !viewer.agentId) {
+    return {
+      defaultRateProfileId: '',
+      useCustomRates: false,
+      customRates: normalizeRateMap()
+    };
+  }
+
+  const agent = await User.findById(viewer.agentId)
+    .select('defaultRateProfileId useCustomRateDefaults defaultRates')
+    .lean();
+
+  return {
+    defaultRateProfileId: toIdString(agent?.defaultRateProfileId),
+    useCustomRates: Boolean(agent?.useCustomRateDefaults),
+    customRates: normalizeRateMap(agent?.defaultRates)
+  };
+};
+
 const upsertByCode = (Model, code, payload) => Model.findOneAndUpdate(
   { code },
   { $set: payload },
@@ -742,6 +762,7 @@ const buildCatalogOverview = async (viewer = null, options = {}) => {
   ]);
 
   let memberConfigMap = null;
+  const agentRateDefaults = await getViewerAgentRateDefaults(viewer);
   if (viewer?.role === 'customer') {
     const memberConfigRows = await getMemberConfigRows({ member: viewer, lotteries, ensureMissing: false });
     memberConfigMap = memberConfigRows.reduce((acc, row) => {
@@ -787,10 +808,14 @@ const buildCatalogOverview = async (viewer = null, options = {}) => {
 
     const visibleRateProfiles = (lottery.rateProfileIds || [])
       .filter((profile) => profile.isActive)
-      .filter((profile) => !memberConfig?.rateProfileId || profile._id.toString() === memberConfig.rateProfileId);
+      .filter((profile) => {
+        const configuredProfileId = memberConfig?.rateProfileId || agentRateDefaults.defaultRateProfileId;
+        return !configuredProfileId || profile._id.toString() === configuredProfileId;
+      });
     const selectedRateProfile = visibleRateProfiles[0] || null;
-    const effectiveRates = memberConfig?.useCustomRates
-      ? normalizeRateMap(memberConfig.customRates)
+    const inheritedAgentRates = !memberConfig?.useCustomRates && agentRateDefaults.useCustomRates;
+    const effectiveRates = memberConfig?.useCustomRates || inheritedAgentRates
+      ? normalizeRateMap(memberConfig?.useCustomRates ? memberConfig.customRates : agentRateDefaults.customRates)
       : normalizeRateMap(selectedRateProfile?.rates);
     const supportedBetTypes = memberConfig?.enabledBetTypes?.length
       ? normalizeEnabledBetTypes(memberConfig.enabledBetTypes, lottery.supportedBetTypes)
@@ -840,13 +865,13 @@ const buildCatalogOverview = async (viewer = null, options = {}) => {
       } : null,
       rateProfiles: selectedRateProfile ? [{
         id: selectedRateProfile._id.toString(),
-        code: memberConfig?.useCustomRates ? `${selectedRateProfile.code}_custom` : selectedRateProfile.code,
-        name: memberConfig?.useCustomRates ? `${selectedRateProfile.name} (Custom)` : selectedRateProfile.name,
+        code: memberConfig?.useCustomRates || inheritedAgentRates ? `${selectedRateProfile.code}_custom` : selectedRateProfile.code,
+        name: memberConfig?.useCustomRates || inheritedAgentRates ? `${selectedRateProfile.name} (Custom)` : selectedRateProfile.name,
         description: selectedRateProfile.description,
         isDefault: true,
         rates: effectiveRates
       }] : [],
-      defaultRateProfileId: memberConfig?.rateProfileId || lottery.defaultRateProfileId?._id?.toString() || null,
+      defaultRateProfileId: memberConfig?.rateProfileId || agentRateDefaults.defaultRateProfileId || lottery.defaultRateProfileId?._id?.toString() || null,
       memberLimits: memberConfig ? {
         minimumBet: memberConfig.minimumBet,
         maximumBet: memberConfig.maximumBet,

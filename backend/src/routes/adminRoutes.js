@@ -1,4 +1,5 @@
 const express = require('express');
+const mongoose = require('mongoose');
 const User = require('../models/User');
 const auth = require('../middleware/auth');
 const authorize = require('../middleware/rbac');
@@ -21,6 +22,7 @@ const { getAdminDashboardSummary } = require('../services/dashboardSnapshotServi
 const { scheduleReadModelSnapshotRebuild } = require('../services/readModelSnapshotService');
 const { registerBettingRoutes } = require('./helpers/registerBettingRoutes');
 const { parsePaginationQuery } = require('../utils/pagination');
+const { BET_TYPES, DEFAULT_GLOBAL_RATES } = require('../constants/betting');
 
 const router = express.Router();
 const shouldIncludeTotals = (value) => !['0', 'false'].includes(String(value || '').trim().toLowerCase());
@@ -54,6 +56,59 @@ const normalizeAgentStatus = (value, { fallback, allowUndefined = false } = {}) 
   }
 
   return normalized;
+};
+
+const normalizeBoolean = (value, { fallback = false, allowUndefined = false } = {}) => {
+  if (value === undefined || value === null || value === '') {
+    return allowUndefined ? undefined : fallback;
+  }
+
+  if (typeof value === 'boolean') return value;
+  const normalized = String(value).trim().toLowerCase();
+  if (['true', '1', 'yes', 'on'].includes(normalized)) return true;
+  if (['false', '0', 'no', 'off'].includes(normalized)) return false;
+  throw new Error('Invalid boolean value');
+};
+
+const normalizeRateDefaults = (value, { allowUndefined = false } = {}) => {
+  if (value === undefined || value === null || value === '') {
+    return allowUndefined ? undefined : normalizeRateDefaults({});
+  }
+
+  if (typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error('Default payout rates must be an object');
+  }
+
+  return BET_TYPES.reduce((acc, betType) => {
+    const rawValue = value[betType];
+    const fallback = DEFAULT_GLOBAL_RATES[betType] || 0;
+    const parsed = rawValue === undefined || rawValue === null || rawValue === ''
+      ? fallback
+      : Number(rawValue);
+
+    if (!Number.isFinite(parsed) || parsed < 0) {
+      throw new Error(`Payout rate for ${betType} must be zero or greater`);
+    }
+
+    acc[betType] = parsed;
+    return acc;
+  }, {});
+};
+
+const normalizeRateProfileId = (value, { allowUndefined = false } = {}) => {
+  if (value === undefined) {
+    return allowUndefined ? undefined : null;
+  }
+  if (value === null || value === '') {
+    return null;
+  }
+
+  const id = String(value).trim();
+  if (!mongoose.Types.ObjectId.isValid(id)) {
+    throw new Error('Invalid default rate profile');
+  }
+
+  return id;
 };
 
 const buildAgentPayload = (body = {}, { isCreate = false } = {}) => {
@@ -107,6 +162,18 @@ const buildAgentPayload = (body = {}, { isCreate = false } = {}) => {
   const commissionRate = normalizePercent(body.commissionRate, 'Commission rate', { fallback: 0, allowUndefined: !isCreate });
   if (commissionRate !== undefined) payload.commissionRate = commissionRate;
 
+  const defaultRateProfileId = normalizeRateProfileId(body.defaultRateProfileId, { allowUndefined: !isCreate });
+  if (defaultRateProfileId !== undefined) payload.defaultRateProfileId = defaultRateProfileId;
+
+  const useCustomRateDefaults = normalizeBoolean(body.useCustomRateDefaults, {
+    fallback: false,
+    allowUndefined: !isCreate
+  });
+  if (useCustomRateDefaults !== undefined) payload.useCustomRateDefaults = useCustomRateDefaults;
+
+  const defaultRates = normalizeRateDefaults(body.defaultRates, { allowUndefined: !isCreate });
+  if (defaultRates !== undefined) payload.defaultRates = defaultRates;
+
   return payload;
 };
 
@@ -142,7 +209,10 @@ router.get('/dashboard', async (req, res) => {
 router.get('/agents', async (req, res) => {
   try {
     const [agents, customerRows, betStatsByAgent] = await Promise.all([
-      User.find({ role: 'agent' }).select('-password').sort({ createdAt: -1 }),
+      User.find({ role: 'agent' })
+        .select('-password')
+        .populate('defaultRateProfileId', 'code name description isActive rates')
+        .sort({ createdAt: -1 }),
       User.aggregate([
         { $match: { role: 'customer', agentId: { $ne: null } } },
         {
@@ -221,6 +291,8 @@ router.put('/agents/:id', async (req, res) => {
     Object.assign(agent, payload);
 
     await agent.save();
+    const agentMemberIds = await User.find({ agentId: agent._id, role: 'customer' }).select('_id').lean();
+    await clearCatalogOverviewCacheForUsers({ userIds: agentMemberIds.map((member) => member._id) });
     await createAuditLog(req.user._id, 'UPDATE_AGENT', agent._id.toString(), {
       username: agent.username,
       name: agent.name,

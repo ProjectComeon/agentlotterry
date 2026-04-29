@@ -1,5 +1,15 @@
 const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
+const { BET_TYPES } = require('../constants/betting');
+
+const agentDefaultRatesSchema = BET_TYPES.reduce((schema, betType) => {
+  schema[betType] = {
+    type: Number,
+    min: 0,
+    default: undefined
+  };
+  return schema;
+}, {});
 
 const userSchema = new mongoose.Schema({
   username: {
@@ -81,6 +91,14 @@ const userSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: 'RateProfile',
     default: null
+  },
+  useCustomRateDefaults: {
+    type: Boolean,
+    default: false
+  },
+  defaultRates: {
+    type: agentDefaultRatesSchema,
+    default: {}
   },
   notes: {
     type: String,

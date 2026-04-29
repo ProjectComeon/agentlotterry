@@ -58,6 +58,27 @@ const normalizeRatesByBetType = (value = {}, fallbackRates = {}) =>
     return acc;
   }, {});
 
+const toIdString = (value) => value?._id?.toString?.() || value?.toString?.() || '';
+
+const buildAgentRateDefaults = (agent) => ({
+  defaultRateProfileId: toIdString(agent?.defaultRateProfileId),
+  useCustomRates: Boolean(agent?.useCustomRateDefaults),
+  customRates: normalizeRatesByBetType(agent?.defaultRates, DEFAULT_GLOBAL_RATES)
+});
+
+const applyAgentRateDefaultsToConfig = (config, agentDefaults = {}) => {
+  if (!config || config.useCustomRates || !agentDefaults.useCustomRates) {
+    return config;
+  }
+
+  const plainConfig = typeof config.toObject === 'function' ? config.toObject() : { ...config };
+  return {
+    ...plainConfig,
+    useCustomRates: true,
+    customRates: agentDefaults.customRates
+  };
+};
+
 const normalizeCommissionMap = (value = {}) =>
   BET_TYPES.reduce((acc, betType) => {
     acc[betType] = toPositiveAmount(value?.[betType], 0);
@@ -144,7 +165,7 @@ const normalizeEnabledBetTypes = (value, supportedBetTypes) => {
   return nextTypes;
 };
 
-const pickRateProfileId = ({ lottery, member, existingConfig, inputConfig }) => {
+const pickRateProfileId = ({ lottery, member, existingConfig, inputConfig, agentDefaults = {} }) => {
   const allowedRateIds = (lottery.rateProfileIds || [])
     .filter((profile) => profile.isActive)
     .map((profile) => profile._id.toString());
@@ -153,6 +174,7 @@ const pickRateProfileId = ({ lottery, member, existingConfig, inputConfig }) => 
     inputConfig?.rateProfileId ||
     existingConfig?.rateProfileId?.toString() ||
     member.defaultRateProfileId?.toString() ||
+    agentDefaults.defaultRateProfileId ||
     lottery.defaultRateProfileId?._id?.toString() ||
     lottery.defaultRateProfileId?.toString() ||
     allowedRateIds[0] ||
@@ -165,8 +187,8 @@ const pickRateProfileId = ({ lottery, member, existingConfig, inputConfig }) => 
   return allowedRateIds[0] || null;
 };
 
-const buildLotteryConfigDocument = ({ member, lottery, existingConfig, inputConfig }) => {
-  const selectedRateProfileId = pickRateProfileId({ lottery, member, existingConfig, inputConfig });
+const buildLotteryConfigDocument = ({ member, lottery, existingConfig, inputConfig, agentDefaults = {} }) => {
+  const selectedRateProfileId = pickRateProfileId({ lottery, member, existingConfig, inputConfig, agentDefaults });
   const selectedRateProfile = (lottery.rateProfileIds || []).find(
     (profile) => profile._id.toString() === selectedRateProfileId
   );
@@ -213,9 +235,9 @@ const buildLotteryConfigDocument = ({ member, lottery, existingConfig, inputConf
     ),
     useCustomRates: inputConfig?.useCustomRates !== undefined
       ? Boolean(inputConfig.useCustomRates)
-      : existingConfig?.useCustomRates ?? false,
+      : existingConfig?.useCustomRates ?? agentDefaults.useCustomRates ?? false,
     customRates: normalizeRatesByBetType(
-      inputConfig?.customRates || existingConfig?.customRates,
+      inputConfig?.customRates || existingConfig?.customRates || (agentDefaults.useCustomRates ? agentDefaults.customRates : undefined),
       fallbackRates
     ),
     keepMode: toKeepMode(
@@ -237,7 +259,8 @@ const upsertMemberLotteryConfigs = async ({
   member,
   lotterySettings = [],
   lotteries = null,
-  ensureOnlyMissing = false
+  ensureOnlyMissing = false,
+  agentDefaults = {}
 }) => {
   const activeLotteries = lotteries || await loadActiveLotteries();
   const lotteryIds = activeLotteries.map((lottery) => lottery._id);
@@ -275,7 +298,8 @@ const upsertMemberLotteryConfigs = async ({
           member,
           lottery,
           existingConfig: existingMap[lottery._id.toString()],
-          inputConfig: inputMap[lottery._id.toString()]
+          inputConfig: inputMap[lottery._id.toString()],
+          agentDefaults
         })
       },
       upsert: true
@@ -297,7 +321,7 @@ const mapRateProfile = (profile) => ({
   isDefault: Boolean(profile.isDefault)
 });
 
-const mapLotteryConfigRow = ({ lottery, config }) => {
+const mapLotteryConfigRow = ({ lottery, config, agentDefaults = {} }) => {
   const allowedProfiles = (lottery.rateProfileIds || []).filter((profile) => profile.isActive);
   const activeRateProfiles = allowedProfiles;
   const configuredRateProfileId = config?.rateProfileId?.toString() || '';
@@ -305,10 +329,18 @@ const mapLotteryConfigRow = ({ lottery, config }) => {
     (configuredRateProfileId && activeRateProfiles.some((profile) => profile._id.toString() === configuredRateProfileId)
       ? configuredRateProfileId
       : '') ||
+    agentDefaults.defaultRateProfileId ||
     lottery.defaultRateProfileId?._id?.toString() ||
     lottery.defaultRateProfileId?.toString() ||
     activeRateProfiles[0]?._id?.toString() ||
     null;
+
+  const inheritedAgentRates = !config?.useCustomRates && agentDefaults.useCustomRates;
+  const customRatesSource = config?.useCustomRates
+    ? config.customRates
+    : inheritedAgentRates
+      ? agentDefaults.customRates
+      : config?.customRates;
 
   return {
     lotteryTypeId: lottery._id.toString(),
@@ -328,9 +360,9 @@ const mapLotteryConfigRow = ({ lottery, config }) => {
     ownerPercent: config?.ownerPercent ?? 0,
     keepPercent: config?.keepPercent ?? 0,
     commissionRate: config?.commissionRate ?? 0,
-    useCustomRates: config?.useCustomRates ?? false,
+    useCustomRates: Boolean(config?.useCustomRates || inheritedAgentRates),
     customRates: normalizeRatesByBetType(
-      config?.customRates,
+      customRatesSource,
       activeRateProfiles.find((profile) => profile._id.toString() === selectedRateProfileId)?.rates || {}
     ),
     keepMode: config?.keepMode || DEFAULT_LIMITS.keepMode,
@@ -343,11 +375,17 @@ const mapLotteryConfigRow = ({ lottery, config }) => {
 
 const getMemberConfigRows = async ({ member, lotteries = null, ensureMissing = true } = {}) => {
   const activeLotteries = lotteries || await loadActiveLotteries();
+  const agent = member?.agentId
+    ? await User.findById(member.agentId).select('defaultRateProfileId useCustomRateDefaults defaultRates').lean()
+    : null;
+  const agentDefaults = buildAgentRateDefaults(agent);
+
   if (ensureMissing) {
     await upsertMemberLotteryConfigs({
       member,
       lotteries: activeLotteries,
-      ensureOnlyMissing: true
+      ensureOnlyMissing: true,
+      agentDefaults
     });
   }
 
@@ -364,7 +402,8 @@ const getMemberConfigRows = async ({ member, lotteries = null, ensureMissing = t
   return activeLotteries.map((lottery) =>
     mapLotteryConfigRow({
       lottery,
-      config: configMap[lottery._id.toString()]
+      config: configMap[lottery._id.toString()],
+      agentDefaults
     })
   );
 };
@@ -384,17 +423,23 @@ const getMemberLotteryAccess = async ({ customerId, lotteryId, betType = '', rat
     throw new Error('Selected lottery is not available');
   }
 
-  await upsertMemberLotteryConfigs({ member, lotteries });
+  const agent = member.agentId
+    ? await User.findById(member.agentId).select('defaultRateProfileId useCustomRateDefaults defaultRates').lean()
+    : null;
+  const agentDefaults = buildAgentRateDefaults(agent);
+
+  await upsertMemberLotteryConfigs({ member, lotteries, agentDefaults });
   const config = await UserLotteryConfig.findOne({
     userId: customerId,
     lotteryTypeId: lotteryId
   });
+  const effectiveConfig = applyAgentRateDefaultsToConfig(config, agentDefaults);
 
-  if (!config || !config.isEnabled) {
+  if (!effectiveConfig || !effectiveConfig.isEnabled) {
     throw new Error('This lottery is not enabled for your account');
   }
 
-  const enabledBetTypes = config.enabledBetTypes?.length ? config.enabledBetTypes : lottery.supportedBetTypes;
+  const enabledBetTypes = effectiveConfig.enabledBetTypes?.length ? effectiveConfig.enabledBetTypes : lottery.supportedBetTypes;
   if (betType && !enabledBetTypes.includes(betType)) {
     throw new Error('This bet type is not enabled for your account');
   }
@@ -402,7 +447,7 @@ const getMemberLotteryAccess = async ({ customerId, lotteryId, betType = '', rat
   const allowedRateIds = (lottery.rateProfileIds || [])
     .filter((profile) => profile.isActive)
     .map((profile) => profile._id.toString());
-  const configuredRateProfileId = config.rateProfileId?.toString() || '';
+  const configuredRateProfileId = effectiveConfig.rateProfileId?.toString() || agentDefaults.defaultRateProfileId || '';
   const enforcedRateProfileId = allowedRateIds.includes(configuredRateProfileId)
     ? configuredRateProfileId
     : (
@@ -419,7 +464,7 @@ const getMemberLotteryAccess = async ({ customerId, lotteryId, betType = '', rat
   return {
     member,
     lottery,
-    config,
+    config: effectiveConfig,
     enabledBetTypes,
     rateProfileId: enforcedRateProfileId
   };
@@ -465,11 +510,13 @@ const getAgentMemberBootstrap = async ({ agentId }) => {
   const normalizedAgentId = agentId || null;
   const [agent, lotteries, rateProfiles] = await Promise.all([
     normalizedAgentId
-      ? User.findById(normalizedAgentId).select('name creditBalance stockPercent ownerPercent keepPercent commissionRate')
+      ? User.findById(normalizedAgentId).select('name creditBalance stockPercent ownerPercent keepPercent commissionRate defaultRateProfileId useCustomRateDefaults defaultRates')
       : null,
     loadActiveLotteries(),
     loadActiveRateProfiles()
   ]);
+
+  const agentDefaults = buildAgentRateDefaults(agent);
 
   return {
     defaults: {
@@ -483,7 +530,9 @@ const getAgentMemberBootstrap = async ({ agentId }) => {
       maximumPerNumber: DEFAULT_LIMITS.maximumPerNumber,
       keepMode: DEFAULT_LIMITS.keepMode,
       keepCapAmount: DEFAULT_LIMITS.keepCapAmount,
-      useCustomRates: false
+      defaultRateProfileId: agentDefaults.defaultRateProfileId || null,
+      useCustomRates: agentDefaults.useCustomRates,
+      customRates: agentDefaults.customRates
     },
     onlineWindowSeconds: Math.floor(ONLINE_WINDOW_MS / 1000),
     agent: {
@@ -493,12 +542,16 @@ const getAgentMemberBootstrap = async ({ agentId }) => {
       stockPercent: agent?.stockPercent || 0,
       ownerPercent: agent?.ownerPercent || 0,
       keepPercent: agent?.keepPercent || 0,
-      commissionRate: agent?.commissionRate || 0
+      commissionRate: agent?.commissionRate || 0,
+      defaultRateProfileId: agentDefaults.defaultRateProfileId || null,
+      useCustomRateDefaults: agentDefaults.useCustomRates,
+      defaultRates: agentDefaults.customRates
     },
     rateProfiles: rateProfiles.map(mapRateProfile),
     lotteries: lotteries.map((lottery) => mapLotteryConfigRow({
       lottery,
       config: null,
+      agentDefaults,
       rateProfiles: (lottery.rateProfileIds || []).filter((profile) => profile.isActive)
     }))
   };
@@ -961,6 +1014,12 @@ const createAgentMember = async ({ agentId, payload }) => {
     throw new Error('Create the member first, then add credit from the wallet flow');
   }
 
+  const agent = await User.findOne({ _id: agentId, role: 'agent' }).select('defaultRateProfileId useCustomRateDefaults defaultRates');
+  if (!agent) {
+    throw new Error('Agent not found');
+  }
+  const agentDefaults = buildAgentRateDefaults(agent);
+
   const member = await User.create({
     username,
     password,
@@ -975,7 +1034,7 @@ const createAgentMember = async ({ agentId, payload }) => {
     ownerPercent: toPercent(profile.ownerPercent, 0),
     keepPercent: toPercent(profile.keepPercent, 0),
     commissionRate: toPercent(profile.commissionRate, 0),
-    defaultRateProfileId: profile.defaultRateProfileId || null,
+    defaultRateProfileId: profile.defaultRateProfileId || agentDefaults.defaultRateProfileId || null,
     notes: toText(profile.notes),
     status: toStatus(profile.status, 'active'),
     isActive: toStatus(profile.status, 'active') !== 'inactive'
@@ -985,7 +1044,8 @@ const createAgentMember = async ({ agentId, payload }) => {
   await upsertMemberLotteryConfigs({
     member,
     lotterySettings: payload.lotterySettings || [],
-    lotteries
+    lotteries,
+    agentDefaults
   });
 
   return getAgentMemberDetail({ agentId, memberId: member._id });

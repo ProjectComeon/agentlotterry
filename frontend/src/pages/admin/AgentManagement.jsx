@@ -10,6 +10,22 @@ import { formatMoney as money } from '../../utils/formatters';
 
 const copy = adminCopy.agents;
 const agentStatusOptions = ['active', 'inactive', 'suspended'];
+const agentRateFields = [
+  { key: '3top', label: '3 ตัวบน', defaultValue: 1000 },
+  { key: '3front', label: '3 ตัวหน้า', defaultValue: 450 },
+  { key: '3bottom', label: '3 ตัวล่าง', defaultValue: 450 },
+  { key: '3tod', label: '3 โต๊ด', defaultValue: 150 },
+  { key: '2top', label: '2 ตัวบน', defaultValue: 100 },
+  { key: '2bottom', label: '2 ตัวล่าง', defaultValue: 100 },
+  { key: '2tod', label: '2 โต๊ด', defaultValue: 100 },
+  { key: 'run_top', label: 'วิ่งบน', defaultValue: 3.5 },
+  { key: 'run_bottom', label: 'วิ่งล่าง', defaultValue: 4.5 },
+  { key: 'lao_set4', label: 'หวยชุดลาว', defaultValue: 1 }
+];
+const defaultAgentRates = agentRateFields.reduce((acc, field) => {
+  acc[field.key] = String(field.defaultValue);
+  return acc;
+}, {});
 const emptyForm = {
   username: '',
   password: '',
@@ -20,10 +36,26 @@ const emptyForm = {
   ownerPercent: '0',
   keepPercent: '0',
   commissionRate: '0',
+  useCustomRateDefaults: false,
+  defaultRates: { ...defaultAgentRates },
   notes: ''
 };
 
 const getAgentStatus = (agent) => agent.status || (agent.isActive ? 'active' : 'inactive');
+const createEmptyForm = () => ({
+  ...emptyForm,
+  defaultRates: { ...defaultAgentRates }
+});
+const normalizeAgentRateForm = (rates = {}) =>
+  agentRateFields.reduce((acc, field) => {
+    acc[field.key] = String(rates?.[field.key] ?? field.defaultValue);
+    return acc;
+  }, {});
+const buildAgentRatePayload = (rates = {}) =>
+  agentRateFields.reduce((acc, field) => {
+    acc[field.key] = rates[field.key] === '' ? field.defaultValue : rates[field.key];
+    return acc;
+  }, {});
 
 const AgentManagement = () => {
   const [agents, setAgents] = useState([]);
@@ -31,7 +63,7 @@ const AgentManagement = () => {
   const [search, setSearch] = useState('');
   const [showModal, setShowModal] = useState(false);
   const [editAgent, setEditAgent] = useState(null);
-  const [form, setForm] = useState({ ...emptyForm });
+  const [form, setForm] = useState(createEmptyForm);
   const [showCreditModal, setShowCreditModal] = useState(false);
   const [creditTarget, setCreditTarget] = useState(null);
   const [creditForm, setCreditForm] = useState({ amount: '', note: '' });
@@ -57,7 +89,7 @@ const AgentManagement = () => {
 
   const openCreate = () => {
     setEditAgent(null);
-    setForm({ ...emptyForm });
+    setForm(createEmptyForm());
     setShowModal(true);
   };
 
@@ -73,6 +105,8 @@ const AgentManagement = () => {
       ownerPercent: String(agent.ownerPercent ?? 0),
       keepPercent: String(agent.keepPercent ?? 0),
       commissionRate: String(agent.commissionRate ?? 0),
+      useCustomRateDefaults: Boolean(agent.useCustomRateDefaults),
+      defaultRates: normalizeAgentRateForm(agent.defaultRates),
       notes: agent.notes || ''
     });
     setShowModal(true);
@@ -81,7 +115,7 @@ const AgentManagement = () => {
   const closeModal = () => {
     setShowModal(false);
     setEditAgent(null);
-    setForm({ ...emptyForm });
+    setForm(createEmptyForm());
   };
 
   const handleSubmit = async (event) => {
@@ -96,6 +130,8 @@ const AgentManagement = () => {
         ownerPercent: form.ownerPercent === '' ? 0 : form.ownerPercent,
         keepPercent: form.keepPercent === '' ? 0 : form.keepPercent,
         commissionRate: form.commissionRate === '' ? 0 : form.commissionRate,
+        useCustomRateDefaults: Boolean(form.useCustomRateDefaults),
+        defaultRates: buildAgentRatePayload(form.defaultRates),
         notes: form.notes.trim()
       };
 
@@ -139,6 +175,16 @@ const AgentManagement = () => {
     } catch (err) {
       toast.error('เกิดข้อผิดพลาด');
     }
+  };
+
+  const updateRateField = (field, value) => {
+    setForm((current) => ({
+      ...current,
+      defaultRates: {
+        ...current.defaultRates,
+        [field]: value
+      }
+    }));
   };
 
   const openCreditModal = (agent) => {
@@ -508,6 +554,39 @@ const AgentManagement = () => {
             <div className="form-hint">{copy.percentHint}</div>
           </section>
 
+          <section className="agent-form-section">
+            <div className="agent-form-section-head">
+              <strong>อัตราการจ่ายของ Agent</strong>
+              <span>เปิดใช้เพื่อให้สมาชิกในสายงานที่ไม่ได้ตั้งเรทเฉพาะ ใช้เรทจ่ายชุดนี้ตอนซื้อและตอนคำนวณผล</span>
+            </div>
+
+            <label className="agent-rate-toggle">
+              <input
+                type="checkbox"
+                checked={form.useCustomRateDefaults}
+                onChange={(event) => updateFormField('useCustomRateDefaults', event.target.checked)}
+              />
+              <span>ใช้เรทจ่ายเฉพาะ Agent นี้</span>
+            </label>
+
+            <div className="agent-rate-grid">
+              {agentRateFields.map((field) => (
+                <label key={field.key}>
+                  <span>{field.label}</span>
+                  <input
+                    className="form-input"
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={form.defaultRates[field.key] ?? ''}
+                    onChange={(event) => updateRateField(field.key, event.target.value)}
+                    disabled={!form.useCustomRateDefaults}
+                  />
+                </label>
+              ))}
+            </div>
+          </section>
+
           <div className="modal-footer">
             <button type="button" className="btn btn-secondary" onClick={closeModal}>{adminCopy.common.cancel}</button>
             <button type="submit" className="btn btn-primary">{editAgent ? adminCopy.common.saveChanges : copy.createSubmit}</button>
@@ -611,9 +690,42 @@ const AgentManagement = () => {
           color: rgba(31, 42, 68, 0.72);
           cursor:not-allowed;
         }
+        .agent-rate-toggle{
+          display:flex;
+          align-items:center;
+          gap:10px;
+          width:max-content;
+          max-width:100%;
+          margin-bottom:14px;
+          font-weight:700;
+          color: var(--text-strong);
+        }
+        .agent-rate-toggle input{
+          width:18px;
+          height:18px;
+          accent-color:#dc2626;
+        }
+        .agent-rate-grid{
+          display:grid;
+          grid-template-columns:repeat(3, minmax(0, 1fr));
+          gap:12px;
+        }
+        .agent-rate-grid label{
+          display:flex;
+          flex-direction:column;
+          gap:8px;
+        }
+        .agent-rate-grid label span{
+          color: var(--text-soft);
+          font-size:0.92rem;
+          font-weight:700;
+        }
         @media (max-width: 768px){
           .agent-form-grid{
             grid-template-columns:1fr;
+          }
+          .agent-rate-grid{
+            grid-template-columns:repeat(2, minmax(0, 1fr));
           }
         }
       `}</style>
