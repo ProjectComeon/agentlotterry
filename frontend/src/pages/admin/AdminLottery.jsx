@@ -1450,7 +1450,7 @@ const AdminLottery = ({ viewerRole = 'admin' }) => {
 
         .lottery-grid-layout {
           display: grid;
-          grid-template-columns: minmax(0, 7fr) minmax(320px, 3fr);
+          grid-template-columns: minmax(0, 60fr) minmax(360px, 40fr);
           gap: 18px;
           align-items: start;
         }
@@ -2153,7 +2153,7 @@ const AdminLottery = ({ viewerRole = 'admin' }) => {
 
         @media (min-width: 560px) and (max-width: 1200px) {
           .lottery-grid-layout {
-            grid-template-columns: minmax(0, 1fr) minmax(240px, 0.78fr);
+            grid-template-columns: minmax(0, 60fr) minmax(240px, 40fr);
             gap: 12px;
             align-items: start;
           }

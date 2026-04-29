@@ -244,7 +244,8 @@ export const getCatalogOverview = (options = {}) => cachedGet('/catalog/overview
   params: {
     ...(options.variant ? { variant: options.variant } : {}),
     ...(typeof options.includeAnnouncements === 'boolean' ? { includeAnnouncements: String(options.includeAnnouncements) } : {}),
-    ...(typeof options.includeRecentResults === 'boolean' ? { includeRecentResults: String(options.includeRecentResults) } : {})
+    ...(typeof options.includeRecentResults === 'boolean' ? { includeRecentResults: String(options.includeRecentResults) } : {}),
+    ...(options.force ? { force: '1' } : {})
   },
   ttlMs: READ_TTL_LONG_MS,
   force: Boolean(options.force)

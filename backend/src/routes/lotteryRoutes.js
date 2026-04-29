@@ -29,8 +29,8 @@ const applyNoStore = (res) => {
   res.set('Pragma', 'no-cache');
   res.set('Expires', '0');
 };
-const scheduleCatalogRefresh = (reason) => {
-  clearCatalogOverviewCache({ includeSnapshots: false });
+const scheduleCatalogRefresh = async (reason) => {
+  await clearCatalogOverviewCache();
   clearAnalyticsReadCache();
   scheduleReadModelSnapshotRebuild({ reason });
 };
@@ -197,7 +197,7 @@ router.put('/rounds/:roundId/closed-bet-types', auth, authorize('admin'), async 
 
     round.closedBetTypes = normalizedClosedBetTypes;
     await round.save();
-    scheduleCatalogRefresh('round-closed-bet-types-update');
+    await scheduleCatalogRefresh('round-closed-bet-types-update');
 
     await createAuditLog(req.user._id, 'UPDATE_ROUND_CLOSED_BET_TYPES', round._id.toString(), {
       lotteryCode: lottery.code,
@@ -245,7 +245,7 @@ router.put('/rounds/:roundId/betting-override', auth, authorize('admin'), async 
     const statusMeta = getRoundStatus(round);
     round.status = statusMeta.status;
     await round.save();
-    scheduleCatalogRefresh('round-betting-override-update');
+    await scheduleCatalogRefresh('round-betting-override-update');
 
     await createAuditLog(req.user._id, 'UPDATE_ROUND_BETTING_OVERRIDE', round._id.toString(), {
       lotteryCode: lottery.code,
@@ -301,7 +301,7 @@ router.put('/rounds/:roundId/timing', auth, authorize('admin'), async (req, res)
     const statusMeta = getRoundStatus(round);
     round.status = statusMeta.status;
     await round.save();
-    scheduleCatalogRefresh('round-timing-update');
+    await scheduleCatalogRefresh('round-timing-update');
 
     await createAuditLog(req.user._id, 'UPDATE_ROUND_TIMING', round._id.toString(), {
       lotteryCode: lottery.code,

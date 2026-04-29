@@ -16,7 +16,8 @@ const {
 } = require('./memberManagementService');
 const {
   createReferenceDataCache,
-  loadWithReferenceCache
+  loadWithReferenceCache,
+  clearReferenceDataCache
 } = require('../utils/referenceDataCache');
 const {
   DEFAULT_RATE_TIERS,
@@ -569,9 +570,17 @@ const escapeRegExp = (value = '') => String(value).replace(/[.*+?^${}()|[\]\\]/g
 const matchesCatalogOverviewSnapshotUser = (key = '', userId = '') =>
   Boolean(userId) && String(key || '').endsWith(`:${userId}`);
 
-const clearCatalogOverviewCache = ({ includeSnapshots = true } = {}) => {
+const clearCatalogReferenceCaches = () => {
+  clearReferenceDataCache(activeLeaguesCache);
+  clearReferenceDataCache(activeRoundsCache);
+};
+
+const clearCatalogOverviewCache = ({ includeSnapshots = true, includeReferences = true } = {}) => {
   catalogOverviewCache.clear();
   catalogOverviewInFlight.clear();
+  if (includeReferences) {
+    clearCatalogReferenceCaches();
+  }
 
   if (includeSnapshots) {
     return CatalogOverviewSnapshot.deleteMany({}).catch((error) => {
@@ -885,20 +894,21 @@ const buildCatalogOverview = async (viewer = null, options = {}) => {
 };
 
 const getCachedCatalogOverview = async (viewer = null, options = {}) => {
-  const { cacheVariant = 'full', ...buildOptions } = options;
+  const { cacheVariant = 'full', force = false, ...buildOptions } = options;
   const cacheKey = getCatalogOverviewCacheKey(viewer, cacheVariant, buildOptions);
   const now = Date.now();
   const shouldUseSnapshot = canUseCatalogOverviewSnapshot(viewer, { cacheVariant, ...buildOptions });
   pruneCatalogOverviewCache(now);
   const cached = catalogOverviewCache.get(cacheKey);
 
-  if (cached && now - cached.cachedAt < CATALOG_OVERVIEW_CACHE_MS) {
+  if (!force && cached && now - cached.cachedAt < CATALOG_OVERVIEW_CACHE_MS) {
     return cached.data;
   }
 
   const allowStaleSnapshot = viewer?.role !== 'customer';
 
   if (
+    !force &&
     shouldUseSnapshot &&
     allowStaleSnapshot &&
     cached?.data &&
@@ -908,7 +918,7 @@ const getCachedCatalogOverview = async (viewer = null, options = {}) => {
     return cached.data;
   }
 
-  if (shouldUseSnapshot) {
+  if (!force && shouldUseSnapshot) {
     const snapshot = await loadCatalogOverviewSnapshotState(cacheKey, now, { allowStale: allowStaleSnapshot });
     if (snapshot) {
       catalogOverviewCache.set(cacheKey, {
@@ -924,7 +934,7 @@ const getCachedCatalogOverview = async (viewer = null, options = {}) => {
     }
   }
 
-  if (catalogOverviewInFlight.has(cacheKey)) {
+  if (!force && catalogOverviewInFlight.has(cacheKey)) {
     return catalogOverviewInFlight.get(cacheKey);
   }
 
@@ -958,7 +968,8 @@ const getCachedCatalogOverview = async (viewer = null, options = {}) => {
 const getCatalogOverview = async (viewer = null, options = {}) => getCachedCatalogOverview(viewer, {
   cacheVariant: options.cacheVariant || 'full',
   includeAnnouncements: options.includeAnnouncements !== false,
-  includeRecentResults: options.includeRecentResults !== false
+  includeRecentResults: options.includeRecentResults !== false,
+  force: Boolean(options.force)
 });
 
 const rebuildCatalogOverviewSnapshot = async (viewer = null, options = {}) => {
@@ -1128,6 +1139,7 @@ module.exports = {
   ensureCatalogSeed,
   ensureCatalogReady,
   clearCatalogOverviewCache,
+  clearCatalogReferenceCaches,
   clearCatalogOverviewCacheForUsers,
   getCatalogOverview,
   rebuildCatalogOverviewSnapshot,

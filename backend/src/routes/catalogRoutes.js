@@ -32,7 +32,8 @@ router.get('/overview', async (req, res) => {
     const overview = await getCatalogOverview(req.user, {
       cacheVariant: variant,
       includeAnnouncements: parseBooleanQuery(req.query.includeAnnouncements, !compactVariant),
-      includeRecentResults: parseBooleanQuery(req.query.includeRecentResults, !compactVariant)
+      includeRecentResults: parseBooleanQuery(req.query.includeRecentResults, !compactVariant),
+      force: parseBooleanQuery(req.query.force, false)
     });
     applyNoStore(res);
     res.json(overview);
