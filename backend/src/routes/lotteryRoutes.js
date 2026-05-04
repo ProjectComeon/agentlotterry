@@ -343,7 +343,7 @@ router.put('/rounds/:roundId/timing', auth, authorize('admin'), async (req, res)
       openAt: round.openAt,
       closeAt: round.closeAt,
       drawAt: round.drawAt,
-      isManualTiming: round.isManualTiming,
+      isManualTiming: applyToLotteryDefault ? false : round.isManualTiming,
       timingUpdatedAt: round.timingUpdatedAt,
       applyToLotteryDefault,
       lotteryDefaultTiming,

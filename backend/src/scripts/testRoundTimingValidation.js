@@ -1,10 +1,12 @@
 const assert = require('assert');
+const { createBangkokDate } = require('../utils/bangkokTime');
 
 const {
   buildLotteryDefaultTimingUpdate,
   mergeLotteryDefinitionWithManualSchedule,
   normalizeRoundTimingPayload,
-  selectCatalogActiveRound
+  selectCatalogActiveRound,
+  __test
 } = require('../services/catalogService');
 
 assert.strictEqual(
@@ -26,6 +28,11 @@ assert.strictEqual(
   typeof selectCatalogActiveRound,
   'function',
   'Expected selectCatalogActiveRound to be exported'
+);
+assert.strictEqual(
+  typeof __test.buildRoundTimingOverwriteOperations,
+  'function',
+  'Expected buildRoundTimingOverwriteOperations test helper to be exported'
 );
 
 const drawAt = new Date('2026-04-20T14:00:00.000Z');
@@ -162,6 +169,28 @@ assert.strictEqual(
   'Expected future manual-open round to not steal a waiting-result postponed round'
 );
 
+assert.strictEqual(
+  selectCatalogActiveRound(
+    [
+      {
+        code: '2026-05-01',
+        openAt: new Date('2026-04-24T09:00:00.000Z'),
+        closeAt: new Date('2026-05-02T08:30:00.000Z'),
+        drawAt: new Date('2026-05-02T09:00:00.000Z'),
+        resultPublishedAt: null,
+        bettingOverride: 'closed'
+      },
+      {
+        ...nextThaiGovernmentRound,
+        openAt: new Date('2026-05-02T09:01:00.000Z')
+      }
+    ],
+    new Date('2026-05-02T10:00:00.000Z')
+  )?.code,
+  '2026-05-16',
+  'Expected manually closed overdue round to not block the next open round'
+);
+
 assert.deepStrictEqual(
   buildLotteryDefaultTimingUpdate({
     closeAt: new Date('2026-05-02T08:40:00.000Z'),
@@ -218,6 +247,49 @@ assert.deepStrictEqual(
     isManualScheduleTiming: true
   },
   'Expected catalog seed payload to preserve manually configured close/draw defaults'
+);
+
+const overwriteOps = __test.buildRoundTimingOverwriteOperations(
+  {
+    _id: 'lottery-id',
+    schedule: {
+      type: 'daily',
+      openLeadDays: 1,
+      closeHour: 19,
+      closeMinute: 10,
+      drawHour: 19,
+      drawMinute: 30
+    }
+  },
+  [
+    {
+      code: '2026-05-05',
+      title: 'Round 2026-05-05',
+      openAt: new Date('2026-05-04T12:30:00.000Z'),
+      closeAt: new Date('2026-05-05T12:10:00.000Z'),
+      drawAt: new Date('2026-05-05T12:30:00.000Z')
+    }
+  ],
+  {
+    includeManualFutureRounds: true,
+    now: new Date('2026-05-05T01:00:00.000Z'),
+    userId: 'admin-id'
+  }
+);
+
+assert.deepStrictEqual(
+  overwriteOps[0].updateOne.filter.$or[1],
+  {
+    isManualTiming: true,
+    resultLookupCode: { $in: ['', null] },
+    drawAt: { $gte: createBangkokDate(2026, 5, 5, 0, 0) }
+  },
+  'Expected lottery default timing save to include future unpublished manual rounds'
+);
+assert.strictEqual(
+  overwriteOps[0].updateOne.update.$set.isManualTiming,
+  false,
+  'Expected future manual rounds overwritten by lottery default timing to become schedule-driven'
 );
 
 console.log('Round timing validation tests passed');

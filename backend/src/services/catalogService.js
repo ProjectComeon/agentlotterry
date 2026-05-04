@@ -203,7 +203,14 @@ const getTimeValue = (value) => {
   return Number.isNaN(time) ? null : time;
 };
 
+const getBangkokDayStart = (date = new Date()) => {
+  const parts = getBangkokParts(date);
+  return createBangkokDate(parts.year, parts.month, parts.day, 0, 0);
+};
+
 const isPublishedRound = (round) => Boolean(round?.resultPublishedAt);
+const isManualClosedRound = (round) => normalizeBettingOverride(round?.bettingOverride) === 'closed';
+const isSelectableUnpublishedRound = (round) => !isPublishedRound(round) && !isManualClosedRound(round);
 
 const selectCatalogActiveRound = (lotteryRounds = [], now = new Date()) => {
   const rounds = Array.isArray(lotteryRounds) ? lotteryRounds.filter(Boolean) : [];
@@ -213,21 +220,21 @@ const selectCatalogActiveRound = (lotteryRounds = [], now = new Date()) => {
   const openRound = rounds.find((round) => {
     const openAt = getTimeValue(round.openAt);
     const closeAt = getTimeValue(round.closeAt);
-    return !isPublishedRound(round) && openAt !== null && closeAt !== null && openAt <= nowMs && nowMs <= closeAt;
+    return isSelectableUnpublishedRound(round) && openAt !== null && closeAt !== null && openAt <= nowMs && nowMs <= closeAt;
   });
   if (openRound) return openRound;
 
   const waitingResultRound = rounds.find((round) => {
     const closeAt = getTimeValue(round.closeAt);
     const drawAt = getTimeValue(round.drawAt);
-    return !isPublishedRound(round) && closeAt !== null && drawAt !== null && closeAt < nowMs && nowMs <= drawAt;
+    return isSelectableUnpublishedRound(round) && closeAt !== null && drawAt !== null && closeAt < nowMs && nowMs <= drawAt;
   });
   if (waitingResultRound) return waitingResultRound;
 
   const pendingResultRound = rounds
     .filter((round) => {
       const drawAt = getTimeValue(round.drawAt);
-      return !isPublishedRound(round)
+      return isSelectableUnpublishedRound(round)
         && drawAt !== null
         && drawAt < nowMs
         && nowMs - drawAt <= PENDING_RESULT_ROUND_GRACE_MS;
@@ -237,7 +244,7 @@ const selectCatalogActiveRound = (lotteryRounds = [], now = new Date()) => {
 
   const manualOpenRound = rounds.find((round) => {
     const openAt = getTimeValue(round.openAt);
-    return !isPublishedRound(round)
+    return isSelectableUnpublishedRound(round)
       && normalizeBettingOverride(round.bettingOverride) === 'open'
       && (openAt === null || openAt <= nowMs);
   });
@@ -245,11 +252,11 @@ const selectCatalogActiveRound = (lotteryRounds = [], now = new Date()) => {
 
   const upcomingRound = rounds.find((round) => {
     const openAt = getTimeValue(round.openAt);
-    return !isPublishedRound(round) && openAt !== null && nowMs < openAt;
+    return isSelectableUnpublishedRound(round) && openAt !== null && nowMs < openAt;
   });
   if (upcomingRound) return upcomingRound;
 
-  return rounds.find((round) => !isPublishedRound(round)) || rounds[0] || null;
+  return rounds.find((round) => isSelectableUnpublishedRound(round)) || rounds[0] || null;
 };
 
 const createValidationError = (message, statusCode = 400) => {
@@ -407,29 +414,60 @@ const buildRoundUpsertOperations = (lotteryType, occurrences) => occurrences.map
   };
 });
 
-const buildRoundTimingOverwriteOperations = (lotteryType, occurrences) => occurrences.map((occurrence) => {
-  const status = getRoundStatus(occurrence).status;
-  return {
-    updateOne: {
-      filter: {
-        lotteryTypeId: lotteryType._id,
-        code: occurrence.code,
-        isManualTiming: { $ne: true },
-        resultPublishedAt: null
-      },
-      update: {
-        $set: {
-          title: occurrence.title,
-          openAt: occurrence.openAt,
-          closeAt: occurrence.closeAt,
-          drawAt: occurrence.drawAt,
-          status,
-          isActive: true
+const buildRoundTimingOverwriteOperations = (lotteryType, occurrences, options = {}) => {
+  const {
+    includeManualFutureRounds = false,
+    now = new Date(),
+    userId = null
+  } = options;
+  const todayStart = getBangkokDayStart(now);
+
+  return occurrences.map((occurrence) => {
+    const status = getRoundStatus(occurrence).status;
+    const filter = {
+      lotteryTypeId: lotteryType._id,
+      code: occurrence.code,
+      resultPublishedAt: null
+    };
+    if (includeManualFutureRounds) {
+      filter.$or = [
+        { isManualTiming: { $ne: true } },
+        {
+          isManualTiming: true,
+          resultLookupCode: { $in: ['', null] },
+          drawAt: { $gte: todayStart }
         }
+      ];
+    } else {
+      filter.isManualTiming = { $ne: true };
+    }
+
+    const setPayload = {
+      title: occurrence.title,
+      openAt: occurrence.openAt,
+      closeAt: occurrence.closeAt,
+      drawAt: occurrence.drawAt,
+      status,
+      isActive: true
+    };
+    if (includeManualFutureRounds) {
+      setPayload.isManualTiming = false;
+      setPayload.timingUpdatedAt = now;
+      if (userId) {
+        setPayload.timingUpdatedBy = userId;
       }
     }
-  };
-});
+
+    return {
+      updateOne: {
+        filter,
+        update: {
+          $set: setPayload
+        }
+      }
+    };
+  });
+};
 
 const ensureRoundsForLottery = async (lotteryType) => {
   const occurrences = generateOccurrences(lotteryType.schedule);
@@ -458,7 +496,10 @@ const applyLotteryDefaultTiming = async ({ lotteryTypeId, closeAt, drawAt, userI
   const occurrences = generateOccurrences(lotteryType.schedule);
   await ensureRoundsForLottery(lotteryType);
 
-  const operations = buildRoundTimingOverwriteOperations(lotteryType, occurrences);
+  const operations = buildRoundTimingOverwriteOperations(lotteryType, occurrences, {
+    includeManualFutureRounds: true,
+    userId
+  });
   if (operations.length) {
     await DrawRound.bulkWrite(operations, { ordered: false });
   }
@@ -1339,6 +1380,7 @@ module.exports = {
   normalizeRoundTimingPayload,
   markAnnouncementRead,
   __test: {
+    buildRoundTimingOverwriteOperations,
     canUseCatalogOverviewSnapshot,
     createCatalogOverviewSnapshotDocument,
     restoreCatalogOverviewFromSnapshotDocument,
