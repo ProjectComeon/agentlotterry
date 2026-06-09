@@ -1015,23 +1015,25 @@ const listAgentBetItems = async ({
     async () => {
       if (paginated) {
         const slipMatch = buildSlipMatch({ agentId, customerId, roundDate, marketId });
-        const slipsPlusOne = await BetSlip.find(slipMatch)
-          .sort({ createdAt: -1, _id: -1 })
-          .skip(skip)
-          .limit(limit + 1)
-          .select('_id customerId agentId slipNumber lotteryCode lotteryName roundCode roundTitle memo itemCount totalAmount potentialPayout createdAt updatedAt')
-          .lean();
+        const [slipsPlusOne, totalSlips] = await Promise.all([
+          BetSlip.find(slipMatch)
+            .sort({ createdAt: -1, _id: -1 })
+            .skip(skip)
+            .limit(limit + 1)
+            .select('_id customerId agentId slipNumber lotteryCode lotteryName roundCode roundTitle memo itemCount totalAmount potentialPayout createdAt updatedAt')
+            .lean(),
+          BetSlip.countDocuments(slipMatch)
+        ]);
         const hasNextPage = slipsPlusOne.length > limit;
         const slips = hasNextPage ? slipsPlusOne.slice(0, limit) : slipsPlusOne;
-        const estimatedTotal = skip + slips.length + (hasNextPage ? 1 : 0);
-        const totalPages = hasNextPage ? page + 1 : page;
+        const totalPages = Math.max(1, Math.ceil(totalSlips / limit));
 
         if (!slips.length) {
           return buildPaginatedResult([], {
-            total: skip,
+            total: totalSlips,
             page,
             limit,
-            totalPages: page,
+            totalPages,
             hasNextPage: false
           });
         }
@@ -1067,7 +1069,7 @@ const listAgentBetItems = async ({
               })
             ),
             {
-              total: estimatedTotal,
+              total: totalSlips,
               page,
               limit,
               totalPages,
@@ -1087,7 +1089,7 @@ const listAgentBetItems = async ({
         return buildPaginatedResult(
           formatItemsForOrderedSlips(orderedSlipIds, itemsWithSlips),
           {
-            total: estimatedTotal,
+            total: totalSlips,
             page,
             limit,
             totalPages,

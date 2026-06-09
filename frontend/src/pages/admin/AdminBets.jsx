@@ -98,7 +98,7 @@ const filterActionsCopy = {
   loadingMore: 'กำลังโหลด...'
 };
 
-const BETS_PAGE_LIMIT = 10;
+const BETS_PAGE_LIMIT = 50;
 
 const AdminBets = () => {
   const navigate = useNavigate();
@@ -164,6 +164,12 @@ const AdminBets = () => {
   useEffect(() => {
     loadBets({ page: 1 });
   }, [memberId, appliedQueryFilters.roundDate, appliedQueryFilters.agentId]);
+
+  useEffect(() => {
+    setSearchTerm('');
+    setResultFilter('');
+    setSortBy('recent');
+  }, [memberId]);
 
   const hasPendingQueryChanges = useMemo(
     () => !areBetHistoryQueryFiltersEqual(draftQueryFilters, appliedQueryFilters),

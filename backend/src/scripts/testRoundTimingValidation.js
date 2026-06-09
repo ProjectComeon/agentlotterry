@@ -34,6 +34,11 @@ assert.strictEqual(
   'function',
   'Expected buildRoundTimingOverwriteOperations test helper to be exported'
 );
+assert.strictEqual(
+  typeof __test.buildThaiGovernmentAutoRoundOccurrence,
+  'function',
+  'Expected buildThaiGovernmentAutoRoundOccurrence test helper to be exported'
+);
 
 const drawAt = new Date('2026-04-20T14:00:00.000Z');
 const normalized = normalizeRoundTimingPayload({
@@ -189,6 +194,60 @@ assert.strictEqual(
   )?.code,
   '2026-05-16',
   'Expected manually closed overdue round to not block the next open round'
+);
+
+const thaiGovernmentAutoRound = __test.buildThaiGovernmentAutoRoundOccurrence(
+  {
+    code: 'thai_government',
+    schedule: {
+      type: 'monthly',
+      days: [1, 16],
+      openLeadDays: 7,
+      closeHour: 15,
+      closeMinute: 30,
+      drawHour: 16,
+      drawMinute: 0
+    }
+  },
+  createBangkokDate(2026, 6, 9, 9, 0)
+);
+
+assert.deepStrictEqual(
+  {
+    code: thaiGovernmentAutoRound.code,
+    openAt: thaiGovernmentAutoRound.openAt.toISOString(),
+    closeAt: thaiGovernmentAutoRound.closeAt.toISOString(),
+    drawAt: thaiGovernmentAutoRound.drawAt.toISOString(),
+    status: thaiGovernmentAutoRound.status
+  },
+  {
+    code: '2026-06-16',
+    openAt: createBangkokDate(2026, 6, 9, 9, 0).toISOString(),
+    closeAt: createBangkokDate(2026, 6, 16, 15, 30).toISOString(),
+    drawAt: createBangkokDate(2026, 6, 16, 16, 0).toISOString(),
+    status: 'open'
+  },
+  'Expected Thai government next round to open immediately when the scheduled open time is still in the future'
+);
+
+assert.strictEqual(
+  __test.buildThaiGovernmentAutoRoundOccurrence(
+    {
+      code: 'baac',
+      schedule: {
+        type: 'monthly',
+        days: [1, 16],
+        openLeadDays: 7,
+        closeHour: 15,
+        closeMinute: 30,
+        drawHour: 16,
+        drawMinute: 0
+      }
+    },
+    createBangkokDate(2026, 6, 9, 9, 0)
+  ),
+  null,
+  'Expected Thai government auto-round behavior to be scoped to thai_government only'
 );
 
 assert.deepStrictEqual(

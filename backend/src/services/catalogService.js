@@ -53,12 +53,20 @@ const CATALOG_REFERENCE_CACHE_MS = Math.max(
   1000,
   Number(process.env.CATALOG_REFERENCE_CACHE_MS || Math.min(CATALOG_OVERVIEW_CACHE_MS, 15000))
 );
+const THAI_GOVERNMENT_CODE = 'thai_government';
+const THAI_GOVERNMENT_AUTO_ROUND_ENSURE_MS = Math.max(
+  30000,
+  Number(process.env.THAI_GOVERNMENT_AUTO_ROUND_ENSURE_MS || 60000)
+);
 let catalogSeedPromise = null;
 let catalogReadinessPromise = null;
 const catalogOverviewCache = new Map();
 const catalogOverviewInFlight = new Map();
 const activeLeaguesCache = createReferenceDataCache({ ttlMs: CATALOG_REFERENCE_CACHE_MS });
 const activeRoundsCache = createReferenceDataCache({ ttlMs: CATALOG_REFERENCE_CACHE_MS });
+let thaiGovernmentAutoRoundEnsurePromise = null;
+let thaiGovernmentAutoRoundEnsuredAt = 0;
+let thaiGovernmentAutoRoundCatalogVerified = false;
 const toIdString = (value) => value?._id?.toString?.() || value?.toString?.() || '';
 const normalizeBettingOverride = (value) => (value === 'open' || value === 'closed' ? value : 'auto');
 const normalizeRateMap = (value = {}, fallbackRates = {}) =>
@@ -386,6 +394,119 @@ const generateOccurrences = (schedule, startDate = new Date(), horizonDays = 45)
     return buildMonthlyOccurrences(schedule, startDate, horizonDays);
   }
   return buildDailyOccurrences(schedule, startDate, horizonDays);
+};
+
+const buildThaiGovernmentAutoRoundOccurrence = (lotteryType, now = new Date()) => {
+  if (lotteryType?.code !== THAI_GOVERNMENT_CODE || !lotteryType.schedule) {
+    return null;
+  }
+
+  const nowMs = getTimeValue(now) ?? Date.now();
+  const targetOccurrence = generateOccurrences(lotteryType.schedule, now, 62)
+    .filter((occurrence) => {
+      const closeAt = getTimeValue(occurrence.closeAt);
+      return closeAt !== null && nowMs <= closeAt;
+    })
+    .sort((left, right) => (getTimeValue(left.drawAt) || 0) - (getTimeValue(right.drawAt) || 0))[0];
+
+  if (!targetOccurrence) {
+    return null;
+  }
+
+  const originalOpenAt = getTimeValue(targetOccurrence.openAt);
+  const openAt = originalOpenAt !== null && originalOpenAt > nowMs
+    ? new Date(nowMs)
+    : targetOccurrence.openAt;
+
+  const occurrence = {
+    ...targetOccurrence,
+    openAt
+  };
+
+  return {
+    ...occurrence,
+    status: getRoundStatus(occurrence, now).status
+  };
+};
+
+const ensureThaiGovernmentAutoRound = async ({ force = false, now = new Date() } = {}) => {
+  const nowMs = getTimeValue(now) ?? Date.now();
+  if (
+    !force
+    && thaiGovernmentAutoRoundCatalogVerified
+    && nowMs - thaiGovernmentAutoRoundEnsuredAt < THAI_GOVERNMENT_AUTO_ROUND_ENSURE_MS
+  ) {
+    return { changed: false, shouldRefreshCatalog: false };
+  }
+
+  if (thaiGovernmentAutoRoundEnsurePromise) {
+    return thaiGovernmentAutoRoundEnsurePromise;
+  }
+
+  const wasCatalogVerified = thaiGovernmentAutoRoundCatalogVerified;
+  thaiGovernmentAutoRoundEnsurePromise = (async () => {
+    const lotteryType = await LotteryType.findOne({ code: THAI_GOVERNMENT_CODE }).select('_id code name schedule').lean();
+    const occurrence = buildThaiGovernmentAutoRoundOccurrence(lotteryType, now);
+    if (!lotteryType || !occurrence) {
+      thaiGovernmentAutoRoundEnsuredAt = nowMs;
+      thaiGovernmentAutoRoundCatalogVerified = true;
+      return { changed: false, shouldRefreshCatalog: !wasCatalogVerified };
+    }
+
+    const setPayload = {
+      title: occurrence.title,
+      openAt: occurrence.openAt,
+      closeAt: occurrence.closeAt,
+      drawAt: occurrence.drawAt,
+      status: occurrence.status,
+      isActive: true
+    };
+    const insertResult = await DrawRound.updateOne(
+      {
+        lotteryTypeId: lotteryType._id,
+        code: occurrence.code
+      },
+      {
+        $setOnInsert: {
+          ...setPayload,
+          bettingOverride: 'auto',
+          isManualTiming: false
+        }
+      },
+      { upsert: true }
+    );
+    const updateResult = await DrawRound.updateOne(
+      {
+        lotteryTypeId: lotteryType._id,
+        code: occurrence.code,
+        resultPublishedAt: null,
+        isManualTiming: { $ne: true },
+        bettingOverride: { $in: ['auto', null] }
+      },
+      { $set: setPayload }
+    );
+    const changed = Boolean(
+      insertResult.upsertedCount
+      || insertResult.modifiedCount
+      || updateResult.modifiedCount
+    );
+
+    thaiGovernmentAutoRoundEnsuredAt = nowMs;
+    thaiGovernmentAutoRoundCatalogVerified = true;
+    if (changed) {
+      clearReferenceDataCache(activeRoundsCache);
+    }
+
+    return {
+      changed,
+      shouldRefreshCatalog: changed || !wasCatalogVerified
+    };
+  })()
+    .finally(() => {
+      thaiGovernmentAutoRoundEnsurePromise = null;
+    });
+
+  return thaiGovernmentAutoRoundEnsurePromise;
 };
 
 const buildRoundUpsertOperations = (lotteryType, occurrences) => occurrences.map((occurrence) => {
@@ -1121,17 +1242,19 @@ const getCachedCatalogOverview = async (viewer = null, options = {}) => {
   const cacheKey = getCatalogOverviewCacheKey(viewer, cacheVariant, buildOptions);
   const now = Date.now();
   const shouldUseSnapshot = canUseCatalogOverviewSnapshot(viewer, { cacheVariant, ...buildOptions });
+  const thaiGovernmentRoundEnsure = await ensureThaiGovernmentAutoRound();
+  const effectiveForce = force || thaiGovernmentRoundEnsure.shouldRefreshCatalog;
   pruneCatalogOverviewCache(now);
   const cached = catalogOverviewCache.get(cacheKey);
 
-  if (!force && cached && now - cached.cachedAt < CATALOG_OVERVIEW_CACHE_MS) {
+  if (!effectiveForce && cached && now - cached.cachedAt < CATALOG_OVERVIEW_CACHE_MS) {
     return cached.data;
   }
 
   const allowStaleSnapshot = viewer?.role !== 'customer';
 
   if (
-    !force &&
+    !effectiveForce &&
     shouldUseSnapshot &&
     allowStaleSnapshot &&
     cached?.data &&
@@ -1141,7 +1264,7 @@ const getCachedCatalogOverview = async (viewer = null, options = {}) => {
     return cached.data;
   }
 
-  if (!force && shouldUseSnapshot) {
+  if (!effectiveForce && shouldUseSnapshot) {
     const snapshot = await loadCatalogOverviewSnapshotState(cacheKey, now, { allowStale: allowStaleSnapshot });
     if (snapshot) {
       catalogOverviewCache.set(cacheKey, {
@@ -1157,7 +1280,7 @@ const getCachedCatalogOverview = async (viewer = null, options = {}) => {
     }
   }
 
-  if (!force && catalogOverviewInFlight.has(cacheKey)) {
+  if (!effectiveForce && catalogOverviewInFlight.has(cacheKey)) {
     return catalogOverviewInFlight.get(cacheKey);
   }
 
@@ -1378,8 +1501,10 @@ module.exports = {
   getRoundStatus,
   selectCatalogActiveRound,
   normalizeRoundTimingPayload,
+  ensureThaiGovernmentAutoRound,
   markAnnouncementRead,
   __test: {
+    buildThaiGovernmentAutoRoundOccurrence,
     buildRoundTimingOverwriteOperations,
     canUseCatalogOverviewSnapshot,
     createCatalogOverviewSnapshotDocument,
