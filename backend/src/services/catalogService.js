@@ -396,8 +396,8 @@ const generateOccurrences = (schedule, startDate = new Date(), horizonDays = 45)
   return buildDailyOccurrences(schedule, startDate, horizonDays);
 };
 
-const buildThaiGovernmentAutoRoundOccurrence = (lotteryType, now = new Date()) => {
-  if (lotteryType?.code !== THAI_GOVERNMENT_CODE || !lotteryType.schedule) {
+const buildCatalogAutoRoundOccurrence = (lotteryType, now = new Date()) => {
+  if (!lotteryType?.schedule) {
     return null;
   }
 
@@ -414,7 +414,7 @@ const buildThaiGovernmentAutoRoundOccurrence = (lotteryType, now = new Date()) =
   }
 
   const originalOpenAt = getTimeValue(targetOccurrence.openAt);
-  const openAt = originalOpenAt !== null && originalOpenAt > nowMs
+  const openAt = lotteryType.code === THAI_GOVERNMENT_CODE && originalOpenAt !== null && originalOpenAt > nowMs
     ? new Date(nowMs)
     : targetOccurrence.openAt;
 
@@ -429,7 +429,15 @@ const buildThaiGovernmentAutoRoundOccurrence = (lotteryType, now = new Date()) =
   };
 };
 
-const ensureThaiGovernmentAutoRound = async ({ force = false, now = new Date() } = {}) => {
+const buildThaiGovernmentAutoRoundOccurrence = (lotteryType, now = new Date()) => {
+  if (lotteryType?.code !== THAI_GOVERNMENT_CODE) {
+    return null;
+  }
+
+  return buildCatalogAutoRoundOccurrence(lotteryType, now);
+};
+
+const ensureCatalogAutoRounds = async ({ force = false, now = new Date() } = {}) => {
   const nowMs = getTimeValue(now) ?? Date.now();
   if (
     !force
@@ -445,50 +453,71 @@ const ensureThaiGovernmentAutoRound = async ({ force = false, now = new Date() }
 
   const wasCatalogVerified = thaiGovernmentAutoRoundCatalogVerified;
   thaiGovernmentAutoRoundEnsurePromise = (async () => {
-    const lotteryType = await LotteryType.findOne({ code: THAI_GOVERNMENT_CODE }).select('_id code name schedule').lean();
-    const occurrence = buildThaiGovernmentAutoRoundOccurrence(lotteryType, now);
-    if (!lotteryType || !occurrence) {
+    const lotteryTypes = await LotteryType.find({
+      isActive: { $ne: false },
+      schedule: { $exists: true, $ne: null }
+    })
+      .select('_id code name schedule')
+      .lean();
+
+    const operations = [];
+    for (const lotteryType of lotteryTypes) {
+      const occurrence = buildCatalogAutoRoundOccurrence(lotteryType, now);
+      if (!occurrence) {
+        continue;
+      }
+
+      const setPayload = {
+        title: occurrence.title,
+        openAt: occurrence.openAt,
+        closeAt: occurrence.closeAt,
+        drawAt: occurrence.drawAt,
+        status: occurrence.status,
+        isActive: true
+      };
+
+      operations.push(
+        {
+          updateOne: {
+            filter: {
+              lotteryTypeId: lotteryType._id,
+              code: occurrence.code
+            },
+            update: {
+              $setOnInsert: {
+                ...setPayload,
+                bettingOverride: 'auto',
+                isManualTiming: false
+              }
+            },
+            upsert: true
+          }
+        },
+        {
+          updateOne: {
+            filter: {
+              lotteryTypeId: lotteryType._id,
+              code: occurrence.code,
+              resultPublishedAt: null,
+              isManualTiming: { $ne: true },
+              bettingOverride: { $in: ['auto', null] }
+            },
+            update: { $set: setPayload }
+          }
+        }
+      );
+    }
+
+    if (!operations.length) {
       thaiGovernmentAutoRoundEnsuredAt = nowMs;
       thaiGovernmentAutoRoundCatalogVerified = true;
       return { changed: false, shouldRefreshCatalog: !wasCatalogVerified };
     }
 
-    const setPayload = {
-      title: occurrence.title,
-      openAt: occurrence.openAt,
-      closeAt: occurrence.closeAt,
-      drawAt: occurrence.drawAt,
-      status: occurrence.status,
-      isActive: true
-    };
-    const insertResult = await DrawRound.updateOne(
-      {
-        lotteryTypeId: lotteryType._id,
-        code: occurrence.code
-      },
-      {
-        $setOnInsert: {
-          ...setPayload,
-          bettingOverride: 'auto',
-          isManualTiming: false
-        }
-      },
-      { upsert: true }
-    );
-    const updateResult = await DrawRound.updateOne(
-      {
-        lotteryTypeId: lotteryType._id,
-        code: occurrence.code,
-        resultPublishedAt: null,
-        isManualTiming: { $ne: true },
-        bettingOverride: { $in: ['auto', null] }
-      },
-      { $set: setPayload }
-    );
+    const writeResult = await DrawRound.bulkWrite(operations, { ordered: false });
     const changed = Boolean(
-      insertResult.upsertedCount
-      || insertResult.modifiedCount
-      || updateResult.modifiedCount
+      writeResult.upsertedCount
+      || writeResult.modifiedCount
     );
 
     thaiGovernmentAutoRoundEnsuredAt = nowMs;
@@ -508,6 +537,8 @@ const ensureThaiGovernmentAutoRound = async ({ force = false, now = new Date() }
 
   return thaiGovernmentAutoRoundEnsurePromise;
 };
+
+const ensureThaiGovernmentAutoRound = ensureCatalogAutoRounds;
 
 const buildRoundUpsertOperations = (lotteryType, occurrences) => occurrences.map((occurrence) => {
   const status = getRoundStatus(occurrence).status;
@@ -1242,8 +1273,8 @@ const getCachedCatalogOverview = async (viewer = null, options = {}) => {
   const cacheKey = getCatalogOverviewCacheKey(viewer, cacheVariant, buildOptions);
   const now = Date.now();
   const shouldUseSnapshot = canUseCatalogOverviewSnapshot(viewer, { cacheVariant, ...buildOptions });
-  const thaiGovernmentRoundEnsure = await ensureThaiGovernmentAutoRound();
-  const effectiveForce = force || thaiGovernmentRoundEnsure.shouldRefreshCatalog;
+  const catalogAutoRoundEnsure = await ensureCatalogAutoRounds();
+  const effectiveForce = force || catalogAutoRoundEnsure.shouldRefreshCatalog;
   pruneCatalogOverviewCache(now);
   const cached = catalogOverviewCache.get(cacheKey);
 
@@ -1501,9 +1532,11 @@ module.exports = {
   getRoundStatus,
   selectCatalogActiveRound,
   normalizeRoundTimingPayload,
+  ensureCatalogAutoRounds,
   ensureThaiGovernmentAutoRound,
   markAnnouncementRead,
   __test: {
+    buildCatalogAutoRoundOccurrence,
     buildThaiGovernmentAutoRoundOccurrence,
     buildRoundTimingOverwriteOperations,
     canUseCatalogOverviewSnapshot,

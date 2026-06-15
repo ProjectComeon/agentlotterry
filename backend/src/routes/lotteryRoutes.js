@@ -282,10 +282,6 @@ router.put('/rounds/:roundId/timing', auth, authorize('admin'), async (req, res)
       return res.status(404).json({ message: 'Round not found' });
     }
 
-    if (round.resultPublishedAt) {
-      return res.status(400).json({ message: 'This round already has published results' });
-    }
-
     const lottery = await LotteryType.findById(round.lotteryTypeId).select('name code schedule isManualScheduleTiming scheduleTimingUpdatedAt');
     if (!lottery) {
       return res.status(404).json({ message: 'Lottery type not found' });

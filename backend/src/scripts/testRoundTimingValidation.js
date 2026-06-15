@@ -39,6 +39,11 @@ assert.strictEqual(
   'function',
   'Expected buildThaiGovernmentAutoRoundOccurrence test helper to be exported'
 );
+assert.strictEqual(
+  typeof __test.buildCatalogAutoRoundOccurrence,
+  'function',
+  'Expected buildCatalogAutoRoundOccurrence test helper to be exported'
+);
 
 const drawAt = new Date('2026-04-20T14:00:00.000Z');
 const normalized = normalizeRoundTimingPayload({
@@ -230,6 +235,40 @@ assert.deepStrictEqual(
   'Expected Thai government next round to open immediately when the scheduled open time is still in the future'
 );
 
+const baacAutoRound = __test.buildCatalogAutoRoundOccurrence(
+  {
+    code: 'baac',
+    schedule: {
+      type: 'monthly',
+      days: [1, 16],
+      openLeadDays: 5,
+      closeHour: 11,
+      closeMinute: 45,
+      drawHour: 12,
+      drawMinute: 15
+    },
+  },
+  createBangkokDate(2026, 6, 16, 13, 0)
+);
+
+assert.deepStrictEqual(
+  {
+    code: baacAutoRound.code,
+    openAt: baacAutoRound.openAt.toISOString(),
+    closeAt: baacAutoRound.closeAt.toISOString(),
+    drawAt: baacAutoRound.drawAt.toISOString(),
+    status: baacAutoRound.status
+  },
+  {
+    code: '2026-07-01',
+    openAt: createBangkokDate(2026, 6, 26, 12, 15).toISOString(),
+    closeAt: createBangkokDate(2026, 7, 1, 11, 45).toISOString(),
+    drawAt: createBangkokDate(2026, 7, 1, 12, 15).toISOString(),
+    status: 'upcoming'
+  },
+  'Expected catalog auto-round behavior to create the next BAAC round after the current round closes'
+);
+
 assert.strictEqual(
   __test.buildThaiGovernmentAutoRoundOccurrence(
     {
@@ -237,17 +276,17 @@ assert.strictEqual(
       schedule: {
         type: 'monthly',
         days: [1, 16],
-        openLeadDays: 7,
-        closeHour: 15,
-        closeMinute: 30,
-        drawHour: 16,
-        drawMinute: 0
+        openLeadDays: 5,
+        closeHour: 11,
+        closeMinute: 45,
+        drawHour: 12,
+        drawMinute: 15
       }
     },
-    createBangkokDate(2026, 6, 9, 9, 0)
+    createBangkokDate(2026, 6, 16, 13, 0)
   ),
   null,
-  'Expected Thai government auto-round behavior to be scoped to thai_government only'
+  'Expected Thai government helper to remain scoped to thai_government only'
 );
 
 assert.deepStrictEqual(

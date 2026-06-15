@@ -75,31 +75,32 @@ const LotteryDetailPanel = ({
             {bettingToggleUnavailableReason ? (
               <div className="detail-empty compact">{bettingToggleUnavailableReason}</div>
             ) : (
-              <>
-                <div className="round-toggle-body">
-                  <div className="round-toggle-copy">
-                    <strong>{activeRoundOverrideLabel}</strong>
-                    <span>{activeRound?.title || activeRound?.code || ui.noRound}</span>
-                  </div>
-
-                  <label className={`round-toggle-switch ${bettingToggleChecked ? 'is-checked' : ''} ${bettingOverrideBusy ? 'is-disabled' : ''}`}>
-                    <input
-                      type="checkbox"
-                      checked={bettingToggleChecked}
-                      onChange={onBettingToggle}
-                      disabled={Boolean(bettingOverrideBusy)}
-                    />
-                    <span className="round-toggle-track">
-                      <span className="round-toggle-thumb" />
-                    </span>
-                    <span className="round-toggle-text">
-                      {bettingOverrideBusy && bettingOverrideBusy !== 'auto'
-                        ? bettingUi.busy
-                        : (bettingToggleChecked ? bettingUi.open : bettingUi.closed)}
-                    </span>
-                  </label>
+              <div className="round-toggle-body">
+                <div className="round-toggle-copy">
+                  <strong>{activeRoundOverrideLabel}</strong>
+                  <span>{activeRound?.title || activeRound?.code || ui.noRound}</span>
                 </div>
 
+                <label className={`round-toggle-switch ${bettingToggleChecked ? 'is-checked' : ''} ${bettingOverrideBusy ? 'is-disabled' : ''}`}>
+                  <input
+                    type="checkbox"
+                    checked={bettingToggleChecked}
+                    onChange={onBettingToggle}
+                    disabled={Boolean(bettingOverrideBusy)}
+                  />
+                  <span className="round-toggle-track">
+                    <span className="round-toggle-thumb" />
+                  </span>
+                  <span className="round-toggle-text">
+                    {bettingOverrideBusy && bettingOverrideBusy !== 'auto'
+                      ? bettingUi.busy
+                      : (bettingToggleChecked ? bettingUi.open : bettingUi.closed)}
+                  </span>
+                </label>
+              </div>
+            )}
+
+            {activeRoundId ? (
                 <div className="round-timing-form">
                   <div className="round-timing-head">
                     <div>
@@ -163,8 +164,7 @@ const LotteryDetailPanel = ({
                     {timingBusy ? bettingUi.savingTiming : bettingUi.saveTiming}
                   </button>
                 </div>
-              </>
-            )}
+            ) : null}
 
             {activeRoundId ? (
               <div className="round-toggle-footer">
