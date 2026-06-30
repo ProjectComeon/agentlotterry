@@ -23,6 +23,7 @@
     "test:bet-slip-pricing": "node src/scripts/testBetSlipDuplicatePricing.js",
     "test:agent-rate-defaults": "node src/scripts/testAgentRateDefaults.js",
     "test:settlement-automation": "node src/scripts/testSettlementAutomationGuards.js",
+    "test:sync-feed-selection": "node src/scripts/testResultSyncFeedSelection.js",
     "test:retention-policy": "node src/scripts/testRetentionPolicy.js",
     "retention:cleanup:dry": "node src/scripts/runRetentionCleanup.js --dry-run",
     "retention:cleanup:apply": "node src/scripts/runRetentionCleanup.js --yes",

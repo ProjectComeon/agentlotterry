@@ -69,6 +69,14 @@ const MANYCAI_FEED_BASE_URL = (
 const RESULT_SYNC_TIMEOUT_MS = Number(process.env.RESULT_SYNC_TIMEOUT_MS || 12000);
 const RESULT_SYNC_BATCH_SIZE = Math.max(1, Number(process.env.RESULT_SYNC_BATCH_SIZE || 6));
 const RESULT_SYNC_STARTUP_DELAY_MS = Math.max(0, Number(process.env.RESULT_SYNC_STARTUP_DELAY_MS || 60000));
+const HOUR_MS = 60 * 60 * 1000;
+const DAY_MS = 24 * HOUR_MS;
+const parseNonNegativeWindowMs = (value, fallback) => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? Math.max(0, parsed) : fallback;
+};
+const RESULT_SYNC_BEFORE_DRAW_WINDOW_MS = parseNonNegativeWindowMs(process.env.RESULT_SYNC_BEFORE_DRAW_WINDOW_MS, 0);
+const RESULT_SYNC_AFTER_DRAW_WINDOW_MS = parseNonNegativeWindowMs(process.env.RESULT_SYNC_AFTER_DRAW_WINDOW_MS, 2 * HOUR_MS);
 const STRICT_FEED_MAPPING = String(process.env.STRICT_FEED_MAPPING || '1') !== '0';
 const GSB_SYNC_LIMIT = Number(process.env.GSB_SYNC_LIMIT || 6);
 const THAI_GOV_SYNC_LIMIT = Number(process.env.THAI_GOV_SYNC_LIMIT || 10);
@@ -1203,6 +1211,181 @@ const getScheduledResultWaitingState = (lotteryType, now = new Date()) => {
   };
 };
 
+const buildBangkokRoundCode = (parts) => (
+  `${parts.year}-${String(parts.month).padStart(2, '0')}-${String(parts.day).padStart(2, '0')}`
+);
+
+const getBangkokDateWindowCandidates = (now = new Date()) => {
+  const today = getBangkokParts(now);
+  const todayNoon = createBangkokDate(today.year, today.month, today.day, 12, 0, 0);
+  const yesterday = getBangkokParts(new Date(todayNoon.getTime() - DAY_MS));
+  return [today, yesterday];
+};
+
+const getBangkokWeekday = (parts) => new Date(Date.UTC(parts.year, parts.month - 1, parts.day)).getUTCDay();
+
+const normalizeNumberSet = (values) => new Set(
+  (Array.isArray(values) ? values : [])
+    .map((value) => Number(value))
+    .filter((value) => Number.isFinite(value))
+);
+
+const scheduleRunsOnBangkokDate = (schedule, parts) => {
+  if (!schedule) {
+    return false;
+  }
+
+  if (schedule.type === 'monthly') {
+    return normalizeNumberSet(schedule.days).has(Number(parts.day));
+  }
+
+  if (schedule.type === 'daily') {
+    const weekdays = normalizeNumberSet(schedule.weekdays);
+    return weekdays.size === 0 || weekdays.has(getBangkokWeekday(parts));
+  }
+
+  return false;
+};
+
+const getResultSyncWindowTarget = (lotteryType, {
+  now = new Date(),
+  windowBeforeMs = RESULT_SYNC_BEFORE_DRAW_WINDOW_MS,
+  windowAfterMs = RESULT_SYNC_AFTER_DRAW_WINDOW_MS
+} = {}) => {
+  const schedule = lotteryType?.schedule?.toObject?.() || lotteryType?.schedule;
+  if (!schedule) {
+    return {
+      shouldSync: true,
+      reason: 'missing-schedule',
+      roundCode: '',
+      drawAt: null
+    };
+  }
+
+  for (const parts of getBangkokDateWindowCandidates(now)) {
+    if (!scheduleRunsOnBangkokDate(schedule, parts)) {
+      continue;
+    }
+
+    const drawAt = createBangkokDate(
+      parts.year,
+      parts.month,
+      parts.day,
+      Number(schedule.drawHour || 0),
+      Number(schedule.drawMinute || 0),
+      0
+    );
+    const startsAt = new Date(drawAt.getTime() - Math.max(0, Number(windowBeforeMs) || 0));
+    const endsAt = new Date(drawAt.getTime() + Math.max(0, Number(windowAfterMs) || 0));
+
+    if (now.getTime() >= startsAt.getTime() && now.getTime() <= endsAt.getTime()) {
+      return {
+        shouldSync: true,
+        reason: 'due',
+        roundCode: buildBangkokRoundCode(parts),
+        drawAt,
+        startsAt,
+        endsAt
+      };
+    }
+  }
+
+  return {
+    shouldSync: false,
+    reason: 'outside-result-window',
+    roundCode: '',
+    drawAt: null
+  };
+};
+
+const createResultSyncExistingKey = (feedCode, roundCode) => `${feedCode}::${roundCode}`;
+
+const buildResultSyncFeedSelection = (configs, lotteryByCode, options = {}) => {
+  const now = options.now || new Date();
+  const existingRoundKeys = options.existingRoundKeys || new Set();
+  const forceAllFeeds = Boolean(options.forceAllFeeds);
+  const decisions = configs.map((config) => {
+    const lotteryType = lotteryByCode?.get?.(config.lotteryCode) || null;
+    const target = getResultSyncWindowTarget(lotteryType, options);
+    const existingKey = target.roundCode ? createResultSyncExistingKey(config.feedCode, target.roundCode) : '';
+
+    if (forceAllFeeds) {
+      return { ...target, feedCode: config.feedCode, lotteryCode: config.lotteryCode, shouldSync: true, reason: 'force-all' };
+    }
+
+    if (!target.shouldSync) {
+      return { ...target, feedCode: config.feedCode, lotteryCode: config.lotteryCode, shouldSync: false };
+    }
+
+    if (existingKey && existingRoundKeys.has(existingKey)) {
+      return { ...target, feedCode: config.feedCode, lotteryCode: config.lotteryCode, shouldSync: false, reason: 'result-already-stored' };
+    }
+
+    return { ...target, feedCode: config.feedCode, lotteryCode: config.lotteryCode, shouldSync: true };
+  });
+  const decisionByFeedCode = new Map(decisions.map((decision) => [decision.feedCode, decision]));
+  const selectedConfigs = configs.reduce((items, config) => {
+    const decision = decisionByFeedCode.get(config.feedCode);
+    if (!decision?.shouldSync) {
+      return items;
+    }
+
+    items.push(!forceAllFeeds && decision.roundCode
+      ? { ...config, syncTargetRoundCode: decision.roundCode }
+      : config);
+    return items;
+  }, []);
+
+  return {
+    mode: forceAllFeeds ? 'force-all' : 'scheduled-result-window',
+    now: now.toISOString(),
+    windowBeforeMs: Math.max(0, Number(options.windowBeforeMs ?? RESULT_SYNC_BEFORE_DRAW_WINDOW_MS) || 0),
+    windowAfterMs: Math.max(0, Number(options.windowAfterMs ?? RESULT_SYNC_AFTER_DRAW_WINDOW_MS) || 0),
+    totalFeeds: configs.length,
+    selectedFeeds: selectedConfigs.length,
+    skippedFeeds: configs.length - selectedConfigs.length,
+    skippedOutsideWindow: decisions.filter((decision) => decision.reason === 'outside-result-window').length,
+    skippedAlreadyStored: decisions.filter((decision) => decision.reason === 'result-already-stored').length,
+    selectedConfigs,
+    selectedFeedCodes: selectedConfigs.map((config) => config.feedCode),
+    decisions
+  };
+};
+
+const getExistingResultSyncRoundKeys = async (decisions) => {
+  const lookup = decisions
+    .filter((decision) => decision.shouldSync && decision.roundCode)
+    .map((decision) => ({ feedCode: decision.feedCode, roundCode: decision.roundCode }));
+
+  if (!lookup.length) {
+    return new Set();
+  }
+
+  const existing = await MarketFeedResult.find({ $or: lookup })
+    .select('feedCode roundCode')
+    .lean();
+
+  return new Set(existing.map((item) => createResultSyncExistingKey(item.feedCode, item.roundCode)));
+};
+
+const resolveResultSyncFeedSelection = async (configs, lotteryByCode, options = {}) => {
+  if (options.forceAllFeeds) {
+    return buildResultSyncFeedSelection(configs, lotteryByCode, options);
+  }
+
+  const preliminarySelection = buildResultSyncFeedSelection(configs, lotteryByCode, options);
+  const existingRoundKeys = await getExistingResultSyncRoundKeys(preliminarySelection.decisions);
+
+  return buildResultSyncFeedSelection(configs, lotteryByCode, {
+    ...options,
+    existingRoundKeys
+  });
+};
+
+const summarizeResultSyncFeedSelection = (selection) => {
+  const { selectedConfigs, ...summary } = selection;
+  return summary;
+};
 const upsertSnapshot = async (snapshot, lotteryType) => {
   return MarketFeedResult.findOneAndUpdate(
     {
@@ -1340,6 +1523,7 @@ const processSyncConfig = async (config, lotteryByCode, executionMode) => {
     mappingMode: getFeedMappingMode(config),
     syncToResults: Boolean(config.syncToResults),
     settlementMode: executionMode.mode,
+    targetRoundCode: config.syncTargetRoundCode || '',
     fetchedRows: 0,
     processedRounds: 0,
     savedSnapshots: 0,
@@ -1390,6 +1574,9 @@ const processSyncConfig = async (config, lotteryByCode, executionMode) => {
     for (const row of rows) {
       const snapshot = buildSnapshot(config, row);
       if (!snapshot.roundCode || !snapshot.headline || processedRounds.has(snapshot.roundCode)) {
+        continue;
+      }
+      if (config.syncTargetRoundCode && snapshot.roundCode !== config.syncTargetRoundCode) {
         continue;
       }
 
@@ -1471,8 +1658,13 @@ const syncLatestExternalResults = async (options = {}) => {
       code: { $in: SYNC_CONFIGS.map((config) => config.lotteryCode) }
     });
     const lotteryByCode = new Map(lotteryTypes.map((item) => [item.code, item]));
+    const syncNow = new Date();
+    const feedSelection = await resolveResultSyncFeedSelection(SYNC_CONFIGS, lotteryByCode, {
+      now: syncNow,
+      forceAllFeeds: Boolean(options.forceAllFeeds)
+    });
     const summary = {
-      syncedAt: new Date().toISOString(),
+      syncedAt: syncNow.toISOString(),
       mode: executionMode.mode,
       runSettlement: executionMode.runSettlement,
       batchSize: executionMode.runSettlement ? Math.min(RESULT_SYNC_BATCH_SIZE, 3) : RESULT_SYNC_BATCH_SIZE,
@@ -1490,10 +1682,11 @@ const syncLatestExternalResults = async (options = {}) => {
       warnings: [],
       strictMapping: STRICT_FEED_MAPPING,
       mappingCoverage: getMappingCoverageSummary(),
+      feedSelection: summarizeResultSyncFeedSelection(feedSelection),
       feedSummaries: []
     };
     const feedResults = await runItemsInBatches(
-      SYNC_CONFIGS,
+      feedSelection.selectedConfigs,
       summary.batchSize,
       (config) => processSyncConfig(config, lotteryByCode, executionMode)
     );
@@ -1517,19 +1710,33 @@ const syncLatestExternalResults = async (options = {}) => {
       summary.safetySettlements = summary.safetySettlement.settledRounds;
     }
 
-    try {
-      const { scheduleReadModelSnapshotRebuild } = require('./readModelSnapshotService');
-      summary.readModelSnapshotSchedule = scheduleReadModelSnapshotRebuild({
-        reason: 'external-result-sync',
-        delayMs: 0,
-        includeAgents: Boolean(summary.settlements || summary.safetySettlements)
-      });
-      summary.snapshotRebuilt = true;
-      summary.catalogSnapshotRebuilt = true;
-      summary.dashboardSnapshotRebuilt = true;
-    } catch (error) {
-      summary.snapshotError = error.message || 'Failed to schedule read model snapshot rebuild';
-      summary.warnings.push(`read-model-snapshot: ${summary.snapshotError}`);
+    const hasSyncChanges = Boolean(
+      summary.savedSnapshots
+      || summary.syncedResults
+      || summary.settlements
+      || summary.safetySettlements
+    );
+
+    if (hasSyncChanges) {
+      try {
+        const { scheduleReadModelSnapshotRebuild } = require('./readModelSnapshotService');
+        summary.readModelSnapshotSchedule = scheduleReadModelSnapshotRebuild({
+          reason: 'external-result-sync',
+          delayMs: 0,
+          includeAgents: Boolean(summary.settlements || summary.safetySettlements)
+        });
+        summary.snapshotRebuilt = true;
+        summary.catalogSnapshotRebuilt = true;
+        summary.dashboardSnapshotRebuilt = true;
+      } catch (error) {
+        summary.snapshotError = error.message || 'Failed to schedule read model snapshot rebuild';
+        summary.warnings.push(`read-model-snapshot: ${summary.snapshotError}`);
+      }
+    } else {
+      summary.readModelSnapshotSchedule = {
+        scheduled: false,
+        reason: 'no-sync-changes'
+      };
     }
 
     syncState.lastCompletedAt = new Date().toISOString();
@@ -1593,6 +1800,9 @@ const getExternalSyncState = () => ({
   ...syncState,
   feedBaseUrl: MANYCAI_FEED_BASE_URL,
   strictMapping: STRICT_FEED_MAPPING,
+  feedSelectionMode: 'scheduled-result-window',
+  resultSyncBeforeDrawWindowMs: RESULT_SYNC_BEFORE_DRAW_WINDOW_MS,
+  resultSyncAfterDrawWindowMs: RESULT_SYNC_AFTER_DRAW_WINDOW_MS,
   mappingCoverage: getMappingCoverageSummary(),
   feeds: SYNC_CONFIGS.map((config) => ({
     feedCode: config.feedCode,
@@ -1660,6 +1870,9 @@ module.exports = {
   SYNC_CONFIGS,
   EXPLICIT_FEED_MAPPINGS,
   STRICT_FEED_MAPPING,
+  buildResultSyncFeedSelection,
+  createResultSyncExistingKey,
+  getResultSyncWindowTarget,
   buildSnapshot,
   fetchFeedRows,
   fetchThaiGovernmentResultByRoundCode,
