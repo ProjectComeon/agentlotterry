@@ -33,10 +33,11 @@
     "legacy:cleanup:validate": "node src/scripts/cleanupLegacyData.js --mode=validate",
     "legacy:cleanup:migrate": "node src/scripts/cleanupLegacyData.js --mode=migrate",
     "legacy:cleanup:archive": "node src/scripts/cleanupLegacyData.js --mode=archive",
-    "legacy:cleanup:purge": "node src/scripts/cleanupLegacyData.js --mode=purge"
+    "legacy:cleanup:purge": "node src/scripts/cleanupLegacyData.js --mode=purge",
+    "test:backup-restore-guards": "node src/scripts/testBackupRestoreGuards.js"
   },
   "dependencies": {
-    "axios": "^1.15.0",
+    "axios": "^1.18.1",
     "bcryptjs": "^2.4.3",
     "cors": "^2.8.5",
     "dotenv": "^16.4.0",
@@ -48,6 +49,8 @@
   },
   "overrides": {
     "follow-redirects": "1.16.0",
-    "path-to-regexp": "0.1.13"
+    "path-to-regexp": "0.1.13",
+    "form-data": "4.0.6",
+    "qs": "6.15.3"
   }
 }

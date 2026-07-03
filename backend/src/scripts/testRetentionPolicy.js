@@ -28,4 +28,16 @@ const filter = __test.buildOlderThanFilter('createdAt', cutoff);
 assert.deepStrictEqual(Object.keys(filter), ['createdAt']);
 assert.strictEqual(filter.createdAt.$lt.toISOString(), cutoff.toISOString());
 
+const leaseNow = new Date('2026-07-04T00:00:00.000Z');
+const leaseQuery = __test.buildRetentionLeaseQuery(leaseNow);
+assert.strictEqual(leaseQuery._id, 'global');
+assert.strictEqual(leaseQuery.$or[1].expiresAt.$lte, leaseNow);
+const leaseUpdate = __test.buildRetentionLeaseUpdate({
+  runId: 'run-1',
+  now: leaseNow,
+  leaseMs: 120000
+});
+assert.strictEqual(leaseUpdate.$set.runId, 'run-1');
+assert.strictEqual(leaseUpdate.$set.expiresAt.toISOString(), '2026-07-04T00:02:00.000Z');
+
 console.log('Retention policy tests passed');
