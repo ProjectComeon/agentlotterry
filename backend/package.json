@@ -34,7 +34,8 @@
     "legacy:cleanup:migrate": "node src/scripts/cleanupLegacyData.js --mode=migrate",
     "legacy:cleanup:archive": "node src/scripts/cleanupLegacyData.js --mode=archive",
     "legacy:cleanup:purge": "node src/scripts/cleanupLegacyData.js --mode=purge",
-    "test:backup-restore-guards": "node src/scripts/testBackupRestoreGuards.js"
+    "test:backup-restore-guards": "node src/scripts/testBackupRestoreGuards.js",
+    "test:cookie-auth-guards": "node src/scripts/testCookieAuthGuards.js"
   },
   "dependencies": {
     "axios": "^1.18.1",

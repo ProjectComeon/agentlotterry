@@ -1,16 +1,7 @@
 export const buildInitialAuthState = ({
-  token = '',
   storedUser = '',
   normalizeUser = (user) => user
 } = {}) => {
-  if (!token) {
-    return {
-      user: null,
-      loading: false,
-      shouldRevalidate: false
-    };
-  }
-
   try {
     const parsedUser = storedUser ? JSON.parse(storedUser) : null;
     const user = normalizeUser(parsedUser);

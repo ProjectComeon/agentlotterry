@@ -44,3 +44,18 @@ Acceptance criteria:
 - Authenticated browser requests work with httpOnly cookies.
 - Unsafe API methods require CSRF validation.
 - e2e smoke/regression covers login, logout, /auth/me, admin/agent API requests, and disabled account handling.
+
+## Phase 1 Implementation Status
+
+Implemented in codex/http-only-cookie-auth:
+
+- Browser login now receives an httpOnly `agentlottery_auth` cookie and readable `agentlottery_csrf` cookie.
+- Frontend API calls use `withCredentials: true` and do not persist or send bearer tokens from localStorage.
+- Unsafe browser requests send `X-CSRF-Token` from the CSRF cookie.
+- Logout calls the backend and clears auth cookies server-side.
+- Existing backend e2e scripts keep a temporary explicit bearer compatibility header while those scripts are migrated to cookie jars.
+
+Remaining follow-up:
+
+- Remove bearer response compatibility after non-browser clients and e2e helpers move to cookie sessions or a separate service-token flow.
+- Consider session rotation/refresh if 24-hour JWT cookies are not sufficient operationally.

@@ -12,32 +12,29 @@ const normalizeUser = (user) => {
   };
 };
 
-const noToken = buildInitialAuthState({
-  token: '',
+const emptyBootstrap = buildInitialAuthState({
   storedUser: '',
   normalizeUser
 });
 assert.deepEqual(
-  noToken,
+  emptyBootstrap,
   {
     user: null,
-    loading: false,
-    shouldRevalidate: false
+    loading: true,
+    shouldRevalidate: true
   },
-  'missing token should not block initial render'
+  'cookie auth bootstrap should block on /auth/me when no user is cached'
 );
 
 const validStoredUser = buildInitialAuthState({
-  token: 'token',
   storedUser: JSON.stringify({ id: 'u-1', role: 'admin', name: 'Tester' }),
   normalizeUser
 });
-assert.equal(validStoredUser.loading, false, 'stored valid user should skip blocking loading state');
-assert.equal(validStoredUser.user?.id, 'u-1', 'stored user should hydrate initial auth state');
-assert.equal(validStoredUser.shouldRevalidate, true, 'token-backed bootstrap should still revalidate');
+assert.equal(validStoredUser.loading, true, 'stored valid user should stay loading until cookie session revalidates');
+assert.equal(validStoredUser.user?.id, 'u-1', 'stored user should hydrate while /auth/me revalidates');
+assert.equal(validStoredUser.shouldRevalidate, true, 'cookie-backed bootstrap should revalidate');
 
 const invalidStoredUser = buildInitialAuthState({
-  token: 'token',
   storedUser: JSON.stringify({ id: 'u-2', role: 'customer', name: 'Blocked' }),
   normalizeUser
 });

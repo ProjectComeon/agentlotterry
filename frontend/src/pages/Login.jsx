@@ -24,7 +24,7 @@ const Login = () => {
     setLoading(true);
     try {
       const res = await loginApi({ username, password });
-      loginUser(res.data.token, res.data.user);
+      loginUser(res.data.user);
       toast.success(`ยินดีต้อนรับ ${res.data.user.name}`);
       navigate(getAppRouteForRole(res.data?.user?.role), { replace: true });
     } catch (err) {

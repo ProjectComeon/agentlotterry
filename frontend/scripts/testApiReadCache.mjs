@@ -9,12 +9,11 @@ assert.equal(
 
 assert.equal(
   buildReadCacheKey({
-    token: 'abc',
     url: '/admin/dashboard',
     params: { marketId: 'lao', roundDate: '2026-04-20' }
   }),
-  'abc:/admin/dashboard:{"marketId":"lao","roundDate":"2026-04-20"}',
-  'cache keys should be deterministic'
+  '/admin/dashboard:{"marketId":"lao","roundDate":"2026-04-20"}',
+  'cache keys should be deterministic without bearer token material'
 );
 
 console.log('testApiReadCache passed');
