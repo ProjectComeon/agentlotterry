@@ -6,11 +6,14 @@ const CreditLedgerEntry = require('../models/CreditLedgerEntry');
 const DrawRound = require('../models/DrawRound');
 const MarketFeedResult = require('../models/MarketFeedResult');
 const RetentionArchiveSummary = require('../models/RetentionArchiveSummary');
+const RetentionCleanupLease = require('../models/RetentionCleanupLease');
 const ResultRecord = require('../models/ResultRecord');
 const { createBangkokDate, formatBangkokDate, getBangkokParts } = require('../utils/bangkokTime');
 const { incrementArchiveSummary } = require('./retentionArchiveService');
 
 const DEFAULT_RETENTION_KEEP_PREVIOUS_MONTHS = 1;
+const DEFAULT_RETENTION_CLEANUP_LEASE_MS = 30 * 60 * 1000;
+const RETENTION_CLEANUP_LEASE_ID = 'global';
 
 let retentionTimer = null;
 let retentionRunning = false;
@@ -58,6 +61,58 @@ const buildArchiveRangeFilter = (field, cutoff, lowerBound = null) => ({
     $lt: cutoff
   }
 });
+
+const buildRetentionLeaseQuery = (now = new Date()) => ({
+  _id: RETENTION_CLEANUP_LEASE_ID,
+  $or: [
+    { expiresAt: { $exists: false } },
+    { expiresAt: { $lte: now } }
+  ]
+});
+
+const buildRetentionLeaseUpdate = ({
+  runId,
+  now = new Date(),
+  leaseMs = DEFAULT_RETENTION_CLEANUP_LEASE_MS
+}) => {
+  const safeLeaseMs = Math.max(60000, Number(leaseMs) || DEFAULT_RETENTION_CLEANUP_LEASE_MS);
+  return {
+    $set: {
+      runId,
+      acquiredAt: now,
+      expiresAt: new Date(now.getTime() + safeLeaseMs)
+    }
+  };
+};
+
+const acquireRetentionCleanupLease = async ({
+  runId,
+  now = new Date(),
+  leaseMs = DEFAULT_RETENTION_CLEANUP_LEASE_MS
+}) => {
+  try {
+    const lease = await RetentionCleanupLease.findOneAndUpdate(
+      buildRetentionLeaseQuery(now),
+      buildRetentionLeaseUpdate({ runId, now, leaseMs }),
+      { upsert: true, new: true }
+    );
+
+    return lease?.runId === runId ? lease : null;
+  } catch (error) {
+    if (error?.code === 11000) {
+      return null;
+    }
+    throw error;
+  }
+};
+
+const releaseRetentionCleanupLease = async (runId) => {
+  if (!runId) return;
+  await RetentionCleanupLease.deleteOne({
+    _id: RETENTION_CLEANUP_LEASE_ID,
+    runId
+  });
+};
 
 const getArchiveLowerBound = async (cutoff) => {
   const summary = await RetentionArchiveSummary.findOne({
@@ -454,9 +509,28 @@ const runRetentionCleanupSafely = async (options = {}) => {
     return null;
   }
 
+  const runId = options.runId || crypto.randomUUID();
+  const lease = await acquireRetentionCleanupLease({
+    runId,
+    leaseMs: options.leaseMs
+  });
+
+  if (!lease) {
+    lastRunState = {
+      ok: true,
+      skipped: true,
+      reason: 'retention-cleanup-lease-active',
+      completedAt: new Date().toISOString()
+    };
+    return lastRunState;
+  }
+
   retentionRunning = true;
   try {
-    lastRunState = await runRetentionCleanup(options);
+    lastRunState = await runRetentionCleanup({
+      ...options,
+      runId
+    });
     return lastRunState;
   } catch (error) {
     lastRunState = {
@@ -464,10 +538,13 @@ const runRetentionCleanupSafely = async (options = {}) => {
       error: error.message,
       completedAt: new Date().toISOString()
     };
-    console.error(`Retention cleanup failed: ${error.message}`);
+    console.error('Retention cleanup failed: ' + error.message);
     return lastRunState;
   } finally {
     retentionRunning = false;
+    await releaseRetentionCleanupLease(runId).catch((error) => {
+      console.warn('Retention cleanup lease release failed: ' + error.message);
+    });
   }
 };
 
@@ -512,15 +589,19 @@ const getRetentionCleanupState = () => ({
 });
 
 module.exports = {
+  DEFAULT_RETENTION_CLEANUP_LEASE_MS,
   DEFAULT_RETENTION_KEEP_PREVIOUS_MONTHS,
   getRetentionCleanupState,
   getRetentionCutoff,
   getRetentionPolicy,
   runRetentionCleanup,
+  runRetentionCleanupSafely,
   startRetentionAutoCleanup,
   __test: {
     buildOlderThanFilter,
     buildArchiveRangeFilter,
+    buildRetentionLeaseQuery,
+    buildRetentionLeaseUpdate,
     getArchiveLowerBound,
     getRetentionCutoff,
     getRetentionPolicy

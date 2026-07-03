@@ -2,7 +2,7 @@ require('dotenv').config();
 
 const mongoose = require('mongoose');
 const { buildDirectMongoUri } = require('../utils/mongoUri');
-const { runRetentionCleanup } = require('../services/retentionCleanupService');
+const { runRetentionCleanup, runRetentionCleanupSafely } = require('../services/retentionCleanupService');
 
 const parseArgs = (argv = process.argv.slice(2)) =>
   argv.reduce((acc, arg) => {
@@ -27,7 +27,9 @@ const main = async () => {
   const mongoUri = await buildDirectMongoUri(process.env.MONGODB_URI);
 
   await mongoose.connect(mongoUri);
-  const result = await runRetentionCleanup(options);
+  const result = options.dryRun
+    ? await runRetentionCleanup(options)
+    : await runRetentionCleanupSafely(options);
   console.log(JSON.stringify(result, null, 2));
   await mongoose.disconnect();
 };

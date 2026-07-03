@@ -23,14 +23,19 @@ Restore into an empty target:
 npm run db:restore -- --path=backups/<timestamp>_manual
 ```
 
-Restore over existing data:
+Restore over existing data. This is destructive, requires explicit confirmation, and creates a pre-restore backup by default before deleting target collection data:
 ```bash
-npm run db:restore -- --path=backups/<timestamp>_manual --drop
+npm run db:restore -- --path=backups/<timestamp>_manual --drop --yes
 ```
 
 Restore only selected collections:
 ```bash
-npm run db:restore -- --path=backups/<timestamp>_manual --drop --collections=users,betslips,betitems
+npm run db:restore -- --path=backups/<timestamp>_manual --drop --yes --collections=users,betslips,betitems
+```
+
+Only skip the automatic pre-restore backup when a separate verified backup already exists:
+```bash
+npm run db:restore -- --path=backups/<timestamp>_manual --drop --yes --skip-pre-restore-backup
 ```
 
 ## Safe workflow
@@ -43,5 +48,7 @@ npm run db:restore -- --path=backups/<timestamp>_manual --drop --collections=use
 
 ## Notes
 - restore preserves `_id`, dates, and ObjectIds through EJSON
-- restore refuses to write into non-empty collections unless `--drop` is passed
+- restore refuses to write into non-empty collections unless `--drop --yes` is passed
+- restore with `--drop --yes` writes a pre-restore backup first unless `--skip-pre-restore-backup` is explicitly passed
+- backup streams collection data to disk instead of loading an entire collection into memory
 - backup/restore scripts use the same Mongo URI resolution logic as the app runtime
