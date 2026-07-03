@@ -5,6 +5,7 @@ const auth = require('../middleware/auth');
 const { createAuditLog } = require('../middleware/auditLog');
 const { loginRateLimit, resetLoginRateLimit } = require('../middleware/loginRateLimit');
 const { canAuthenticateAccount, getAccountAccessMessage } = require('../utils/accountAccess');
+const { clearAuthCookies, setAuthCookies } = require('../utils/httpCookies');
 
 const router = express.Router();
 
@@ -46,9 +47,9 @@ router.post('/login', loginRateLimit, async (req, res) => {
 
     await createAuditLog(user._id, 'LOGIN', 'auth', { ip: req.ip });
     resetLoginRateLimit(req);
-
-    res.json({
-      token,
+    const csrfToken = setAuthCookies(res, token);
+    const payload = {
+      csrfToken,
       user: {
         id: user._id,
         username: user.username,
@@ -65,7 +66,13 @@ router.post('/login', loginRateLimit, async (req, res) => {
         defaultRateProfileId: user.defaultRateProfileId,
         lastActiveAt: user.lastActiveAt
       }
-    });
+    };
+
+    if (req.get('X-Allow-Bearer-Response') === '1') {
+      payload.token = token;
+    }
+
+    res.json(payload);
   } catch (error) {
     console.error('Login error:', error);
     res.status(500).json({ message: 'Server error' });
@@ -78,6 +85,18 @@ router.get('/me', auth, async (req, res) => {
     const user = await User.findById(req.user._id).select('-password');
     res.json(user);
   } catch (error) {
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// POST /api/auth/logout
+router.post('/logout', auth, async (req, res) => {
+  try {
+    clearAuthCookies(res);
+    await createAuditLog(req.user._id, 'LOGOUT', 'auth', { ip: req.ip });
+    res.json({ ok: true });
+  } catch (error) {
+    console.error('Logout error:', error);
     res.status(500).json({ message: 'Server error' });
   }
 });

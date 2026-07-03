@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, useEffect } from 'react';
-import { getMe, sendPresenceHeartbeat } from '../services/api';
+import { clearApiReadCache, getMe, logoutSession, sendPresenceHeartbeat } from '../services/api';
 import { getValidAppRole } from '../utils/roleRoutes';
 import { buildInitialAuthState } from '../utils/authBootstrap';
 
@@ -15,7 +15,6 @@ export const AuthProvider = ({ children }) => {
 
   const [initialAuthState] = useState(() =>
     buildInitialAuthState({
-      token: localStorage.getItem('token') || '',
       storedUser: localStorage.getItem('user') || '',
       normalizeUser
     })
@@ -54,13 +53,6 @@ export const AuthProvider = ({ children }) => {
   }, [user?.id]);
 
   const checkAuth = async ({ background = false } = {}) => {
-    const token = localStorage.getItem('token');
-    if (!token) {
-      setUser(null);
-      setLoading(false);
-      return;
-    }
-
     if (!background) {
       setLoading(true);
     }
@@ -69,7 +61,6 @@ export const AuthProvider = ({ children }) => {
       const res = await getMe();
       const normalizedUser = normalizeUser(res.data);
       if (!normalizedUser) {
-        localStorage.removeItem('token');
         localStorage.removeItem('user');
         setUser(null);
       } else {
@@ -77,7 +68,6 @@ export const AuthProvider = ({ children }) => {
         setUser(normalizedUser);
       }
     } catch {
-      localStorage.removeItem('token');
       localStorage.removeItem('user');
       setUser(null);
     } finally {
@@ -85,24 +75,28 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  const loginUser = (token, userData) => {
+  const loginUser = (userData) => {
     const normalizedUser = normalizeUser(userData);
     if (!normalizedUser) {
-      localStorage.removeItem('token');
       localStorage.removeItem('user');
       setUser(null);
       return;
     }
 
-    localStorage.setItem('token', token);
     localStorage.setItem('user', JSON.stringify(normalizedUser));
     setUser(normalizedUser);
   };
 
-  const logout = () => {
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
-    setUser(null);
+  const logout = async () => {
+    try {
+      await logoutSession();
+    } catch {
+      // local cleanup still removes access if the network request fails
+    } finally {
+      localStorage.removeItem('user');
+      clearApiReadCache();
+      setUser(null);
+    }
   };
 
   return (

@@ -27,6 +27,7 @@ const {
   validateEnv
 } = require('./src/config/env');
 const requestContext = require('./src/middleware/requestContext');
+const csrfProtection = require('./src/middleware/csrfProtection');
 
 // Import routes
 const authRoutes = require('./src/routes/authRoutes');
@@ -110,6 +111,7 @@ app.use(morgan(requestLogFormat, {
 }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+app.use('/api', csrfProtection);
 app.use('/api', (req, res, next) => {
   res.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
   res.set('Pragma', 'no-cache');

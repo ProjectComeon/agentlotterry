@@ -63,7 +63,9 @@ const loginWithRetry = async (username, password, label) => {
   const client = makeClient();
 
   for (let attempt = 0; attempt < 20; attempt++) {
-    const response = await client.post('/auth/login', { username, password });
+    const response = await client.post('/auth/login', { username, password }, {
+      headers: { 'X-Allow-Bearer-Response': '1' }
+    });
     if (response.status === 200) {
       return response.data;
     }

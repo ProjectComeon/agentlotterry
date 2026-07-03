@@ -14,5 +14,5 @@ export const stableStringify = (value = {}) => {
   );
 };
 
-export const buildReadCacheKey = ({ token = '', url = '', params = {} } = {}) =>
-  `${token}:${url}:${stableStringify(params)}`;
+export const buildReadCacheKey = ({ url = '', params = {} } = {}) =>
+  `${url}:${stableStringify(params)}`;

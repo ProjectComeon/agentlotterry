@@ -1,10 +1,12 @@
 import axios from 'axios';
 import { buildReadCacheKey } from '../utils/apiReadCache';
+import { getCookieValue } from '../utils/cookies';
 
 const API_URL = import.meta.env.VITE_API_URL || '';
 
 const api = axios.create({
   baseURL: `${API_URL}/api`,
+  withCredentials: true,
   headers: {
     'Content-Type': 'application/json'
   }
@@ -24,6 +26,9 @@ const READ_TTL_SHORT_MS = 5000;
 const READ_TTL_MEDIUM_MS = 15000;
 const READ_TTL_LONG_MS = 60000;
 const readCache = new Map();
+const CSRF_COOKIE_NAME = 'agentlottery_csrf';
+const CSRF_HEADER_NAME = 'X-CSRF-Token';
+const UNSAFE_METHODS = new Set(['post', 'put', 'patch', 'delete']);
 
 export const clearApiReadCache = () => {
   readCache.clear();
@@ -37,7 +42,6 @@ const clearCacheAfterWrite = async (request) => {
 
 const cachedGet = (url, { params = {}, ttlMs = READ_CACHE_DEFAULT_TTL_MS, force = false } = {}) => {
   const cacheKey = buildReadCacheKey({
-    token: localStorage.getItem('token') || '',
     url,
     params
   });
@@ -64,11 +68,13 @@ const cachedGet = (url, { params = {}, ttlMs = READ_CACHE_DEFAULT_TTL_MS, force 
   return request;
 };
 
-// Add auth token to every request
 api.interceptors.request.use((config) => {
-  const token = localStorage.getItem('token');
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
+  const method = String(config.method || 'get').toLowerCase();
+  if (UNSAFE_METHODS.has(method)) {
+    const csrfToken = getCookieValue(CSRF_COOKIE_NAME);
+    if (csrfToken) {
+      config.headers[CSRF_HEADER_NAME] = csrfToken;
+    }
   }
   return config;
 });
@@ -79,7 +85,6 @@ api.interceptors.response.use(
   (error) => {
     if (error.response?.status === 401) {
       clearApiReadCache();
-      localStorage.removeItem('token');
       localStorage.removeItem('user');
       window.location.href = '/login';
     }
@@ -89,6 +94,7 @@ api.interceptors.response.use(
 
 // Auth
 export const login = (data) => api.post('/auth/login', data);
+export const logoutSession = () => api.post('/auth/logout');
 export const getMe = () => api.get('/auth/me');
 
 // Admin
