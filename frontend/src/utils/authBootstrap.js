@@ -18,7 +18,7 @@ export const buildInitialAuthState = ({
     if (user) {
       return {
         user,
-        loading: false,
+        loading: true,
         shouldRevalidate: true
       };
     }

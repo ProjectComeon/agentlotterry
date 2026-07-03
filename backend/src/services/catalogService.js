@@ -27,6 +27,7 @@ const {
   DEFAULT_ANNOUNCEMENTS
 } = require('../constants/catalogDefinitions');
 const { BET_TYPES, DEFAULT_GLOBAL_RATES } = require('../constants/betting');
+const { normalizeBoundedLimit } = require('../utils/pagination');
 const {
   createBangkokDate,
   formatBangkokDate,
@@ -826,7 +827,8 @@ const getResultChronologyTime = (item) => {
 };
 
 const getRecentResults = async ({ lotteryId = null, limit = 50 } = {}) => {
-  const fetchLimit = Math.max(limit * 3, limit + 20);
+  const safeLimit = normalizeBoundedLimit(limit, { defaultLimit: 50, maxLimit: 100 });
+  const fetchLimit = Math.max(safeLimit * 3, safeLimit + 20);
   const now = Date.now();
   const results = await ResultRecord.find({ isPublished: true, ...(lotteryId && { lotteryTypeId: lotteryId }) })
     .sort({ updatedAt: -1 })
@@ -874,7 +876,7 @@ const getRecentResults = async ({ lotteryId = null, limit = 50 } = {}) => {
     sourceUrl: record.sourceUrl || ''
   }));
 
-  const externalSnapshots = await getStoredLatestExternalResults({ lotteryId, limit });
+  const externalSnapshots = await getStoredLatestExternalResults({ lotteryId, limit: safeLimit });
   externalSnapshots.forEach((snapshot) => {
     if (!mapped.find((item) => item.lotteryCode === snapshot.lotteryCode && item.roundCode === snapshot.roundCode)) {
       mapped.push(snapshot);
@@ -887,7 +889,7 @@ const getRecentResults = async ({ lotteryId = null, limit = 50 } = {}) => {
     return rightDate - leftDate;
   });
 
-  if (lotteryId) return mapped.slice(0, limit);
+  if (lotteryId) return mapped.slice(0, safeLimit);
 
   const thaiGov = await LotteryType.findOne({ code: 'thai_government' });
   const legacyLatest = await LotteryResult.findOne().sort({ updatedAt: -1, roundDate: -1 });
@@ -904,7 +906,7 @@ const getRecentResults = async ({ lotteryId = null, limit = 50 } = {}) => {
     mapped.unshift(legacyMapped);
   }
 
-  return mapped.slice(0, limit);
+  return mapped.slice(0, safeLimit);
 };
 
 const getAnnouncementFilter = (viewer = null) => {

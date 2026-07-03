@@ -3,32 +3,35 @@ const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 const auth = require('../middleware/auth');
 const { createAuditLog } = require('../middleware/auditLog');
+const { loginRateLimit, resetLoginRateLimit } = require('../middleware/loginRateLimit');
+const { canAuthenticateAccount, getAccountAccessMessage } = require('../utils/accountAccess');
 
 const router = express.Router();
 
 // POST /api/auth/login
-router.post('/login', async (req, res) => {
+router.post('/login', loginRateLimit, async (req, res) => {
   try {
-    const { username, password } = req.body;
+    const username = String(req.body?.username || '').trim().toLowerCase();
+    const { password } = req.body;
 
     if (!username || !password) {
       return res.status(400).json({ message: 'Username and password are required' });
     }
 
-    const user = await User.findOne({ username: username.toLowerCase() });
+    const user = await User.findOne({ username });
     
     if (!user) {
       return res.status(401).json({ message: 'Invalid credentials' });
-    }
-
-    if (!user.isActive) {
-      return res.status(403).json({ message: 'Account is deactivated' });
     }
 
     const isMatch = await user.comparePassword(password);
     
     if (!isMatch) {
       return res.status(401).json({ message: 'Invalid credentials' });
+    }
+
+    if (!canAuthenticateAccount(user)) {
+      return res.status(403).json({ message: getAccountAccessMessage(user) || 'Account is deactivated' });
     }
 
     if (user.role === 'customer') {
@@ -42,6 +45,7 @@ router.post('/login', async (req, res) => {
     );
 
     await createAuditLog(user._id, 'LOGIN', 'auth', { ip: req.ip });
+    resetLoginRateLimit(req);
 
     res.json({
       token,

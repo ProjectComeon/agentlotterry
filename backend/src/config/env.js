@@ -99,6 +99,10 @@ const validateEnv = () => {
     issues.push('CRON_SYNC_TOKEN must be at least 24 characters long when set');
   }
 
+  if (isProduction && !autoSyncResults && !cronSyncToken) {
+    issues.push('CRON_SYNC_TOKEN is required in production when AUTO_SYNC_RESULTS=false');
+  }
+
   if (!Number.isFinite(retentionCleanupIntervalMs) || retentionCleanupIntervalMs < 60000) {
     issues.push('RETENTION_CLEANUP_INTERVAL_MS must be a number >= 60000');
   }

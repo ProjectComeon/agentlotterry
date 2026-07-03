@@ -13,6 +13,17 @@ const normalizePositiveInteger = (value, fallback) => {
 
 const isTruthyFlag = (value) => ['1', 'true', 'yes', 'on'].includes(String(value || '').trim().toLowerCase());
 
+const normalizeBoundedLimit = (
+  value,
+  {
+    defaultLimit = DEFAULT_PAGINATION_LIMIT,
+    maxLimit = MAX_PAGINATION_LIMIT
+  } = {}
+) => Math.min(
+  normalizePositiveInteger(value, defaultLimit),
+  maxLimit
+);
+
 const parsePaginationQuery = (
   {
     page,
@@ -25,10 +36,7 @@ const parsePaginationQuery = (
   } = {}
 ) => {
   const normalizedPage = normalizePositiveInteger(page, DEFAULT_PAGINATION_PAGE);
-  const normalizedLimit = Math.min(
-    normalizePositiveInteger(limit, defaultLimit),
-    maxLimit
-  );
+  const normalizedLimit = normalizeBoundedLimit(limit, { defaultLimit, maxLimit });
   const shouldPaginate =
     isTruthyFlag(paginated) ||
     page !== undefined ||
@@ -78,5 +86,6 @@ module.exports = {
   DEFAULT_PAGINATION_LIMIT,
   MAX_PAGINATION_LIMIT,
   buildPaginatedResult,
+  normalizeBoundedLimit,
   parsePaginationQuery
 };

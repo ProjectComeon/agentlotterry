@@ -1,5 +1,14 @@
 import { FiCheckCircle, FiExternalLink, FiRotateCcw, FiSlash } from 'react-icons/fi';
 
+const getSafeExternalUrl = (value) => {
+  try {
+    const url = new URL(String(value || '').trim());
+    return ['http:', 'https:'].includes(url.protocol) ? url.href : '';
+  } catch {
+    return '';
+  }
+};
+
 const LotteryDetailPanel = ({
   selectedCard,
   isAdmin,
@@ -210,10 +219,10 @@ const LotteryDetailPanel = ({
           </div>
         ) : null}
 
-        {selectedResult?.sourceUrl ? (
+        {getSafeExternalUrl(selectedResult?.sourceUrl) ? (
           <a
             className="detail-link"
-            href={selectedResult.sourceUrl}
+            href={getSafeExternalUrl(selectedResult?.sourceUrl)}
             target="_blank"
             rel="noreferrer"
           >
