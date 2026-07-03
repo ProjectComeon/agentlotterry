@@ -20,6 +20,7 @@ const {
   normalizeAdminCustomerQuery,
   sortAdminCustomerRowsByTotals
 } = require('../utils/adminCustomerQuery');
+const { buildLiteralSearchRegex, toSearchText } = require('../utils/search');
 
 const ONLINE_WINDOW_MS = 5 * 60 * 1000;
 const DEFAULT_LIMITS = {
@@ -625,11 +626,11 @@ const buildAgentMembersFilter = ({ agentId, search = '', status = '', online = '
       role: 'customer'
     }
   ];
-  const searchText = toText(search);
+  const searchText = toSearchText(search);
   const onlineSince = new Date(Date.now() - ONLINE_WINDOW_MS);
 
   if (searchText) {
-    const regex = new RegExp(searchText, 'i');
+    const regex = buildLiteralSearchRegex(searchText);
     clauses.push({
       $or: [
         { name: regex },
@@ -906,9 +907,9 @@ const searchMembersForBetting = async ({
     filter.agentId = agentId;
   }
 
-  const searchText = toText(search);
+  const searchText = toSearchText(search);
   if (searchText) {
-    const regex = new RegExp(searchText, 'i');
+    const regex = buildLiteralSearchRegex(searchText);
     const orConditions = [
       { name: regex },
       { username: regex },
@@ -1306,6 +1307,7 @@ module.exports = {
   __test: {
     AGENT_CUSTOM_RATE_PROFILE_ID,
     buildAgentRateDefaults,
+    buildAgentMembersFilter,
     buildLotteryConfigDocument,
     clearMemberReferenceCaches,
     mapLotteryConfigRow

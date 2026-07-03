@@ -19,6 +19,7 @@
     "e2e:smoke": "node src/scripts/e2eSmoke.js",
     "e2e:regression": "node src/scripts/e2eRegression.js",
     "test:feed-mapping": "node src/scripts/testFeedMappings.js",
+    "test:auth-search-guards": "node src/scripts/testAuthAndSearchGuards.js",
     "test:settlement-rules": "node src/scripts/testSettlementRules.js",
     "test:bet-slip-pricing": "node src/scripts/testBetSlipDuplicatePricing.js",
     "test:agent-rate-defaults": "node src/scripts/testAgentRateDefaults.js",
@@ -30,9 +31,9 @@
     "legacy:cleanup": "node src/scripts/cleanupLegacyData.js",
     "legacy:cleanup:dry": "node src/scripts/cleanupLegacyData.js --mode=dry-run",
     "legacy:cleanup:validate": "node src/scripts/cleanupLegacyData.js --mode=validate",
-    "legacy:cleanup:migrate": "node src/scripts/cleanupLegacyData.js --mode=migrate --yes",
-    "legacy:cleanup:archive": "node src/scripts/cleanupLegacyData.js --mode=archive --yes",
-    "legacy:cleanup:purge": "node src/scripts/cleanupLegacyData.js --mode=purge --yes"
+    "legacy:cleanup:migrate": "node src/scripts/cleanupLegacyData.js --mode=migrate",
+    "legacy:cleanup:archive": "node src/scripts/cleanupLegacyData.js --mode=archive",
+    "legacy:cleanup:purge": "node src/scripts/cleanupLegacyData.js --mode=purge"
   },
   "dependencies": {
     "axios": "^1.15.0",

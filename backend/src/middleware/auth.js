@@ -1,5 +1,6 @@
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
+const { canAuthenticateAccount, getAccountAccessMessage } = require('../utils/accountAccess');
 
 const auth = async (req, res, next) => {
   try {
@@ -16,8 +17,8 @@ const auth = async (req, res, next) => {
       return res.status(401).json({ message: 'User not found.' });
     }
 
-    if (!user.isActive) {
-      return res.status(403).json({ message: 'Account is deactivated.' });
+    if (!canAuthenticateAccount(user)) {
+      return res.status(403).json({ message: getAccountAccessMessage(user) });
     }
 
     if (user.role === 'customer') {
@@ -26,7 +27,7 @@ const auth = async (req, res, next) => {
 
     User.updateOne(
       { _id: user._id },
-      { $set: { lastActiveAt: new Date(), status: 'active' } }
+      { $set: { lastActiveAt: new Date() } }
     ).catch(() => {});
 
     req.user = user;

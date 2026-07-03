@@ -4,6 +4,7 @@ const {
   DEFAULT_PAGINATION_LIMIT,
   MAX_PAGINATION_LIMIT,
   buildPaginatedResult,
+  normalizeBoundedLimit,
   parsePaginationQuery
 } = require('../utils/pagination');
 
@@ -74,6 +75,12 @@ assert.deepStrictEqual(
       hasNextPage: false
     }
   }
+);
+
+assert.strictEqual(
+  normalizeBoundedLimit(String(MAX_PAGINATION_LIMIT + 9000)),
+  MAX_PAGINATION_LIMIT,
+  'standalone query limits should be capped before database use'
 );
 
 assert.deepStrictEqual(

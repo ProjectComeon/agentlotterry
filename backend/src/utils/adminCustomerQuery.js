@@ -1,9 +1,9 @@
 const VALID_ADMIN_CUSTOMER_STATUSES = new Set(['active', 'inactive', 'suspended']);
 const VALID_ADMIN_CUSTOMER_SORTS = new Set(['recent', 'sales_desc', 'profit_desc', 'name_asc']);
+const { buildLiteralSearchRegex, toSearchText } = require('./search');
 
 const toText = (value) => String(value || '').trim();
 const toId = (row) => row?._id?.toString?.() || String(row?._id || row || '');
-const escapeRegExp = (value) => String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const toTime = (value) => {
   const timestamp = value ? new Date(value).getTime() : 0;
   return Number.isFinite(timestamp) ? timestamp : 0;
@@ -22,7 +22,7 @@ const normalizeAdminCustomerQuery = ({
 
   return {
     agentId: toText(agentId),
-    search: toText(search),
+    search: toSearchText(search),
     status: VALID_ADMIN_CUSTOMER_STATUSES.has(normalizedStatus) ? normalizedStatus : '',
     sortBy: VALID_ADMIN_CUSTOMER_SORTS.has(normalizedSort) ? normalizedSort : 'recent'
   };
@@ -41,7 +41,7 @@ const buildAdminCustomerFilter = (query = {}) => {
   }
 
   if (search) {
-    const regex = new RegExp(escapeRegExp(search), 'i');
+    const regex = buildLiteralSearchRegex(search);
     filter.$or = [
       { name: regex },
       { username: regex },

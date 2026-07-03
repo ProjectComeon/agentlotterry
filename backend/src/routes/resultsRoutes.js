@@ -2,6 +2,7 @@ const express = require('express');
 const auth = require('../middleware/auth');
 const { getRecentResults } = require('../services/catalogService');
 const { getRoundResult } = require('../services/resultService');
+const { normalizeBoundedLimit } = require('../utils/pagination');
 
 const router = express.Router();
 const applyNoStore = (res) => {
@@ -17,7 +18,7 @@ router.get('/recent', async (req, res) => {
     const { lotteryId, limit } = req.query;
     const items = await getRecentResults({
       lotteryId: lotteryId || null,
-        limit: Number(limit) || 50
+      limit: normalizeBoundedLimit(limit, { defaultLimit: 50, maxLimit: 100 })
     });
 
     applyNoStore(res);
