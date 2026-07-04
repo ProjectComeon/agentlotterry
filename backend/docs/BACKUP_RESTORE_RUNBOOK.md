@@ -51,4 +51,5 @@ npm run db:restore -- --path=backups/<timestamp>_manual --drop --yes --skip-pre-
 - restore refuses to write into non-empty collections unless `--drop --yes` is passed
 - restore with `--drop --yes` writes a pre-restore backup first unless `--skip-pre-restore-backup` is explicitly passed
 - backup streams collection data to disk instead of loading an entire collection into memory
+- restore streams collection data from `.data.ejson` files and keeps batch inserts bounded by `--batch-size`
 - backup/restore scripts use the same Mongo URI resolution logic as the app runtime

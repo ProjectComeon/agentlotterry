@@ -90,26 +90,182 @@ const restoreIndexes = async (collection, indexDefinitions = []) => {
   }
 };
 
-const insertDocumentsInBatches = async (collection, documents = [], batchSize = DEFAULT_INSERT_BATCH_SIZE) => {
+const flushInsertBatch = async (collection, batch) => {
+  if (!batch.length) {
+    return 0;
+  }
+
+  const result = await collection.insertMany(batch, { ordered: false });
+  return result?.insertedCount ?? batch.length;
+};
+
+const insertDocumentStreamInBatches = async (collection, documents = [], batchSize = DEFAULT_INSERT_BATCH_SIZE) => {
   const safeBatchSize = toPositiveInteger(batchSize, DEFAULT_INSERT_BATCH_SIZE);
   let insertedCount = 0;
+  let batch = [];
 
-  for (let index = 0; index < documents.length; index += safeBatchSize) {
-    const batch = documents.slice(index, index + safeBatchSize);
-    if (batch.length) {
-      const result = await collection.insertMany(batch, { ordered: false });
-      insertedCount += result?.insertedCount ?? batch.length;
+  for await (const document of documents) {
+    batch.push(document);
+    if (batch.length >= safeBatchSize) {
+      insertedCount += await flushInsertBatch(collection, batch);
+      batch = [];
     }
   }
 
+  insertedCount += await flushInsertBatch(collection, batch);
   return insertedCount;
 };
+
+const insertDocumentsInBatches = async (collection, documents = [], batchSize = DEFAULT_INSERT_BATCH_SIZE) => (
+  insertDocumentStreamInBatches(collection, documents, batchSize)
+);
 
 const getRestoreCollections = (metadata, selectedCollections = []) => (metadata.collections || [])
   .map((item) => item.name)
   .filter((name) => selectedCollections.length === 0 || selectedCollections.includes(name));
 
-const runRestore = async ({ options = parseArgs(), db = null } = {}) => {
+const isWhitespace = (value) => value === ' ' || value === '\n' || value === '\r' || value === '\t';
+
+const createEjsonArrayError = (filePath, message) => new Error('Invalid EJSON array in ' + filePath + ': ' + message);
+
+const parseEjsonDocument = (source, filePath) => {
+  try {
+    return EJSON.parse(source);
+  } catch (error) {
+    throw createEjsonArrayError(filePath, error.message || String(error));
+  }
+};
+
+const readEjsonArrayFile = async function* readEjsonArrayFile(filePath) {
+  const stream = fs.createReadStream(filePath, { encoding: 'utf8' });
+  let state = 'start';
+  let collecting = false;
+  let inString = false;
+  let escaped = false;
+  let depth = 0;
+  let buffer = '';
+
+  for await (const chunk of stream) {
+    for (const char of chunk) {
+      if (collecting) {
+        buffer += char;
+
+        if (inString) {
+          if (escaped) {
+            escaped = false;
+          } else if (char === '\\') {
+            escaped = true;
+          } else if (char === '"') {
+            inString = false;
+          }
+          continue;
+        }
+
+        if (char === '"') {
+          inString = true;
+          continue;
+        }
+
+        if (char === '{' || char === '[') {
+          depth += 1;
+          continue;
+        }
+
+        if (char === '}' || char === ']') {
+          depth -= 1;
+          if (depth < 0) {
+            throw createEjsonArrayError(filePath, 'unexpected closing bracket');
+          }
+
+          if (depth === 0) {
+            yield parseEjsonDocument(buffer, filePath);
+            buffer = '';
+            collecting = false;
+            state = 'separatorOrEnd';
+          }
+        }
+
+        continue;
+      }
+
+      if (state === 'start') {
+        if (isWhitespace(char)) {
+          continue;
+        }
+        if (char !== '[') {
+          throw createEjsonArrayError(filePath, 'expected top-level array');
+        }
+        state = 'valueOrEnd';
+        continue;
+      }
+
+      if (state === 'valueOrEnd') {
+        if (isWhitespace(char)) {
+          continue;
+        }
+        if (char === ']') {
+          state = 'done';
+          continue;
+        }
+        if (char !== '{') {
+          throw createEjsonArrayError(filePath, 'expected document object');
+        }
+        collecting = true;
+        inString = false;
+        escaped = false;
+        depth = 1;
+        buffer = char;
+        continue;
+      }
+
+      if (state === 'value') {
+        if (isWhitespace(char)) {
+          continue;
+        }
+        if (char !== '{') {
+          throw createEjsonArrayError(filePath, 'expected document object');
+        }
+        collecting = true;
+        inString = false;
+        escaped = false;
+        depth = 1;
+        buffer = char;
+        continue;
+      }
+
+      if (state === 'separatorOrEnd') {
+        if (isWhitespace(char)) {
+          continue;
+        }
+        if (char === ',') {
+          state = 'value';
+          continue;
+        }
+        if (char === ']') {
+          state = 'done';
+          continue;
+        }
+        throw createEjsonArrayError(filePath, 'expected comma or end of array');
+      }
+
+      if (state === 'done') {
+        if (!isWhitespace(char)) {
+          throw createEjsonArrayError(filePath, 'unexpected trailing content');
+        }
+      }
+    }
+  }
+
+  if (collecting) {
+    throw createEjsonArrayError(filePath, 'unexpected end of file while reading document');
+  }
+
+  if (state !== 'done') {
+    throw createEjsonArrayError(filePath, 'unexpected end of file before closing array');
+  }
+};
+
+const runRestore = async ({ options = parseArgs(), db = null, backupRunner = runBackup } = {}) => {
   validateRestoreOptions(options);
 
   const metadataPath = path.join(options.backupPath, 'metadata.json');
@@ -133,7 +289,7 @@ const runRestore = async ({ options = parseArgs(), db = null } = {}) => {
 
   try {
     if (options.drop && !options.skipPreRestoreBackup) {
-      preRestoreBackup = await runBackup({
+      preRestoreBackup = await backupRunner({
         db,
         options: {
           tag: 'pre-restore',
@@ -150,7 +306,6 @@ const runRestore = async ({ options = parseArgs(), db = null } = {}) => {
         throw new Error('Missing backup files for collection ' + name);
       }
 
-      const documents = EJSON.parse(fs.readFileSync(dataPath, 'utf8'));
       const indexes = EJSON.parse(fs.readFileSync(indexesPath, 'utf8'));
       const collection = db.collection(name);
 
@@ -163,7 +318,7 @@ const runRestore = async ({ options = parseArgs(), db = null } = {}) => {
         }
       }
 
-      const insertedCount = await insertDocumentsInBatches(collection, documents, options.batchSize);
+      const insertedCount = await insertDocumentStreamInBatches(collection, readEjsonArrayFile(dataPath), options.batchSize);
       await restoreIndexes(collection, indexes);
       restored.push({
         name,
@@ -203,8 +358,10 @@ if (require.main === module) {
 module.exports = {
   DEFAULT_INSERT_BATCH_SIZE,
   getRestoreCollections,
+  insertDocumentStreamInBatches,
   insertDocumentsInBatches,
   parseArgs,
+  readEjsonArrayFile,
   restoreIndexes,
   runRestore,
   validateRestoreOptions
