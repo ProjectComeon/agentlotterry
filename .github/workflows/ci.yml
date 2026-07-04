@@ -17,15 +17,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 35
 
-    services:
-      mongodb:
-        image: mongo:7
-        ports:
-          - 27017:27017
-
     env:
       NODE_ENV: development
-      MONGODB_URI: mongodb://127.0.0.1:27017/agentlottery_ci
+      MONGODB_URI: mongodb://127.0.0.1:27017/agentlottery_ci?replicaSet=rs0
       JWT_SECRET: ci-jwt-secret-for-github-actions-12345
       DEFAULT_ADMIN_USERNAME: admin
       DEFAULT_ADMIN_PASSWORD: admin123
@@ -48,6 +42,33 @@ jobs:
             backend/package-lock.json
             frontend/package-lock.json
 
+      - name: Start MongoDB replica set
+        shell: bash
+        run: |
+          docker run -d --name agentlottery-mongo -p 27017:27017 mongo:7 --replSet rs0 --bind_ip_all
+          for attempt in {1..30}; do
+            if docker exec agentlottery-mongo mongosh --quiet --eval "db.adminCommand('ping').ok" >/dev/null 2>&1; then
+              break
+            fi
+            if [ "$attempt" = "30" ]; then
+              docker logs agentlottery-mongo
+              echo "MongoDB did not become reachable in time" >&2
+              exit 1
+            fi
+            sleep 2
+          done
+          docker exec agentlottery-mongo mongosh --quiet --eval "rs.initiate({_id:'rs0',members:[{_id:0,host:'127.0.0.1:27017'}]})"
+          for attempt in {1..30}; do
+            state="$(docker exec agentlottery-mongo mongosh --quiet --eval "rs.status().myState" 2>/dev/null || true)"
+            if [ "$state" = "1" ]; then
+              exit 0
+            fi
+            sleep 2
+          done
+          docker logs agentlottery-mongo
+          echo "MongoDB replica set did not elect a primary in time" >&2
+          exit 1
+
       - name: Install backend dependencies
         working-directory: backend
         run: npm ci
@@ -55,18 +76,6 @@ jobs:
       - name: Install frontend dependencies
         working-directory: frontend
         run: npm ci
-
-      - name: Wait for MongoDB
-        shell: bash
-        run: |
-          for attempt in {1..30}; do
-            if (echo > /dev/tcp/127.0.0.1/27017) >/dev/null 2>&1; then
-              exit 0
-            fi
-            sleep 2
-          done
-          echo "MongoDB service did not become reachable in time" >&2
-          exit 1
 
       - name: Backend production audit
         working-directory: backend
