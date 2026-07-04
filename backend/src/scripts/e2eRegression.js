@@ -237,6 +237,8 @@ const main = async () => {
 
     const mongoUri = await buildDirectMongoUri(process.env.MONGODB_URI);
     await mongoose.connect(mongoUri);
+    await BetSlip.syncIndexes();
+    summary.checks.push('bet-slip-client-request-index');
     created.round = await ensureRegressionRound();
     created.roundId = created.round.roundId;
     created.roundCode = created.round.roundCode;
@@ -464,6 +466,116 @@ const main = async () => {
     assert(betLedgerCountAfterInsufficient === 0, 'Insufficient-credit submit must not leave a bet ledger entry behind');
     assert(Number(memberWalletAfterInsufficient.data.account?.creditBalance || 0) === 100, 'Insufficient-credit submit must not change member balance');
     summary.checks.push('member-bet-insufficient-credit-rollback');
+
+    const concurrentSameClientRequestId = `regression-concurrent-same-${uniqueSuffix}`;
+    const concurrentSamePayload = {
+      customerId: created.memberId,
+      lotteryId: visibleLotteries[0].id,
+      roundId: regressionRound.id,
+      rateProfileId: visibleLotteries[0].defaultRateProfileId,
+      betType: '3top',
+      defaultAmount: 10,
+      rawInput: '654 10',
+      reverse: false,
+      includeDoubleSet: false,
+      memo: 'concurrent same idempotency key',
+      action: 'submit',
+      clientRequestId: concurrentSameClientRequestId
+    };
+    const concurrentSameResponses = await Promise.all([
+      agentClient.post('/agent/betting/slips', concurrentSamePayload),
+      agentClient.post('/agent/betting/slips', concurrentSamePayload)
+    ]);
+    concurrentSameResponses.forEach((response, index) => {
+      expectStatus(response, 201, `Concurrent same-key submit ${index + 1}`);
+    });
+    const concurrentSameSlipId = concurrentSameResponses[0].data.id;
+    assert(concurrentSameResponses.every((response) => response.data.id === concurrentSameSlipId), 'Concurrent same-key submits should return the same slip');
+    const [memberWalletAfterConcurrentSame, sameKeyStakeLedgerEntries, sameKeySlipCount] = await Promise.all([
+      agentClient.get('/wallet/summary', { params: { targetUserId: created.memberId } }),
+      CreditLedgerEntry.find({
+        userId: created.memberId,
+        entryType: 'bet',
+        direction: 'debit',
+        reasonCode: 'bet_stake',
+        'metadata.slipId': concurrentSameSlipId
+      }).lean(),
+      BetSlip.countDocuments({
+        customerId: created.memberId,
+        drawRoundId: regressionRound.id,
+        clientRequestId: concurrentSameClientRequestId
+      })
+    ]);
+    expectStatus(memberWalletAfterConcurrentSame, 200, 'Member wallet after concurrent same-key submit');
+    assert(Number(memberWalletAfterConcurrentSame.data.account?.creditBalance || 0) === 90, 'Concurrent same-key submit must debit member wallet once');
+    assert(sameKeyStakeLedgerEntries.length === 1, 'Concurrent same-key submit must create one stake ledger entry');
+    assert(sameKeySlipCount === 1, 'Concurrent same-key submit must create one slip');
+    summary.checks.push('member-submit-concurrent-same-client-request-id');
+
+    const cancelConcurrentSameResponse = await agentClient.post(`/agent/betting/slips/${concurrentSameSlipId}/cancel`);
+    expectStatus(cancelConcurrentSameResponse, 200, 'Cancel concurrent same-key slip');
+    const cancelConcurrentSameAgainResponse = await agentClient.post(`/agent/betting/slips/${concurrentSameSlipId}/cancel`);
+    assert(cancelConcurrentSameAgainResponse.status === 400, 'Cancelling the same slip twice should fail');
+    const [memberWalletAfterConcurrentSameCancel, sameKeyRefundLedgerEntries] = await Promise.all([
+      agentClient.get('/wallet/summary', { params: { targetUserId: created.memberId } }),
+      CreditLedgerEntry.find({
+        userId: created.memberId,
+        entryType: 'bet',
+        direction: 'credit',
+        reasonCode: 'bet_stake_refund',
+        'metadata.slipId': concurrentSameSlipId
+      }).lean()
+    ]);
+    expectStatus(memberWalletAfterConcurrentSameCancel, 200, 'Member wallet after cancelling concurrent same-key slip');
+    assert(Number(memberWalletAfterConcurrentSameCancel.data.account?.creditBalance || 0) === 100, 'Cancelling concurrent same-key slip should refund stake once');
+    assert(sameKeyRefundLedgerEntries.length === 1, 'Cancelling concurrent same-key slip twice must create one refund ledger entry');
+    summary.checks.push('member-cancel-twice-no-double-refund');
+
+    const concurrentOverCreditPayloads = ['701', '702', '703'].map((number, index) => ({
+      customerId: created.memberId,
+      lotteryId: visibleLotteries[0].id,
+      roundId: regressionRound.id,
+      rateProfileId: visibleLotteries[0].defaultRateProfileId,
+      betType: '3top',
+      defaultAmount: 50,
+      rawInput: `${number} 50`,
+      reverse: false,
+      includeDoubleSet: false,
+      memo: `concurrent over-credit ${number}`,
+      action: 'submit',
+      clientRequestId: `regression-over-credit-${index}-${uniqueSuffix}`
+    }));
+    const concurrentOverCreditResponses = await Promise.all(
+      concurrentOverCreditPayloads.map((payload) => agentClient.post('/agent/betting/slips', payload))
+    );
+    const overCreditSuccesses = concurrentOverCreditResponses.filter((response) => response.status === 201);
+    const overCreditFailures = concurrentOverCreditResponses.filter((response) => response.status === 400);
+    assert(overCreditSuccesses.length === 2, `Concurrent over-credit submits should allow exactly two slips (got ${overCreditSuccesses.length})`);
+    assert(overCreditFailures.length === 1, `Concurrent over-credit submits should reject exactly one slip (got ${overCreditFailures.length})`);
+    assert(/Insufficient credit balance/i.test(String(overCreditFailures[0].data?.message || '')), 'Rejected concurrent over-credit submit should fail for insufficient balance');
+    const [memberWalletAfterConcurrentOverCredit, overCreditStakeLedgerCount] = await Promise.all([
+      agentClient.get('/wallet/summary', { params: { targetUserId: created.memberId } }),
+      CreditLedgerEntry.countDocuments({
+        userId: created.memberId,
+        entryType: 'bet',
+        direction: 'debit',
+        reasonCode: 'bet_stake',
+        'metadata.slipId': { $in: overCreditSuccesses.map((response) => response.data.id) }
+      })
+    ]);
+    expectStatus(memberWalletAfterConcurrentOverCredit, 200, 'Member wallet after concurrent over-credit submits');
+    assert(Number(memberWalletAfterConcurrentOverCredit.data.account?.creditBalance || 0) === 0, 'Concurrent over-credit submits must not make balance negative');
+    assert(overCreditStakeLedgerCount === 2, 'Concurrent over-credit submits should create stake ledger entries only for successful slips');
+    summary.checks.push('member-submit-concurrent-over-credit-no-negative-balance');
+
+    for (const response of overCreditSuccesses) {
+      const cancelResponse = await agentClient.post(`/agent/betting/slips/${response.data.id}/cancel`);
+      expectStatus(cancelResponse, 200, 'Cancel concurrent over-credit setup slip');
+    }
+    const memberWalletAfterConcurrentCleanup = await agentClient.get('/wallet/summary', { params: { targetUserId: created.memberId } });
+    expectStatus(memberWalletAfterConcurrentCleanup, 200, 'Member wallet after concurrent setup cleanup');
+    assert(Number(memberWalletAfterConcurrentCleanup.data.account?.creditBalance || 0) === 100, 'Concurrent setup cleanup should restore member balance before settlement regression');
+    summary.checks.push('member-submit-concurrent-cleanup-restores-balance');
 
     const submitClientRequestId = `regression-submit-${uniqueSuffix}`;
 
