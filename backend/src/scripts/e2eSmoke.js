@@ -2,6 +2,7 @@ require('dotenv').config({ path: require('path').join(__dirname, '..', '..', '.e
 
 const assert = require('assert');
 const axios = require('axios');
+const { createCookieSessionClient } = require('./e2eCookieClient');
 const jwt = require('jsonwebtoken');
 const mongoose = require('mongoose');
 const { spawn } = require('child_process');
@@ -26,11 +27,13 @@ const adminPassword = process.env.E2E_ADMIN_PASSWORD || process.env.DEFAULT_ADMI
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-const makeClient = (token = '') =>
+const makeClient = () => createCookieSessionClient({ baseURL });
+
+const makeBearerClient = (token) =>
   axios.create({
     baseURL,
     validateStatus: () => true,
-    headers: token ? { Authorization: `Bearer ${token}` } : {}
+    headers: { Authorization: `Bearer ${token}` }
   });
 
 const expectStatus = (response, expected, label) => {
@@ -60,11 +63,14 @@ const loginWithRetry = async (username, password, label) => {
   const client = makeClient();
 
   for (let attempt = 0; attempt < 20; attempt++) {
-    const response = await client.post('/auth/login', { username, password }, {
-      headers: { 'X-Allow-Bearer-Response': '1' }
-    });
+    const response = await client.post('/auth/login', { username, password });
     if (response.status === 200) {
-      return response.data;
+      assert.strictEqual(response.data.token, undefined, 'Login response should not include a bearer token');
+      return {
+        client,
+        csrfToken: response.data.csrfToken,
+        user: response.data.user
+      };
     }
 
     await sleep(1000);
@@ -158,8 +164,6 @@ const main = async () => {
   };
 
   let server;
-  let adminToken = '';
-  let agentToken = '';
   let agentId = '';
   let memberId = '';
   let slipId = '';
@@ -206,10 +210,8 @@ const main = async () => {
     summary.checks.push('health');
 
     const adminLogin = await loginWithRetry(adminUsername, adminPassword, 'Admin');
-    adminToken = adminLogin.token;
+    adminClient = adminLogin.client;
     summary.checks.push('admin-login');
-
-    adminClient = makeClient(adminToken);
     const agentUsername = `e2e_agent_${uniqueSuffix}`;
     const agentPassword = `Bb${uniqueSuffix}!`;
     const memberUsername = `e2e_member_${uniqueSuffix}`;
@@ -228,10 +230,8 @@ const main = async () => {
     summary.checks.push('admin-create-agent');
 
     const agentLogin = await loginWithRetry(agentUsername, agentPassword, 'Agent');
-    agentToken = agentLogin.token;
+    agentClient = agentLogin.client;
     summary.checks.push('agent-login');
-
-    agentClient = makeClient(agentToken);
     const agentHeartbeatResponse = await agentClient.post('/presence/heartbeat');
     expectStatus(agentHeartbeatResponse, 200, 'Agent heartbeat');
     summary.checks.push('agent-heartbeat');
@@ -317,7 +317,7 @@ const main = async () => {
       process.env.JWT_SECRET,
       { expiresIn: '24h' }
     );
-    const disabledMemberClient = makeClient(disabledMemberToken);
+    const disabledMemberClient = makeBearerClient(disabledMemberToken);
 
     const blockedMemberMeResponse = await disabledMemberClient.get('/auth/me');
     assert(blockedMemberMeResponse.status === 403, 'Existing member token should be blocked');
