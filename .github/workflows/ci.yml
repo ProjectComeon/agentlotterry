@@ -1,0 +1,115 @@
+name: CI
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Audit, test, and build
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+
+    services:
+      mongodb:
+        image: mongo:7
+        ports:
+          - 27017:27017
+
+    env:
+      NODE_ENV: development
+      MONGODB_URI: mongodb://127.0.0.1:27017/agentlottery_ci
+      JWT_SECRET: ci-jwt-secret-for-github-actions-12345
+      DEFAULT_ADMIN_USERNAME: admin
+      DEFAULT_ADMIN_PASSWORD: admin123
+      AUTO_SEED_ADMIN: "true"
+      AUTO_SEED_CATALOG: "true"
+      AUTO_SYNC_RESULTS: "false"
+      AUTO_RETENTION_CLEANUP: "false"
+      BACKUP_DIR: ./backups
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.x
+          cache: npm
+          cache-dependency-path: |
+            backend/package-lock.json
+            frontend/package-lock.json
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: npm ci
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Wait for MongoDB
+        shell: bash
+        run: |
+          for attempt in {1..30}; do
+            if (echo > /dev/tcp/127.0.0.1/27017) >/dev/null 2>&1; then
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "MongoDB service did not become reachable in time" >&2
+          exit 1
+
+      - name: Backend production audit
+        working-directory: backend
+        run: npm audit --omit=dev
+
+      - name: Frontend production audit
+        working-directory: frontend
+        run: npm audit --omit=dev
+
+      # TODO: Add lint/typecheck gates here once backend/frontend package scripts exist.
+      - name: Backend guard tests
+        working-directory: backend
+        run: |
+          npm run test:auth-search-guards
+          npm run test:cookie-auth-guards
+          npm run test:backup-restore-guards
+          npm run test:retention-policy
+
+      - name: Frontend guard tests
+        working-directory: frontend
+        run: |
+          npm run test:security-guards
+          node scripts/testAuthBootstrap.mjs
+          node scripts/testApiReadCache.mjs
+
+      - name: Frontend build
+        working-directory: frontend
+        run: npm run build
+
+      - name: Seed CI database
+        working-directory: backend
+        run: |
+          npm run seed
+          npm run catalog:seed
+
+      - name: Backend production preflight
+        working-directory: backend
+        run: npm run production:preflight
+
+      - name: Backend e2e smoke
+        working-directory: backend
+        run: npm run e2e:smoke
+
+      - name: Backend e2e regression
+        working-directory: backend
+        run: npm run e2e:regression
