@@ -48,7 +48,8 @@ router.post('/login', loginRateLimit, async (req, res) => {
     await createAuditLog(user._id, 'LOGIN', 'auth', { ip: req.ip });
     resetLoginRateLimit(req);
     const csrfToken = setAuthCookies(res, token);
-    const payload = {
+
+    res.json({
       csrfToken,
       user: {
         id: user._id,
@@ -66,13 +67,7 @@ router.post('/login', loginRateLimit, async (req, res) => {
         defaultRateProfileId: user.defaultRateProfileId,
         lastActiveAt: user.lastActiveAt
       }
-    };
-
-    if (req.get('X-Allow-Bearer-Response') === '1') {
-      payload.token = token;
-    }
-
-    res.json(payload);
+    });
   } catch (error) {
     console.error('Login error:', error);
     res.status(500).json({ message: 'Server error' });

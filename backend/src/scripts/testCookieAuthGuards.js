@@ -3,6 +3,7 @@ const fs = require('fs');
 const path = require('path');
 
 const csrfProtection = require('../middleware/csrfProtection');
+const { createCookieJar } = require('./e2eCookieClient');
 const {
   AUTH_COOKIE_NAME,
   CSRF_COOKIE_NAME,
@@ -36,6 +37,20 @@ assert.strictEqual(cookiesSet.find((item) => item.name === AUTH_COOKIE_NAME).opt
 assert.strictEqual(cookiesSet.find((item) => item.name === CSRF_COOKIE_NAME).options.httpOnly, false);
 clearAuthCookies(res);
 assert.strictEqual(cookiesSet.filter((item) => item.clear).length, 2);
+const jar = createCookieJar();
+jar.storeFromResponse({
+  headers: {
+    'set-cookie': [
+      `${AUTH_COOKIE_NAME}=jwt-token; Path=/; HttpOnly`,
+      `${CSRF_COOKIE_NAME}=csrf-token; Path=/`
+    ]
+  }
+});
+const requestConfig = { method: 'post', headers: {} };
+jar.applyToRequest(requestConfig);
+assert.strictEqual(requestConfig.headers.Cookie, `${AUTH_COOKIE_NAME}=jwt-token; ${CSRF_COOKIE_NAME}=csrf-token`);
+assert.strictEqual(requestConfig.headers['X-CSRF-Token'], 'csrf-token');
+assert.strictEqual(Object.prototype.hasOwnProperty.call(requestConfig.headers, 'Authorization'), false);
 
 const makeReq = ({ method = 'POST', path = '/api/admin/agents', cookie = 'csrf-token', header = 'csrf-token' } = {}) => ({
   method,
@@ -73,7 +88,12 @@ assert.match(authSource, /getAuthCookieToken/, 'auth middleware should read http
 const authRoutesSource = fs.readFileSync(path.join(repoRoot, 'src/routes/authRoutes.js'), 'utf8');
 assert.match(authRoutesSource, /setAuthCookies/, 'login should set auth cookies');
 assert.match(authRoutesSource, /router\.post\('\/logout'/, 'logout route should clear auth cookies');
-assert.match(authRoutesSource, /X-Allow-Bearer-Response/, 'bearer token response should require an explicit compatibility header');
-assert.doesNotMatch(authRoutesSource, /res\.json\(\{\s*token,/s, 'browser login response should not expose bearer token by default');
+assert.doesNotMatch(authRoutesSource, /X-Allow-Bearer-Response|payload\.token/, 'login response must not expose bearer compatibility tokens');
+assert.doesNotMatch(authRoutesSource, /res\.json\(\{\s*token,/s, 'login response should not expose bearer token by default');
+const smokeSource = fs.readFileSync(path.join(repoRoot, 'src/scripts/e2eSmoke.js'), 'utf8');
+const regressionSource = fs.readFileSync(path.join(repoRoot, 'src/scripts/e2eRegression.js'), 'utf8');
+assert.doesNotMatch(smokeSource + regressionSource, /X-Allow-Bearer-Response|adminLogin\.token|agentLogin\.token/, 'e2e login flow should use cookie jars instead of bearer response tokens');
+assert.match(smokeSource, /createCookieSessionClient/, 'smoke e2e should use the cookie session client');
+assert.match(regressionSource, /createCookieSessionClient/, 'regression e2e should use the cookie session client');
 
 console.log('testCookieAuthGuards: ok');

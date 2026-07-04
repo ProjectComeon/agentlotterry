@@ -1,7 +1,7 @@
 require('dotenv').config({ path: require('path').join(__dirname, '..', '..', '.env') });
 
 const assert = require('assert');
-const axios = require('axios');
+const { createCookieSessionClient } = require('./e2eCookieClient');
 const mongoose = require('mongoose');
 const { spawn } = require('child_process');
 const path = require('path');
@@ -29,12 +29,7 @@ const adminPassword = process.env.E2E_ADMIN_PASSWORD || process.env.DEFAULT_ADMI
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-const makeClient = (token = '') =>
-  axios.create({
-    baseURL,
-    validateStatus: () => true,
-    headers: token ? { Authorization: `Bearer ${token}` } : {}
-  });
+const makeClient = () => createCookieSessionClient({ baseURL });
 
 const expectStatus = (response, expected, label) => {
   if (response.status !== expected) {
@@ -63,11 +58,14 @@ const loginWithRetry = async (username, password, label) => {
   const client = makeClient();
 
   for (let attempt = 0; attempt < 20; attempt++) {
-    const response = await client.post('/auth/login', { username, password }, {
-      headers: { 'X-Allow-Bearer-Response': '1' }
-    });
+    const response = await client.post('/auth/login', { username, password });
     if (response.status === 200) {
-      return response.data;
+      assert.strictEqual(response.data.token, undefined, 'Login response should not include a bearer token');
+      return {
+        client,
+        csrfToken: response.data.csrfToken,
+        user: response.data.user
+      };
     }
 
     await sleep(1000);
@@ -224,8 +222,6 @@ const main = async () => {
   };
 
   let server;
-  let adminToken = '';
-  let agentToken = '';
   const created = {
     walletGroupIds: []
   };
@@ -257,10 +253,8 @@ const main = async () => {
     summary.checks.push('health');
 
     const adminLogin = await loginWithRetry(adminUsername, adminPassword, 'Admin');
-    adminToken = adminLogin.token;
+    const adminClient = adminLogin.client;
     summary.checks.push('admin-login');
-
-    const adminClient = makeClient(adminToken);
     const agentUsername = `e2e_reg_agent_${uniqueSuffix}`;
     const agentPassword = `Bb${uniqueSuffix}!`;
     const memberUsername = `e2e_reg_member_${uniqueSuffix}`;
@@ -288,10 +282,8 @@ const main = async () => {
     summary.checks.push('admin-adjust-agent-credit');
 
     const agentLogin = await loginWithRetry(agentUsername, agentPassword, 'Agent');
-    agentToken = agentLogin.token;
+    const agentClient = agentLogin.client;
     summary.checks.push('agent-login');
-
-    const agentClient = makeClient(agentToken);
     const [bootstrapResponse, agentCatalogResponse, agentHeartbeatResponse] = await Promise.all([
       agentClient.get('/agent/config/bootstrap'),
       agentClient.get('/catalog/overview'),
