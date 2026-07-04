@@ -126,6 +126,10 @@ const cleanupSmokeArtifacts = async (created = {}) => {
   if (groupIds.length) {
     await CreditLedgerEntry.deleteMany({ groupId: { $in: groupIds } });
   }
+  const userIds = [created.agentId, created.memberId].filter(Boolean);
+  if (userIds.length) {
+    await CreditLedgerEntry.deleteMany({ userId: { $in: userIds } });
+  }
 
   if (created.memberId) {
     await BetItem.deleteMany({ customerId: created.memberId });
@@ -664,6 +668,23 @@ const main = async () => {
     summary.checks.push('agent-create-member-slip');
     summary.checks.push('agent-slip-owned-by-member');
 
+    if (agentManualAction === 'submit') {
+      const [memberWalletAfterStake, stakeLedgerEntry] = await Promise.all([
+        agentClient.get('/wallet/summary', { params: { targetUserId: memberId } }),
+        CreditLedgerEntry.findOne({
+          userId: memberId,
+          entryType: 'bet',
+          direction: 'debit',
+          reasonCode: 'bet_stake',
+          'metadata.slipId': agentPlacedSlipId
+        }).lean()
+      ]);
+      expectStatus(memberWalletAfterStake, 200, 'Member wallet after stake debit');
+      assert(Number(memberWalletAfterStake.data.account?.creditBalance || 0) === 45, 'Member credit should decrease immediately after submitted bet');
+      assert(stakeLedgerEntry && Number(stakeLedgerEntry.amount || 0) === 5, 'Bet stake debit ledger entry was not created');
+      summary.checks.push('member-credit-debited-on-submit');
+    }
+
     const adminCreateDraftSlipResponse = await adminClient.post('/admin/betting/slips', {
       customerId: memberId,
       lotteryId: visibleLotteries[0].id,
@@ -781,6 +802,21 @@ const main = async () => {
       expectStatus(cancelSlipResponse, 200, 'Agent cancel slip');
       assert(cancelSlipResponse.data.status === 'cancelled', 'Slip status did not change to cancelled');
       summary.checks.push('agent-cancel-member-slip');
+
+      const [memberWalletAfterCancel, refundLedgerEntry] = await Promise.all([
+        agentClient.get('/wallet/summary', { params: { targetUserId: memberId } }),
+        CreditLedgerEntry.findOne({
+          userId: memberId,
+          entryType: 'bet',
+          direction: 'credit',
+          reasonCode: 'bet_stake_refund',
+          'metadata.slipId': slipId
+        }).lean()
+      ]);
+      expectStatus(memberWalletAfterCancel, 200, 'Member wallet after cancel refund');
+      assert(Number(memberWalletAfterCancel.data.account?.creditBalance || 0) === 50, 'Member credit should be refunded after cancelling the submitted bet');
+      assert(refundLedgerEntry && Number(refundLedgerEntry.amount || 0) === 5, 'Bet stake refund ledger entry was not created');
+      summary.checks.push('member-credit-refunded-on-cancel');
 
       const reportAfterCancel = await agentClient.get('/agent/reports', {
         params: {

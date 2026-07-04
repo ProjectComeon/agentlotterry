@@ -179,6 +179,10 @@ const cleanupRegressionArtifacts = async (created = {}) => {
   if (groupIds.length) {
     await CreditLedgerEntry.deleteMany({ groupId: { $in: groupIds } });
   }
+  const userIds = [created.agentId, created.memberId].filter(Boolean);
+  if (userIds.length) {
+    await CreditLedgerEntry.deleteMany({ userId: { $in: userIds } });
+  }
 
   if (created.roundId) {
     await CreditLedgerEntry.deleteMany({
@@ -401,6 +405,23 @@ const main = async () => {
     assert(doubleSetParseResponse.data.items.length === 10, 'Double-set helper should generate 10 repeated-digit numbers');
     summary.checks.push('member-parse-double-set');
 
+    const insufficientBetResponse = await agentClient.post('/agent/betting/slips', {
+      customerId: created.memberId,
+      lotteryId: visibleLotteries[0].id,
+      roundId: regressionRound.id,
+      rateProfileId: visibleLotteries[0].defaultRateProfileId,
+      items: [
+        { betType: '3top', number: '101', amount: 50 },
+        { betType: '3top', number: '102', amount: 50 },
+        { betType: '3top', number: '103', amount: 50 }
+      ],
+      memo: 'insufficient credit bet test',
+      action: 'submit'
+    });
+    assert(insufficientBetResponse.status === 400, 'Bet larger than member credit should fail');
+    assert(/Insufficient credit balance/i.test(String(insufficientBetResponse.data?.message || '')), 'Insufficient credit error should be explicit');
+    summary.checks.push('member-bet-insufficient-credit');
+
     const submitSlipResponse = await agentClient.post('/agent/betting/slips', {
       customerId: created.memberId,
       lotteryId: visibleLotteries[0].id,
@@ -418,6 +439,21 @@ const main = async () => {
     created.slipId = submitSlipResponse.data.id;
     summary.created.slip = { id: created.slipId, slipNumber: submitSlipResponse.data.slipNumber };
     summary.checks.push('member-submit-slip');
+
+    const [memberWalletAfterStake, stakeLedgerEntry] = await Promise.all([
+      agentClient.get('/wallet/summary', { params: { targetUserId: created.memberId } }),
+      CreditLedgerEntry.findOne({
+        userId: created.memberId,
+        entryType: 'bet',
+        direction: 'debit',
+        reasonCode: 'bet_stake',
+        'metadata.slipId': created.slipId
+      }).lean()
+    ]);
+    expectStatus(memberWalletAfterStake, 200, 'Member wallet after stake debit');
+    assert(Number(memberWalletAfterStake.data.account?.creditBalance || 0) === 90, 'Member wallet should be debited immediately after submitting a bet');
+    assert(stakeLedgerEntry && Number(stakeLedgerEntry.amount || 0) === 10, 'Bet stake debit ledger entry should match submitted stake');
+    summary.checks.push('member-credit-debited-on-submit');
 
     const pendingReportResponse = await agentClient.get('/agent/reports', {
       params: {
@@ -488,7 +524,7 @@ const main = async () => {
       `Winning amount should equal 10 * 987 (got wonAmount=${winningItem.wonAmount}, payRate=${winningItem.payRate}, amount=${winningItem.amount})`
     );
     assert(
-      Number(memberWalletAfterResult.data.account?.creditBalance || 0) === 9970,
+      Number(memberWalletAfterResult.data.account?.creditBalance || 0) === 9960,
       `Member wallet should receive the winning payout exactly once (got balance=${memberWalletAfterResult.data.account?.creditBalance}, wonAmount=${winningItem.wonAmount}, ledgerEntries=${settlementLedgerEntriesAfterResult.length}, ledgerAmount=${settlementLedgerEntriesAfterResult[0]?.amount || 0}, rawPayoutApplied=${rawWinningItemAfterResult?.payoutAppliedAmount || 0}, rawResult=${rawWinningItemAfterResult?.result || ''}, rawLocked=${rawWinningItemAfterResult?.isLocked || false})`
     );
     assert(
@@ -532,7 +568,7 @@ const main = async () => {
       BetItem.findOne({ slipId: created.slipId, number: '456' }).lean()
     ]);
     expectStatus(memberWalletAfterReverse, 200, 'Member wallet after reverse settlement');
-    assert(Number(memberWalletAfterReverse.data.account?.creditBalance || 0) === 100, 'Reverse settlement should remove the payout from member wallet');
+    assert(Number(memberWalletAfterReverse.data.account?.creditBalance || 0) === 90, 'Reverse settlement should remove the payout from member wallet but keep the stake debited');
     assert(settlementLedgerEntriesAfterReverse.length === 2, 'Reverse settlement should add exactly one rollback ledger entry');
     assert(settlementLedgerEntriesAfterReverse.some((entry) => entry.reasonCode === 'bet_result_rollback' && Number(entry.amount || 0) === 9870), 'Rollback ledger entry should mirror the original payout');
     assert(rawWinningItemAfterReverse, 'Winning item should still exist after reverse settlement');
@@ -556,7 +592,7 @@ const main = async () => {
       BetItem.findOne({ slipId: created.slipId, number: '456' }).lean()
     ]);
     expectStatus(memberWalletAfterRerun, 200, 'Member wallet after rerun settlement');
-    assert(Number(memberWalletAfterRerun.data.account?.creditBalance || 0) === 9970, 'Rerun settlement should repay the winning payout exactly once');
+    assert(Number(memberWalletAfterRerun.data.account?.creditBalance || 0) === 9960, 'Rerun settlement should repay the winning payout exactly once');
     assert(settlementLedgerEntriesAfterRerun.length === 3, 'Rerun settlement should add one new settlement entry after rollback');
     assert(rawWinningItemAfterRerun, 'Winning item should still exist after rerun settlement');
     assert(rawWinningItemAfterRerun.result === 'won', 'Rerun settlement should restore the winning result');
@@ -591,7 +627,7 @@ const main = async () => {
     expectStatus(memberWalletAfterTransfers, 200, 'Member wallet after transfers');
     expectStatus(memberWalletCreditHistory, 200, 'Member filtered wallet history');
     assert(Number(agentWalletAfterTransfers.data.account?.creditBalance || 0) === 220, 'Agent wallet should be 220 after to_member and from_member transfers');
-    assert(Number(memberWalletAfterTransfers.data.account?.creditBalance || 0) === 9950, 'Member wallet should include payout minus the collected transfer');
+    assert(Number(memberWalletAfterTransfers.data.account?.creditBalance || 0) === 9940, 'Member wallet should include payout minus the collected transfer');
     assert((memberWalletCreditHistory.data || []).some((entry) => entry.groupId === transferToMemberResponse.data.groupId), 'Filtered wallet history should include inbound transfer');
     summary.checks.push('wallet-history-filter');
 
@@ -622,7 +658,7 @@ const main = async () => {
       CreditLedgerEntry.find({ userId: created.memberId, entryType: 'settlement' }).lean()
     ]);
     expectStatus(memberWalletAfterResettlement, 200, 'Member wallet after resettlement');
-    assert(Number(memberWalletAfterResettlement.data.account?.creditBalance || 0) === 9950, 'Resettlement should not pay the member twice');
+    assert(Number(memberWalletAfterResettlement.data.account?.creditBalance || 0) === 9940, 'Resettlement should not pay the member twice');
     assert(settlementLedgerEntriesAfterResettlement.length === 3, 'Resettlement should not create duplicate settlement ledger entries after rerun');
     summary.checks.push('result-resettlement');
 

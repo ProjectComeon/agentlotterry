@@ -9,7 +9,7 @@ const creditLedgerEntrySchema = new mongoose.Schema({
   },
   entryType: {
     type: String,
-    enum: ['transfer', 'adjustment', 'settlement'],
+    enum: ['transfer', 'adjustment', 'settlement', 'bet'],
     required: true
   },
   direction: {
