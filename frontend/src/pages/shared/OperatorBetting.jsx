@@ -1907,7 +1907,7 @@ const OperatorBetting = () => {
     const lotteryId = lottery?.id || '';
     if (!shouldFetchRoundsForLottery({
       lotteryId,
-      loadedLotteryId,
+      loadedLotteryId: loadedRoundsLotteryId,
       loadedRounds: rounds,
       hasActiveRound: Boolean(lottery?.activeRound),
       requiresHistoricalRounds
