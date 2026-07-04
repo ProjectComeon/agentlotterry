@@ -405,6 +405,34 @@ const main = async () => {
     assert(doubleSetParseResponse.data.items.length === 10, 'Double-set helper should generate 10 repeated-digit numbers');
     summary.checks.push('member-parse-double-set');
 
+    const draftNoDebitResponse = await agentClient.post('/agent/betting/slips', {
+      customerId: created.memberId,
+      lotteryId: visibleLotteries[0].id,
+      roundId: regressionRound.id,
+      rateProfileId: visibleLotteries[0].defaultRateProfileId,
+      betType: '3top',
+      defaultAmount: 10,
+      rawInput: '321 10',
+      reverse: false,
+      includeDoubleSet: false,
+      memo: 'draft should not debit credit',
+      action: 'draft',
+      clientRequestId: `regression-draft-${uniqueSuffix}`
+    });
+    expectStatus(draftNoDebitResponse, 201, 'Create draft without debit');
+    const [memberWalletAfterDraft, draftStakeLedgerEntry] = await Promise.all([
+      agentClient.get('/wallet/summary', { params: { targetUserId: created.memberId } }),
+      CreditLedgerEntry.findOne({
+        userId: created.memberId,
+        entryType: 'bet',
+        reasonCode: 'bet_stake',
+        'metadata.slipId': draftNoDebitResponse.data.id
+      }).lean()
+    ]);
+    expectStatus(memberWalletAfterDraft, 200, 'Member wallet after draft slip');
+    assert(Number(memberWalletAfterDraft.data.account?.creditBalance || 0) === 100, 'Draft slip should not debit member wallet');
+    assert(!draftStakeLedgerEntry, 'Draft slip should not create a bet stake ledger entry');
+    summary.checks.push('member-draft-does-not-debit-credit');
     const insufficientBetResponse = await agentClient.post('/agent/betting/slips', {
       customerId: created.memberId,
       lotteryId: visibleLotteries[0].id,
@@ -422,6 +450,23 @@ const main = async () => {
     assert(/Insufficient credit balance/i.test(String(insufficientBetResponse.data?.message || '')), 'Insufficient credit error should be explicit');
     summary.checks.push('member-bet-insufficient-credit');
 
+    const [insufficientSlipCount, betLedgerCountAfterInsufficient, memberWalletAfterInsufficient] = await Promise.all([
+      BetSlip.countDocuments({
+        customerId: created.memberId,
+        drawRoundId: regressionRound.id,
+        memo: 'insufficient credit bet test'
+      }),
+      CreditLedgerEntry.countDocuments({ userId: created.memberId, entryType: 'bet' }),
+      agentClient.get('/wallet/summary', { params: { targetUserId: created.memberId } })
+    ]);
+    expectStatus(memberWalletAfterInsufficient, 200, 'Member wallet after insufficient bet');
+    assert(insufficientSlipCount === 0, 'Insufficient-credit submit must not leave a slip behind');
+    assert(betLedgerCountAfterInsufficient === 0, 'Insufficient-credit submit must not leave a bet ledger entry behind');
+    assert(Number(memberWalletAfterInsufficient.data.account?.creditBalance || 0) === 100, 'Insufficient-credit submit must not change member balance');
+    summary.checks.push('member-bet-insufficient-credit-rollback');
+
+    const submitClientRequestId = `regression-submit-${uniqueSuffix}`;
+
     const submitSlipResponse = await agentClient.post('/agent/betting/slips', {
       customerId: created.memberId,
       lotteryId: visibleLotteries[0].id,
@@ -433,7 +478,8 @@ const main = async () => {
       reverse: false,
       includeDoubleSet: false,
       memo: 'winning regression slip',
-      action: 'submit'
+      action: 'submit',
+      clientRequestId: submitClientRequestId
     });
     expectStatus(submitSlipResponse, 201, 'Submit slip');
     created.slipId = submitSlipResponse.data.id;
@@ -454,6 +500,43 @@ const main = async () => {
     assert(Number(memberWalletAfterStake.data.account?.creditBalance || 0) === 90, 'Member wallet should be debited immediately after submitting a bet');
     assert(stakeLedgerEntry && Number(stakeLedgerEntry.amount || 0) === 10, 'Bet stake debit ledger entry should match submitted stake');
     summary.checks.push('member-credit-debited-on-submit');
+
+    const duplicateSubmitResponse = await agentClient.post('/agent/betting/slips', {
+      customerId: created.memberId,
+      lotteryId: visibleLotteries[0].id,
+      roundId: regressionRound.id,
+      rateProfileId: visibleLotteries[0].defaultRateProfileId,
+      betType: '3top',
+      defaultAmount: 10,
+      rawInput: '456 10',
+      reverse: false,
+      includeDoubleSet: false,
+      memo: 'winning regression slip',
+      action: 'submit',
+      clientRequestId: submitClientRequestId
+    });
+    expectStatus(duplicateSubmitResponse, 201, 'Duplicate submit with same clientRequestId');
+    const [memberWalletAfterDuplicateSubmit, stakeLedgerEntriesAfterDuplicateSubmit, slipCountForClientRequest] = await Promise.all([
+      agentClient.get('/wallet/summary', { params: { targetUserId: created.memberId } }),
+      CreditLedgerEntry.find({
+        userId: created.memberId,
+        entryType: 'bet',
+        direction: 'debit',
+        reasonCode: 'bet_stake',
+        'metadata.slipId': created.slipId
+      }).lean(),
+      BetSlip.countDocuments({
+        customerId: created.memberId,
+        drawRoundId: regressionRound.id,
+        clientRequestId: submitClientRequestId
+      })
+    ]);
+    expectStatus(memberWalletAfterDuplicateSubmit, 200, 'Member wallet after duplicate submit');
+    assert(duplicateSubmitResponse.data.id === created.slipId, 'Duplicate submit should return the original slip');
+    assert(Number(memberWalletAfterDuplicateSubmit.data.account?.creditBalance || 0) === 90, 'Duplicate submit must not debit member wallet twice');
+    assert(stakeLedgerEntriesAfterDuplicateSubmit.length === 1, 'Duplicate submit must not create a second stake ledger entry');
+    assert(slipCountForClientRequest === 1, 'Duplicate submit must not create a second slip for the same clientRequestId');
+    summary.checks.push('member-submit-idempotent-no-double-debit');
 
     const pendingReportResponse = await agentClient.get('/agent/reports', {
       params: {
@@ -477,7 +560,7 @@ const main = async () => {
       `Incomplete government result should be rejected before publish/settle (got ${incompleteResultResponse.status}: ${JSON.stringify(incompleteResultResponse.data)})`
     );
     assert(
-      /3 ตัวหน้า|threeFront|3 ตัวล่าง|threeBottom/i.test(String(incompleteResultResponse.data?.message || '')),
+      /3 \u0E15\u0E31\u0E27\u0E2B\u0E19\u0E49\u0E32|threeFront|3 \u0E15\u0E31\u0E27\u0E25\u0E48\u0E32\u0E07|threeBottom/i.test(String(incompleteResultResponse.data?.message || '')),
       `Incomplete result error should explain missing 3-front/3-bottom prizes (got "${incompleteResultResponse.data?.message || ''}")`
     );
     const [resultRecordAfterIncomplete, winningItemAfterIncomplete] = await Promise.all([

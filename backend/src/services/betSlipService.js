@@ -1,3 +1,4 @@
+const crypto = require('crypto');
 const mongoose = require('mongoose');
 const BetItem = require('../models/BetItem');
 const BetSlip = require('../models/BetSlip');
@@ -45,6 +46,42 @@ const makeSlipNumber = () => {
 };
 
 const makeLedgerGroupId = (prefix = 'BET') => `${prefix}-${new mongoose.Types.ObjectId().toString()}`;
+
+const normalizeClientRequestId = (value) => {
+  if (value === undefined || value === null) {
+    return '';
+  }
+
+  const normalized = String(value).trim();
+  if (!normalized) {
+    return '';
+  }
+
+  if (normalized.length > 120) {
+    throw new Error('clientRequestId must be 120 characters or fewer');
+  }
+
+  if (!/^[A-Za-z0-9._:-]+$/.test(normalized)) {
+    throw new Error('clientRequestId contains unsupported characters');
+  }
+
+  return normalized;
+};
+
+const buildClientRequestFingerprint = ({ customerId, lotteryId, roundId, action, memo, items }) =>
+  crypto.createHash('sha256').update(JSON.stringify({
+    customerId: toIdString(customerId),
+    lotteryId: toIdString(lotteryId),
+    roundId: toIdString(roundId),
+    action,
+    memo: String(memo || ''),
+    items: items.map((item) => ({
+      betType: item.betType,
+      number: item.number,
+      amount: toMoney(item.amount),
+      payRate: toMoney(item.payRate)
+    }))
+  })).digest('hex');
 
 const buildBetLedgerMetadata = (slip, extra = {}) => ({
   slipId: slip._id.toString(),
@@ -278,7 +315,7 @@ const parseRawLines = (rawInput) => {
 
 const sanitizeFastLine = (line) =>
   String(line || '')
-    .replace(/[xX×*]/g, ' ')
+    .replace(/[xX\u00D7*]/g, ' ')
     .replace(/[^\d=/:,\-.\s]/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
@@ -748,6 +785,7 @@ const buildSlipResponse = async (slips) => {
       totalAmount: slip.totalAmount,
       potentialPayout: slip.potentialPayout,
       submittedAt: slip.submittedAt,
+      clientRequestId: slip.clientRequestId || '',
       cancelledAt: slip.cancelledAt,
       cancelledReason: slip.cancelledReason,
       openAt: slip.openAt,
@@ -884,11 +922,24 @@ const createSlip = async ({
   reverse = false,
   includeDoubleSet = false,
   memo = '',
-  action = 'submit'
+  action = 'submit',
+  clientRequestId = ''
 }) => {
   const { customer, actor } = await resolveBettingActor({ actorUser, customerId });
   if (!customer.agentId) {
     throw new Error('Customer has no assigned agent');
+  }
+
+  const normalizedClientRequestId = normalizeClientRequestId(clientRequestId);
+  const requestLookup = normalizedClientRequestId
+    ? { placedByUserId: actor._id, customerId, clientRequestId: normalizedClientRequestId }
+    : null;
+
+  if (requestLookup) {
+    const existingClientRequestSlip = await BetSlip.findOne(requestLookup);
+    if (existingClientRequestSlip) {
+      return buildSlipResponse(existingClientRequestSlip);
+    }
   }
 
   const preview = await previewSlip({
@@ -910,11 +961,36 @@ const createSlip = async ({
     throw new Error('This round is not open for betting');
   }
 
+  const clientRequestFingerprint = normalizedClientRequestId
+    ? buildClientRequestFingerprint({
+      customerId,
+      lotteryId,
+      roundId,
+      action,
+      memo,
+      items: preview.items
+    })
+    : '';
+  const ensureClientRequestMatches = (existingSlip) => {
+    if (existingSlip?.clientRequestFingerprint && existingSlip.clientRequestFingerprint !== clientRequestFingerprint) {
+      throw new Error('clientRequestId was already used for a different slip');
+    }
+  };
+
   const session = await mongoose.startSession();
   let createdSlip = null;
 
   try {
     await session.withTransaction(async () => {
+      if (requestLookup) {
+        const existingSlip = await BetSlip.findOne(requestLookup).session(session);
+        if (existingSlip) {
+          ensureClientRequestMatches(existingSlip);
+          createdSlip = existingSlip;
+          return;
+        }
+      }
+
       const [slip] = await BetSlip.create([{
         customerId,
         agentId: customer.agentId,
@@ -939,6 +1015,8 @@ const createSlip = async ({
         itemCount: preview.summary.itemCount,
         totalAmount: preview.summary.totalAmount,
         potentialPayout: preview.summary.potentialPayout,
+        clientRequestId: normalizedClientRequestId || undefined,
+        clientRequestFingerprint: clientRequestFingerprint || undefined,
         submittedAt: action === 'submit' ? new Date() : null
       }], { session });
 
@@ -970,6 +1048,16 @@ const createSlip = async ({
     });
 
     return buildSlipResponse(createdSlip);
+  } catch (error) {
+    if (requestLookup && error?.code === 11000) {
+      const existingSlip = await BetSlip.findOne(requestLookup);
+      if (existingSlip) {
+        ensureClientRequestMatches(existingSlip);
+        return buildSlipResponse(existingSlip);
+      }
+    }
+
+    throw error;
   } finally {
     await session.endSession();
   }

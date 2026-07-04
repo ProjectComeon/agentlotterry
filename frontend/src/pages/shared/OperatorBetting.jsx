@@ -70,6 +70,14 @@ const doubleSetCounts = {
 const LAO_SET_BET_TYPE = 'lao_set4';
 const LAO_SET_AMOUNT = '120';
 const LAO_SET_MAX_PRIZE = 150000;
+const createClientRequestId = () => {
+  const browserCrypto = typeof window !== 'undefined' ? window.crypto : null;
+  if (browserCrypto?.randomUUID) {
+    return browserCrypto.randomUUID();
+  }
+
+  return `bet-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+};
 const fallbackFastRates = {
   '3top': 1000,
   '3front': 450,
@@ -1105,6 +1113,7 @@ const OperatorBetting = () => {
   const [previewing, setPreviewing] = useState(false);
   const [copyingImage, setCopyingImage] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const submitRequestIdRef = useRef('');
   const [draftLoading, setDraftLoading] = useState(false);
   const [recentItems, setRecentItems] = useState([]);
   const [recentLoading, setRecentLoading] = useState(false);
@@ -1784,11 +1793,15 @@ const OperatorBetting = () => {
   };
 
   const handleSubmitSlip = async () => {
+    if (submitRequestIdRef.current) return;
+
     const nextPreview = preview || await handlePreview();
     if (!nextPreview) return;
+
+    submitRequestIdRef.current = createClientRequestId();
     setSubmitting(true);
     try {
-      const response = await copy.createSlip({ ...buildCombinedPayload(), action: 'submit' });
+      const response = await copy.createSlip({ ...buildCombinedPayload(), action: 'submit', clientRequestId: submitRequestIdRef.current });
       await clearPersistedDraft({ scopeParams: draftScopeParams, silent: true });
       toast.success(copyMessages.saveSlipSuccess(response.data.slipNumber));
       setSavedDraftEntries([]);
@@ -1798,6 +1811,7 @@ const OperatorBetting = () => {
       console.error(error);
       toast.error(error.response?.data?.message || copyMessages.saveSlipFailed);
     } finally {
+      submitRequestIdRef.current = '';
       setSubmitting(false);
     }
   };
