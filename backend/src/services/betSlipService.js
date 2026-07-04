@@ -1,6 +1,8 @@
+const crypto = require('crypto');
 const mongoose = require('mongoose');
 const BetItem = require('../models/BetItem');
 const BetSlip = require('../models/BetSlip');
+const CreditLedgerEntry = require('../models/CreditLedgerEntry');
 const DrawRound = require('../models/DrawRound');
 const LotteryType = require('../models/LotteryType');
 const RateProfile = require('../models/RateProfile');
@@ -14,6 +16,13 @@ const { getPermutations } = require('../utils/numberHelpers');
 
 const MAX_SLIP_ITEMS = 500;
 const LAO_SET_BET_TYPE = 'lao_set4';
+const toMoney = (value) => {
+  const amount = Number(value);
+  return Number.isFinite(amount) ? amount : 0;
+};
+const BET_LEDGER_ENTRY_TYPE = 'bet';
+const BET_STAKE_REASON = 'bet_stake';
+const BET_STAKE_REFUND_REASON = 'bet_stake_refund';
 const toIdString = (value) => value?._id?.toString?.() || value?.toString?.() || '';
 
 const DIGIT_LENGTHS = {
@@ -34,6 +43,187 @@ const makeSlipNumber = () => {
   const stamp = now.toISOString().replace(/\D/g, '').slice(0, 14);
   const suffix = Math.random().toString(36).slice(2, 6).toUpperCase();
   return `SLP-${stamp}-${suffix}`;
+};
+
+const makeLedgerGroupId = (prefix = 'BET') => `${prefix}-${new mongoose.Types.ObjectId().toString()}`;
+
+const normalizeClientRequestId = (value) => {
+  if (value === undefined || value === null) {
+    return '';
+  }
+
+  const normalized = String(value).trim();
+  if (!normalized) {
+    return '';
+  }
+
+  if (normalized.length > 120) {
+    throw new Error('clientRequestId must be 120 characters or fewer');
+  }
+
+  if (!/^[A-Za-z0-9._:-]+$/.test(normalized)) {
+    throw new Error('clientRequestId contains unsupported characters');
+  }
+
+  return normalized;
+};
+
+const buildClientRequestFingerprint = ({ customerId, lotteryId, roundId, action, memo, items }) =>
+  crypto.createHash('sha256').update(JSON.stringify({
+    customerId: toIdString(customerId),
+    lotteryId: toIdString(lotteryId),
+    roundId: toIdString(roundId),
+    action,
+    memo: String(memo || ''),
+    items: items.map((item) => ({
+      betType: item.betType,
+      number: item.number,
+      amount: toMoney(item.amount),
+      payRate: toMoney(item.payRate)
+    }))
+  })).digest('hex');
+
+const buildBetLedgerMetadata = (slip, extra = {}) => ({
+  slipId: slip._id.toString(),
+  slipNumber: slip.slipNumber,
+  lotteryTypeId: slip.lotteryTypeId?.toString?.() || '',
+  lotteryCode: slip.lotteryCode,
+  roundId: slip.drawRoundId?.toString?.() || '',
+  roundCode: slip.roundCode,
+  agentId: slip.agentId?.toString?.() || '',
+  ...extra
+});
+
+const createBetLedgerPayload = ({
+  groupId,
+  direction,
+  customerId,
+  actorUserId,
+  actorRole,
+  amount,
+  balanceBefore,
+  balanceAfter,
+  reasonCode,
+  note,
+  metadata
+}) => ({
+  groupId,
+  entryType: BET_LEDGER_ENTRY_TYPE,
+  direction,
+  userId: customerId,
+  counterpartyUserId: null,
+  performedByUserId: actorUserId || null,
+  performedByRole: actorRole || 'system',
+  amount,
+  balanceBefore,
+  balanceAfter,
+  reasonCode,
+  note,
+  metadata
+});
+
+const debitCustomerStake = async ({ customerId, actor, slip, amount, session }) => {
+  const stakeAmount = toMoney(amount);
+  if (stakeAmount <= 0) {
+    throw new Error('Bet amount must be greater than zero');
+  }
+
+  const customerBefore = await User.findOneAndUpdate(
+    { _id: customerId, creditBalance: { $gte: stakeAmount } },
+    { $inc: { creditBalance: -stakeAmount } },
+    { session, new: false }
+  ).select('_id creditBalance').lean();
+
+  if (!customerBefore) {
+    const currentCustomer = await User.findById(customerId).select('_id creditBalance').session(session).lean();
+    if (!currentCustomer) {
+      throw new Error('Member not found');
+    }
+
+    throw new Error('Insufficient credit balance for this bet');
+  }
+
+  const balanceBefore = toMoney(customerBefore.creditBalance);
+  const balanceAfter = balanceBefore - stakeAmount;
+  const groupId = makeLedgerGroupId('BET');
+
+  await CreditLedgerEntry.insertMany([
+    createBetLedgerPayload({
+      groupId,
+      direction: 'debit',
+      customerId,
+      actorUserId: actor?._id || null,
+      actorRole: actor?.role || 'system',
+      amount: stakeAmount,
+      balanceBefore,
+      balanceAfter,
+      reasonCode: BET_STAKE_REASON,
+      note: `Bet stake for slip ${slip.slipNumber}`,
+      metadata: buildBetLedgerMetadata(slip)
+    })
+  ], { session });
+
+  return { groupId, balanceBefore, balanceAfter };
+};
+
+const refundCustomerStake = async ({ slip, actorUser = null, session }) => {
+  const slipId = slip._id.toString();
+  const stakeEntry = await CreditLedgerEntry.findOne({
+    userId: slip.customerId,
+    entryType: BET_LEDGER_ENTRY_TYPE,
+    direction: 'debit',
+    reasonCode: BET_STAKE_REASON,
+    'metadata.slipId': slipId
+  }).session(session).lean();
+
+  if (!stakeEntry) {
+    return null;
+  }
+
+  const existingRefund = await CreditLedgerEntry.findOne({
+    userId: slip.customerId,
+    entryType: BET_LEDGER_ENTRY_TYPE,
+    direction: 'credit',
+    reasonCode: BET_STAKE_REFUND_REASON,
+    'metadata.slipId': slipId
+  }).session(session).lean();
+
+  if (existingRefund) {
+    return null;
+  }
+
+  const refundAmount = toMoney(stakeEntry.amount);
+  const customerBefore = await User.findOneAndUpdate(
+    { _id: slip.customerId },
+    { $inc: { creditBalance: refundAmount } },
+    { session, new: false }
+  ).select('_id creditBalance').lean();
+
+  if (!customerBefore) {
+    throw new Error('Member not found');
+  }
+
+  const balanceBefore = toMoney(customerBefore.creditBalance);
+  const balanceAfter = balanceBefore + refundAmount;
+  const groupId = makeLedgerGroupId('BETRF');
+
+  await CreditLedgerEntry.insertMany([
+    createBetLedgerPayload({
+      groupId,
+      direction: 'credit',
+      customerId: slip.customerId,
+      actorUserId: actorUser?._id || slip.placedByUserId || slip.customerId,
+      actorRole: actorUser?.role || slip.placedByRole || 'system',
+      amount: refundAmount,
+      balanceBefore,
+      balanceAfter,
+      reasonCode: BET_STAKE_REFUND_REASON,
+      note: `Refund cancelled slip ${slip.slipNumber}`,
+      metadata: buildBetLedgerMetadata(slip, { refundedFromGroupId: stakeEntry.groupId })
+    })
+  ], { session });
+
+  return { groupId, balanceBefore, balanceAfter };
 };
 
 const normalizeDigits = (value) => String(value || '').replace(/\D/g, '');
@@ -125,7 +315,7 @@ const parseRawLines = (rawInput) => {
 
 const sanitizeFastLine = (line) =>
   String(line || '')
-    .replace(/[xX×*]/g, ' ')
+    .replace(/[xX\u00D7*]/g, ' ')
     .replace(/[^\d=/:,\-.\s]/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
@@ -595,6 +785,7 @@ const buildSlipResponse = async (slips) => {
       totalAmount: slip.totalAmount,
       potentialPayout: slip.potentialPayout,
       submittedAt: slip.submittedAt,
+      clientRequestId: slip.clientRequestId || '',
       cancelledAt: slip.cancelledAt,
       cancelledReason: slip.cancelledReason,
       openAt: slip.openAt,
@@ -731,11 +922,24 @@ const createSlip = async ({
   reverse = false,
   includeDoubleSet = false,
   memo = '',
-  action = 'submit'
+  action = 'submit',
+  clientRequestId = ''
 }) => {
   const { customer, actor } = await resolveBettingActor({ actorUser, customerId });
   if (!customer.agentId) {
     throw new Error('Customer has no assigned agent');
+  }
+
+  const normalizedClientRequestId = normalizeClientRequestId(clientRequestId);
+  const requestLookup = normalizedClientRequestId
+    ? { placedByUserId: actor._id, customerId, clientRequestId: normalizedClientRequestId }
+    : null;
+
+  if (requestLookup) {
+    const existingClientRequestSlip = await BetSlip.findOne(requestLookup);
+    if (existingClientRequestSlip) {
+      return buildSlipResponse(existingClientRequestSlip);
+    }
   }
 
   const preview = await previewSlip({
@@ -757,54 +961,106 @@ const createSlip = async ({
     throw new Error('This round is not open for betting');
   }
 
-  const slip = await BetSlip.create({
-    customerId,
-    agentId: customer.agentId,
-    placedByUserId: actor._id,
-    placedByRole: actor.role,
-    placedByName: actor.name || actor.username || '',
-    lotteryTypeId: lotteryId,
-    drawRoundId: roundId,
-    rateProfileId: preview.rateProfile?.id || null,
-    slipNumber: makeSlipNumber(),
-    lotteryCode: preview.lottery.code,
-    lotteryName: preview.lottery.name,
-    roundCode: preview.round.code,
-    roundTitle: preview.round.title,
-    rateProfileName: preview.rateProfile?.name || '',
-    openAt: preview.round.openAt,
-    closeAt: preview.round.closeAt,
-    drawAt: preview.round.drawAt,
-    sourceType: actor.role === 'customer' ? 'console' : 'manual',
-    status: action === 'draft' ? 'draft' : 'submitted',
-    memo,
-    itemCount: preview.summary.itemCount,
-    totalAmount: preview.summary.totalAmount,
-    potentialPayout: preview.summary.potentialPayout,
-    submittedAt: action === 'submit' ? new Date() : null
-  });
+  const clientRequestFingerprint = normalizedClientRequestId
+    ? buildClientRequestFingerprint({
+      customerId,
+      lotteryId,
+      roundId,
+      action,
+      memo,
+      items: preview.items
+    })
+    : '';
+  const ensureClientRequestMatches = (existingSlip) => {
+    if (existingSlip?.clientRequestFingerprint && existingSlip.clientRequestFingerprint !== clientRequestFingerprint) {
+      throw new Error('clientRequestId was already used for a different slip');
+    }
+  };
 
-  const createdItems = await BetItem.insertMany(preview.items.map((item, index) => ({
-    slipId: slip._id,
-    customerId,
-    agentId: customer.agentId,
-    placedByUserId: actor._id,
-    placedByRole: actor.role,
-    placedByName: actor.name || actor.username || '',
-    lotteryTypeId: lotteryId,
-    drawRoundId: roundId,
-    rateProfileId: preview.rateProfile?.id || null,
-    sequence: index + 1,
-    betType: item.betType,
-    number: item.number,
-    amount: item.amount,
-    payRate: item.payRate,
-    potentialPayout: item.potentialPayout,
-    status: action === 'draft' ? 'draft' : 'submitted',
-    sourceFlags: item.sourceFlags
-  })));
+  const session = await mongoose.startSession();
+  let createdSlip = null;
 
-  return buildSlipResponse(slip);
+  try {
+    await session.withTransaction(async () => {
+      if (requestLookup) {
+        const existingSlip = await BetSlip.findOne(requestLookup).session(session);
+        if (existingSlip) {
+          ensureClientRequestMatches(existingSlip);
+          createdSlip = existingSlip;
+          return;
+        }
+      }
+
+      const [slip] = await BetSlip.create([{
+        customerId,
+        agentId: customer.agentId,
+        placedByUserId: actor._id,
+        placedByRole: actor.role,
+        placedByName: actor.name || actor.username || '',
+        lotteryTypeId: lotteryId,
+        drawRoundId: roundId,
+        rateProfileId: preview.rateProfile?.id || null,
+        slipNumber: makeSlipNumber(),
+        lotteryCode: preview.lottery.code,
+        lotteryName: preview.lottery.name,
+        roundCode: preview.round.code,
+        roundTitle: preview.round.title,
+        rateProfileName: preview.rateProfile?.name || '',
+        openAt: preview.round.openAt,
+        closeAt: preview.round.closeAt,
+        drawAt: preview.round.drawAt,
+        sourceType: actor.role === 'customer' ? 'console' : 'manual',
+        status: action === 'draft' ? 'draft' : 'submitted',
+        memo,
+        itemCount: preview.summary.itemCount,
+        totalAmount: preview.summary.totalAmount,
+        potentialPayout: preview.summary.potentialPayout,
+        clientRequestId: normalizedClientRequestId || undefined,
+        clientRequestFingerprint: clientRequestFingerprint || undefined,
+        submittedAt: action === 'submit' ? new Date() : null
+      }], { session });
+
+      await BetItem.insertMany(preview.items.map((item, index) => ({
+        slipId: slip._id,
+        customerId,
+        agentId: customer.agentId,
+        placedByUserId: actor._id,
+        placedByRole: actor.role,
+        placedByName: actor.name || actor.username || '',
+        lotteryTypeId: lotteryId,
+        drawRoundId: roundId,
+        rateProfileId: preview.rateProfile?.id || null,
+        sequence: index + 1,
+        betType: item.betType,
+        number: item.number,
+        amount: item.amount,
+        payRate: item.payRate,
+        potentialPayout: item.potentialPayout,
+        status: action === 'draft' ? 'draft' : 'submitted',
+        sourceFlags: item.sourceFlags
+      })), { session });
+
+      if (action === 'submit') {
+        await debitCustomerStake({ customerId, actor, slip, amount: preview.summary.totalAmount, session });
+      }
+
+      createdSlip = slip;
+    });
+
+    return buildSlipResponse(createdSlip);
+  } catch (error) {
+    if (requestLookup && error?.code === 11000) {
+      const existingSlip = await BetSlip.findOne(requestLookup);
+      if (existingSlip) {
+        ensureClientRequestMatches(existingSlip);
+        return buildSlipResponse(existingSlip);
+      }
+    }
+
+    throw error;
+  } finally {
+    await session.endSession();
+  }
 };
 
 const listSlips = async ({ customerId, status }) => {
@@ -864,34 +1120,48 @@ const listBetItems = async ({ customerId, slipId, status }) => {
   });
 };
 
-const cancelLoadedSlip = async ({ slip, cancelledReason }) => {
+const cancelLoadedSlip = async ({ slip, cancelledReason, actorUser = null }) => {
   if (!slip) {
     throw new Error('Slip not found');
   }
 
-  const targetSlip = slip;
+  const session = await mongoose.startSession();
+  let cancelledSlip = null;
 
-  if (targetSlip.status !== 'submitted') {
-    throw new Error('Only submitted slips can be cancelled');
+  try {
+    await session.withTransaction(async () => {
+      const targetSlip = await BetSlip.findById(slip._id).session(session);
+      if (!targetSlip) {
+        throw new Error('Slip not found');
+      }
+
+      if (targetSlip.status !== 'submitted') {
+        throw new Error('Only submitted slips can be cancelled');
+      }
+
+      if (new Date() > new Date(targetSlip.closeAt)) {
+        throw new Error('This slip can no longer be cancelled');
+      }
+
+      const items = await BetItem.find({ slipId: targetSlip._id }).select('result isLocked').session(session);
+      if (items.some((item) => item.isLocked || item.result !== 'pending')) {
+        throw new Error('This slip already has resolved items and cannot be cancelled');
+      }
+
+      await BetItem.updateMany({ slipId: targetSlip._id }, { $set: { status: 'cancelled' } }, { session });
+
+      targetSlip.status = 'cancelled';
+      targetSlip.cancelledAt = new Date();
+      targetSlip.cancelledReason = cancelledReason;
+      await targetSlip.save({ session });
+      await refundCustomerStake({ slip: targetSlip, actorUser, session });
+      cancelledSlip = targetSlip;
+    });
+
+    return buildSlipResponse(cancelledSlip);
+  } finally {
+    await session.endSession();
   }
-
-  if (new Date() > new Date(targetSlip.closeAt)) {
-    throw new Error('This slip can no longer be cancelled');
-  }
-
-  const items = await BetItem.find({ slipId: targetSlip._id }).select('result isLocked');
-  if (items.some((item) => item.isLocked || item.result !== 'pending')) {
-    throw new Error('This slip already has resolved items and cannot be cancelled');
-  }
-
-  await BetItem.updateMany({ slipId: targetSlip._id }, { $set: { status: 'cancelled' } });
-
-  targetSlip.status = 'cancelled';
-  targetSlip.cancelledAt = new Date();
-  targetSlip.cancelledReason = cancelledReason;
-  await targetSlip.save();
-
-  return buildSlipResponse(targetSlip);
 };
 
 const cancelSlip = async ({ customerId, slipId }) => {
@@ -919,7 +1189,8 @@ const cancelSlipByActor = async ({ actorUser, slipId }) => {
 
   return cancelLoadedSlip({
     slip,
-    cancelledReason: `${actorUser.role}-request`
+    cancelledReason: `${actorUser.role}-request`,
+    actorUser
   });
 };
 

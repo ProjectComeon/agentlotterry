@@ -116,6 +116,16 @@ const betSlipSchema = new mongoose.Schema({
     type: Date,
     default: null
   },
+  clientRequestId: {
+    type: String,
+    trim: true,
+    maxlength: 120
+  },
+  clientRequestFingerprint: {
+    type: String,
+    trim: true,
+    maxlength: 128
+  },
   cancelledAt: {
     type: Date,
     default: null
@@ -136,5 +146,14 @@ betSlipSchema.index({ status: 1, agentId: 1, createdAt: -1, _id: -1 });
 betSlipSchema.index({ status: 1, agentId: 1, customerId: 1, createdAt: -1, _id: -1 });
 betSlipSchema.index({ status: 1, lotteryCode: 1, roundCode: 1, createdAt: -1, _id: -1 });
 betSlipSchema.index({ status: 1, agentId: 1, lotteryCode: 1, roundCode: 1, createdAt: -1, _id: -1 });
+betSlipSchema.index(
+  { placedByUserId: 1, customerId: 1, clientRequestId: 1 },
+  {
+    unique: true,
+    partialFilterExpression: {
+      clientRequestId: { $type: 'string', $gt: '' }
+    }
+  }
+);
 
 module.exports = mongoose.model('BetSlip', betSlipSchema);
