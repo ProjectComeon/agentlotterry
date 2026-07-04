@@ -35,7 +35,8 @@
     "legacy:cleanup:archive": "node src/scripts/cleanupLegacyData.js --mode=archive",
     "legacy:cleanup:purge": "node src/scripts/cleanupLegacyData.js --mode=purge",
     "test:backup-restore-guards": "node src/scripts/testBackupRestoreGuards.js",
-    "test:cookie-auth-guards": "node src/scripts/testCookieAuthGuards.js"
+    "test:cookie-auth-guards": "node src/scripts/testCookieAuthGuards.js",
+    "lint": "eslint server.js src/**/*.js"
   },
   "dependencies": {
     "axios": "^1.18.1",
@@ -53,5 +54,10 @@
     "path-to-regexp": "0.1.13",
     "form-data": "4.0.6",
     "qs": "6.15.3"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.4",
+    "eslint": "^9.39.4",
+    "globals": "^17.7.0"
   }
 }

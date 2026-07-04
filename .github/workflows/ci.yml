@@ -85,7 +85,15 @@ jobs:
         working-directory: frontend
         run: npm audit --omit=dev
 
-      # TODO: Add lint/typecheck gates here once backend/frontend package scripts exist.
+      - name: Backend lint
+        working-directory: backend
+        run: npm run lint
+
+      - name: Frontend lint
+        working-directory: frontend
+        run: npm run lint
+
+      # TODO: Add typecheck gates once the repo has TypeScript configs and scripts.
       - name: Backend guard tests
         working-directory: backend
         run: |
