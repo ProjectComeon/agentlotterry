@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildInitialAuthState } from '../src/utils/authBootstrap.js';
+import { normalizeUnauthorizedRequestPath, shouldRedirectToLoginForUnauthorized } from '../src/utils/authRedirectPolicy.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, '..');
@@ -14,6 +15,23 @@ const initialState = buildInitialAuthState({
 assert.equal(initialState.loading, true, 'stored auth state must stay loading until /auth/me revalidates');
 assert.equal(initialState.shouldRevalidate, true);
 assert.equal(initialState.user.id, 'u1');
+assert.equal(normalizeUnauthorizedRequestPath('/api/auth/me?probe=1'), '/auth/me');
+assert.equal(shouldRedirectToLoginForUnauthorized({
+  requestUrl: '/auth/me',
+  currentPathname: '/login'
+}), false, 'auth bootstrap 401 must not reload the login page');
+assert.equal(shouldRedirectToLoginForUnauthorized({
+  requestUrl: '/auth/login',
+  currentPathname: '/login'
+}), false, 'failed login should show an error without full-page redirect');
+assert.equal(shouldRedirectToLoginForUnauthorized({
+  requestUrl: '/admin/dashboard',
+  currentPathname: '/admin'
+}), true, 'protected API 401 should still send stale sessions back to login');
+assert.equal(shouldRedirectToLoginForUnauthorized({
+  requestUrl: '/admin/dashboard',
+  currentPathname: '/login'
+}), false, 'login page must not redirect to itself on background 401');
 
 const panelSource = fs.readFileSync(path.join(repoRoot, 'src/pages/admin/LotteryDetailPanel.jsx'), 'utf8');
 assert.match(panelSource, /new URL\(String\(value \|\| ''\)\.trim\(\)\)/, 'source URLs should be parsed before rendering');
@@ -38,6 +56,7 @@ assert.match(appSource, /path="\/admin\/pending-payouts"[\s\S]*roles=\{\['admin'
 assert.match(appSource, /path="\/agent\/pending-payouts"[\s\S]*roles=\{\['agent'\]\}/, 'agent pending payout UI route should be agent-protected');
 assert.match(navbarSource, /pendingBadgeCount/, 'navigation should render pending payout count without changing auth bootstrap');
 assert.match(navbarSource, /getAdminPendingPayouts[\s\S]*getAgentPendingPayouts/, 'navigation pending payout badge should fetch counts by role');
+assert.match(navbarSource, /const handleLogout = async \(\) => \{[\s\S]*await logout\(\);[\s\S]*navigate\('\/login'\);/, 'navigation logout should wait for server cookie cleanup before redirecting');
 assert.match(pendingPayoutPageSource, /markAdminNotificationRead[\s\S]*markAgentNotificationRead/, 'pending payout UI should only expose notification read actions');
 assert.doesNotMatch(pendingPayoutPageSource, /\u0e08\u0e48\u0e32\u0e22\u0e41\u0e17\u0e19|manual\s+payout|pay\s+for\s+agent|adjustWalletCredit|transferWalletCredit|\/wallet\/adjust|\/wallet\/transfer/i, 'pending payout UI must not expose payout override or wallet mutation actions');
 assert.doesNotMatch(navbarSource, /จ่ายแทน|pay\s+for\s+agent/i, 'navigation must not expose admin pay-for-agent actions');
