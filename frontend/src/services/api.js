@@ -142,6 +142,17 @@ export const getAdminReports = (params, options = {}) => cachedGet('/admin/repor
   ttlMs: READ_TTL_MEDIUM_MS,
   force: Boolean(options.force)
 });
+export const getAdminPendingPayouts = (params = {}, options = {}) => cachedGet('/admin/pending-payouts', {
+  params,
+  ttlMs: READ_TTL_SHORT_MS,
+  force: Boolean(options.force)
+});
+export const getAdminNotifications = (params = {}, options = {}) => cachedGet('/admin/notifications', {
+  params,
+  ttlMs: READ_TTL_SHORT_MS,
+  force: Boolean(options.force)
+});
+export const markAdminNotificationRead = (id) => clearCacheAfterWrite(api.post(`/admin/notifications/${id}/read`));
 export const searchAdminBettingMembers = (params) => api.get('/admin/betting/members/search', { params });
 export const getAdminBettingMemberContext = (memberId, options = {}) => cachedGet(`/admin/betting/members/${memberId}/context`, {
   params: {
@@ -201,6 +212,17 @@ export const getAgentReports = (params, options = {}) => cachedGet('/agent/repor
   ttlMs: READ_TTL_MEDIUM_MS,
   force: Boolean(options.force)
 });
+export const getAgentPendingPayouts = (params = {}, options = {}) => cachedGet('/agent/pending-payouts', {
+  params,
+  ttlMs: READ_TTL_SHORT_MS,
+  force: Boolean(options.force)
+});
+export const getAgentNotifications = (params = {}, options = {}) => cachedGet('/agent/notifications', {
+  params,
+  ttlMs: READ_TTL_SHORT_MS,
+  force: Boolean(options.force)
+});
+export const markAgentNotificationRead = (id) => clearCacheAfterWrite(api.post(`/agent/notifications/${id}/read`));
 export const searchAgentBettingMembers = (params) => api.get('/agent/betting/members/search', { params });
 export const getAgentBettingMemberContext = (memberId, options = {}) => cachedGet(`/agent/betting/members/${memberId}/context`, {
   params: {
