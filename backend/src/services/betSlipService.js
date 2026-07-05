@@ -3,6 +3,7 @@ const mongoose = require('mongoose');
 const BetItem = require('../models/BetItem');
 const BetSlip = require('../models/BetSlip');
 const CreditLedgerEntry = require('../models/CreditLedgerEntry');
+const { holdAgentStake, reverseAgentStakeHold } = require('./agentFinancialService');
 const DrawRound = require('../models/DrawRound');
 const LotteryType = require('../models/LotteryType');
 const RateProfile = require('../models/RateProfile');
@@ -1042,6 +1043,14 @@ const createSlip = async ({
 
       if (action === 'submit') {
         await debitCustomerStake({ customerId, actor, slip, amount: preview.summary.totalAmount, session });
+        await holdAgentStake({
+          agentId: customer.agentId,
+          customerId,
+          slip,
+          amount: preview.summary.totalAmount,
+          actor,
+          session
+        });
       }
 
       createdSlip = slip;
@@ -1155,6 +1164,7 @@ const cancelLoadedSlip = async ({ slip, cancelledReason, actorUser = null }) => 
       targetSlip.cancelledReason = cancelledReason;
       await targetSlip.save({ session });
       await refundCustomerStake({ slip: targetSlip, actorUser, session });
+      await reverseAgentStakeHold({ slip: targetSlip, actorUser, session });
       cancelledSlip = targetSlip;
     });
 

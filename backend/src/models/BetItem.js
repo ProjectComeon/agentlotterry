@@ -106,6 +106,16 @@ const betItemSchema = new mongoose.Schema({
     default: '',
     trim: true
   },
+  payoutStatus: {
+    type: String,
+    enum: ['none', 'pending', 'paid', 'cancelled'],
+    default: 'none'
+  },
+  pendingPayoutId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'PendingPayout',
+    default: null
+  },
   payoutUpdatedAt: {
     type: Date,
     default: null

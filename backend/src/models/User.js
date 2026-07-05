@@ -69,6 +69,11 @@ const userSchema = new mongoose.Schema({
     type: Number,
     default: 0
   },
+  heldStakeBalance: {
+    type: Number,
+    default: 0,
+    min: 0
+  },
   ownerPercent: {
     type: Number,
     default: 0,
