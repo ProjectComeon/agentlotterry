@@ -1,6 +1,7 @@
 const mongoose = require('mongoose');
 const CreditLedgerEntry = require('../models/CreditLedgerEntry');
 const User = require('../models/User');
+const { processAgentPendingPayouts } = require('./agentFinancialService');
 
 const toIdString = (value) => value?._id?.toString?.() || value?.toString?.() || '';
 const toMoney = (value) => {
@@ -168,6 +169,7 @@ const getWalletSummary = async ({ viewer, targetUserId = '' }) => {
       role: targetUser.role,
       displayRole: targetUser.displayRole || (targetUser.role === 'customer' ? 'member' : targetUser.role),
       creditBalance: toMoney(targetUser.creditBalance),
+      heldStakeBalance: toMoney(targetUser.heldStakeBalance),
       status: targetUser.status,
       isActive: targetUser.isActive
     },
@@ -279,13 +281,22 @@ const adjustCreditBalance = async ({
     await entry.populate('userId', 'username name role displayRole');
     await entry.populate('performedByUserId', 'username name role displayRole');
 
+    const autoPayout = targetUser.role === 'agent' && delta > 0
+      ? await processAgentPendingPayouts({ agentId: targetUser._id, session })
+      : null;
+    const finalTargetUser = targetUser.role === 'agent'
+      ? await loadUserForWallet(targetUser._id, session)
+      : targetUser;
+
     return {
       groupId,
       account: {
         id: toIdString(targetUser),
-        creditBalance: nextBalance
+        creditBalance: toMoney(finalTargetUser.creditBalance),
+        heldStakeBalance: toMoney(finalTargetUser.heldStakeBalance)
       },
-      entry: serializeLedgerEntry(entry)
+      entry: serializeLedgerEntry(entry),
+      autoPayout
     };
   });
 };
