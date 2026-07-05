@@ -17,6 +17,11 @@ const {
 const { clearCatalogOverviewCache, clearCatalogOverviewCacheForUsers } = require('../services/catalogService');
 const { getAgentDashboardSummary } = require('../services/dashboardSnapshotService');
 const { scheduleReadModelSnapshotRebuild } = require('../services/readModelSnapshotService');
+const {
+  listNotifications,
+  listPendingPayouts,
+  markNotificationRead
+} = require('../services/pendingPayoutNotificationService');
 const { registerBettingRoutes } = require('./helpers/registerBettingRoutes');
 const { parsePaginationQuery } = require('../utils/pagination');
 
@@ -47,6 +52,46 @@ router.get('/dashboard', async (req, res) => {
     res.json(await getAgentDashboardSummary({ agent: req.user }));
   } catch (error) {
     console.error('Agent dashboard error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// GET /api/agent/pending-payouts
+router.get('/pending-payouts', async (req, res) => {
+  try {
+    res.json(await listPendingPayouts({ role: 'agent', userId: req.user._id, query: req.query }));
+  } catch (error) {
+    console.error('Agent pending payouts error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// GET /api/agent/notifications
+router.get('/notifications', async (req, res) => {
+  try {
+    res.json(await listNotifications({ role: 'agent', userId: req.user._id, query: req.query }));
+  } catch (error) {
+    console.error('Agent notifications error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// POST /api/agent/notifications/:id/read
+router.post('/notifications/:id/read', async (req, res) => {
+  try {
+    const notification = await markNotificationRead({
+      role: 'agent',
+      userId: req.user._id,
+      notificationId: req.params.id
+    });
+
+    if (!notification) {
+      return res.status(404).json({ message: 'Notification not found' });
+    }
+
+    res.json({ notification });
+  } catch (error) {
+    console.error('Agent notification read error:', error);
     res.status(500).json({ message: 'Server error' });
   }
 });

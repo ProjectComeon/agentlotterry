@@ -6,12 +6,14 @@ export const routeLoaders = Object.freeze({
   adminBets: () => import('../pages/admin/AdminBets'),
   adminReports: () => import('../pages/admin/AdminReports'),
   adminLottery: () => import('../pages/admin/AdminLottery'),
+  adminPendingPayouts: () => import('../pages/admin/AdminPendingPayouts'),
   agentDashboard: () => import('../pages/agent/AgentDashboard'),
   agentCustomers: () => import('../pages/agent/AgentCustomers'),
   agentMemberDetail: () => import('../pages/agent/AgentMemberDetail'),
   agentBets: () => import('../pages/agent/AgentBets'),
   agentLottery: () => import('../pages/agent/AgentLottery'),
   agentReports: () => import('../pages/agent/AgentReports'),
+  agentPendingPayouts: () => import('../pages/agent/AgentPendingPayouts'),
   operatorBetting: () => import('../pages/shared/OperatorBetting')
 });
 
@@ -23,12 +25,14 @@ const routeKeyByPath = Object.freeze({
   '/admin/bets': 'adminBets',
   '/admin/reports': 'adminReports',
   '/admin/lottery': 'adminLottery',
+  '/admin/pending-payouts': 'adminPendingPayouts',
   '/admin/betting': 'operatorBetting',
   '/agent': 'agentDashboard',
   '/agent/customers': 'agentCustomers',
   '/agent/bets': 'agentBets',
   '/agent/reports': 'agentReports',
   '/agent/lottery': 'agentLottery',
+  '/agent/pending-payouts': 'agentPendingPayouts',
   '/agent/betting': 'operatorBetting'
 });
 

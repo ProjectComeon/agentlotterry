@@ -1,9 +1,11 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { preloadAppRouteForPath } from '../utils/appPreload';
+import { getAdminPendingPayouts, getAgentPendingPayouts } from '../services/api';
 import {
   FiAward,
+  FiBell,
   FiDollarSign,
   FiFileText,
   FiHome,
@@ -23,6 +25,7 @@ const menuItems = {
     { path: '/admin/customers', label: 'สมาชิก', icon: <FiUser /> },
     { path: '/admin/bets', label: 'โพย', icon: <FiList /> },
     { path: '/admin/lottery', label: 'ผลรางวัล', icon: <FiAward /> },
+    { path: '/admin/pending-payouts', label: 'ค้างจ่าย', icon: <FiBell /> },
     { path: '/admin/reports', label: 'รายงาน', icon: <FiFileText /> }
   ],
   agent: [
@@ -30,6 +33,7 @@ const menuItems = {
     { path: '/agent/betting', label: 'ซื้อแทน', icon: <FiDollarSign /> },
     { path: '/agent/customers', label: 'สมาชิก', icon: <FiUsers /> },
     { path: '/agent/bets', label: 'โพย', icon: <FiList /> },
+    { path: '/agent/pending-payouts', label: 'ค้างจ่าย', icon: <FiBell /> },
     { path: '/agent/reports', label: 'รายงาน', icon: <FiFileText /> }
   ]
 };
@@ -44,6 +48,7 @@ const Navbar = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [pendingBadgeCount, setPendingBadgeCount] = useState(0);
 
   const items = menuItems[user?.role] || [];
   const visibleItems = user?.role === 'agent'
@@ -54,6 +59,31 @@ const Navbar = () => {
     ]
     : items;
   const roleLabel = user?.displayRole || roleLabels[user?.role] || '-';
+
+  useEffect(() => {
+    let active = true;
+    const loadPendingBadge = async () => {
+      if (!user?.role || !['admin', 'agent'].includes(user.role)) {
+        setPendingBadgeCount(0);
+        return;
+      }
+
+      try {
+        const fetchPending = user.role === 'admin' ? getAdminPendingPayouts : getAgentPendingPayouts;
+        const response = await fetchPending({ status: 'pending', limit: 1 }, { force: true });
+        if (active) {
+          setPendingBadgeCount(Number(response.data.summary?.pendingCount || 0));
+        }
+      } catch {
+        if (active) setPendingBadgeCount(0);
+      }
+    };
+
+    loadPendingBadge();
+    return () => {
+      active = false;
+    };
+  }, [user?.role]);
 
   const isItemActive = (path) =>
     location.pathname === path || (path !== `/${user?.role}` && location.pathname.startsWith(`${path}/`));
@@ -66,6 +96,12 @@ const Navbar = () => {
   const preloadItem = (path) => {
     preloadAppRouteForPath(path, user?.role);
   };
+
+  const renderPendingBadge = (path) => (
+    path.endsWith('/pending-payouts') && pendingBadgeCount > 0
+      ? <span className="navbar-badge">{pendingBadgeCount}</span>
+      : null
+  );
 
   return (
     <>
@@ -93,6 +129,7 @@ const Navbar = () => {
             >
               {item.icon}
               <span>{item.label}</span>
+              {renderPendingBadge(item.path)}
             </Link>
           ))}
         </div>
@@ -137,6 +174,7 @@ const Navbar = () => {
               >
                 {item.icon}
                 <span>{item.label}</span>
+                {renderPendingBadge(item.path)}
               </Link>
             ))}
 
@@ -243,6 +281,20 @@ const Navbar = () => {
           background: var(--primary-subtle);
           border-color: rgba(220, 38, 38, 0.12);
           box-shadow: inset 0 0 0 1px rgba(220, 38, 38, 0.02);
+        }
+        .navbar-badge {
+          min-width: 20px;
+          height: 20px;
+          padding: 0 6px;
+          border-radius: 999px;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          background: var(--danger);
+          color: white;
+          font-size: 0.7rem;
+          font-weight: 800;
+          line-height: 1;
         }
 
         .navbar-user {

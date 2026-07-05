@@ -20,6 +20,11 @@ const {
 const { clearCatalogOverviewCache, clearCatalogOverviewCacheForUsers } = require('../services/catalogService');
 const { getAdminDashboardSummary } = require('../services/dashboardSnapshotService');
 const { scheduleReadModelSnapshotRebuild } = require('../services/readModelSnapshotService');
+const {
+  listNotifications,
+  listPendingPayouts,
+  markNotificationRead
+} = require('../services/pendingPayoutNotificationService');
 const { registerBettingRoutes } = require('./helpers/registerBettingRoutes');
 const { parsePaginationQuery } = require('../utils/pagination');
 const { BET_TYPES, DEFAULT_GLOBAL_RATES } = require('../constants/betting');
@@ -201,6 +206,46 @@ router.get('/dashboard', async (req, res) => {
     res.json(await getAdminDashboardSummary());
   } catch (error) {
     console.error('Dashboard error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// GET /api/admin/pending-payouts
+router.get('/pending-payouts', async (req, res) => {
+  try {
+    res.json(await listPendingPayouts({ role: 'admin', userId: req.user._id, query: req.query }));
+  } catch (error) {
+    console.error('Admin pending payouts error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// GET /api/admin/notifications
+router.get('/notifications', async (req, res) => {
+  try {
+    res.json(await listNotifications({ role: 'admin', userId: req.user._id, query: req.query }));
+  } catch (error) {
+    console.error('Admin notifications error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// POST /api/admin/notifications/:id/read
+router.post('/notifications/:id/read', async (req, res) => {
+  try {
+    const notification = await markNotificationRead({
+      role: 'admin',
+      userId: req.user._id,
+      notificationId: req.params.id
+    });
+
+    if (!notification) {
+      return res.status(404).json({ message: 'Notification not found' });
+    }
+
+    res.json({ notification });
+  } catch (error) {
+    console.error('Admin notification read error:', error);
     res.status(500).json({ message: 'Server error' });
   }
 });

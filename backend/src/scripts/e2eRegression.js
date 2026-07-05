@@ -169,6 +169,7 @@ const killProcess = async (child) => {
 
 const cleanupRegressionArtifacts = async (created = {}) => {
   const groupIds = (created.walletGroupIds || []).filter(Boolean);
+  const extraUserIds = (created.extraUserIds || []).filter(Boolean);
   const roundIds = [created.roundId, ...(created.extraRoundIds || [])].filter(Boolean);
   const roundCodes = [created.roundCode, ...(created.extraRoundCodes || [])].filter(Boolean);
   const targets = [
@@ -180,13 +181,14 @@ const cleanupRegressionArtifacts = async (created = {}) => {
     created.roundCode,
     ...(created.extraRoundIds || []),
     ...(created.extraRoundCodes || []),
+    ...extraUserIds,
     ...groupIds
   ].filter(Boolean);
 
   if (groupIds.length) {
     await CreditLedgerEntry.deleteMany({ groupId: { $in: groupIds } });
   }
-  const userIds = [created.agentId, created.memberId].filter(Boolean);
+  const userIds = [created.agentId, created.memberId, ...extraUserIds].filter(Boolean);
   if (userIds.length) {
     await CreditLedgerEntry.deleteMany({ userId: { $in: userIds } });
     await NotificationEvent.deleteMany({
@@ -219,6 +221,11 @@ const cleanupRegressionArtifacts = async (created = {}) => {
     await User.deleteOne({ _id: created.memberId });
   }
 
+  if (extraUserIds.length) {
+    await UserLotteryConfig.deleteMany({ userId: { $in: extraUserIds } });
+    await User.deleteMany({ _id: { $in: extraUserIds } });
+  }
+
   if (created.agentId) {
     await User.deleteOne({ _id: created.agentId });
   }
@@ -240,6 +247,7 @@ const main = async () => {
   let server;
   const created = {
     walletGroupIds: [],
+    extraUserIds: [],
     extraRoundIds: [],
     extraRoundCodes: []
   };
@@ -1055,6 +1063,125 @@ const main = async () => {
     });
     assert(pendingCreatedNotificationCount >= 2, 'Pending payout should create admin and agent notification events');
     summary.checks.push('settlement-won-agent-insufficient-creates-pending-payout');
+    const otherPayoutSuffix = new mongoose.Types.ObjectId().toString().slice(-8);
+    const basePendingSlip = await BetSlip.findById(pendingSlipId).lean();
+    assert(basePendingSlip, 'Base pending slip should exist for permission fixture');
+    const otherPayoutRound = await ensureRegressionRound();
+    created.extraRoundIds.push(otherPayoutRound.roundId);
+    created.extraRoundCodes.push(otherPayoutRound.roundCode);
+    const otherAgent = await User.create({
+      username: `e2e_reg_other_agent_${uniqueSuffix}_${otherPayoutSuffix}`,
+      password: `Cc${uniqueSuffix}!`,
+      role: 'agent',
+      name: 'Other Pending Agent',
+      isActive: true
+    });
+    const otherMember = await User.create({
+      username: `e2e_reg_other_member_${uniqueSuffix}_${otherPayoutSuffix}`,
+      password: `Dd${uniqueSuffix}!`,
+      role: 'customer',
+      name: 'Other Pending Member',
+      agentId: otherAgent._id,
+      parentUserId: otherAgent._id,
+      isActive: true
+    });
+    created.extraUserIds.push(otherAgent._id.toString(), otherMember._id.toString());
+    const otherSlip = await BetSlip.create({
+      customerId: otherMember._id,
+      agentId: otherAgent._id,
+      placedByUserId: otherAgent._id,
+      placedByRole: 'agent',
+      placedByName: otherAgent.name,
+      lotteryTypeId: basePendingSlip.lotteryTypeId,
+      drawRoundId: otherPayoutRound.roundId,
+      rateProfileId: basePendingSlip.rateProfileId,
+      slipNumber: `E2E-OTHER-${uniqueSuffix}-${otherPayoutSuffix}`,
+      lotteryCode: basePendingSlip.lotteryCode,
+      lotteryName: basePendingSlip.lotteryName,
+      roundCode: otherPayoutRound.roundCode,
+      roundTitle: `Regression ${otherPayoutRound.roundCode}`,
+      openAt: basePendingSlip.openAt,
+      closeAt: basePendingSlip.closeAt,
+      drawAt: basePendingSlip.drawAt,
+      status: 'submitted',
+      itemCount: 1,
+      totalAmount: 10,
+      potentialPayout: 9870,
+      submittedAt: new Date(),
+      clientRequestId: `regression-other-pending-${uniqueSuffix}-${otherPayoutSuffix}`
+    });
+    const otherItem = await BetItem.create({
+      slipId: otherSlip._id,
+      customerId: otherMember._id,
+      agentId: otherAgent._id,
+      placedByUserId: otherAgent._id,
+      placedByRole: 'agent',
+      placedByName: otherAgent.name,
+      lotteryTypeId: otherSlip.lotteryTypeId,
+      drawRoundId: otherSlip.drawRoundId,
+      rateProfileId: otherSlip.rateProfileId,
+      sequence: 1,
+      betType: '3top',
+      number: '999',
+      amount: 10,
+      payRate: 987,
+      potentialPayout: 9870,
+      status: 'submitted',
+      result: 'won',
+      wonAmount: 9870,
+      payoutStatus: 'pending'
+    });
+    const otherPayout = await PendingPayout.create({
+      payoutId: `PP-e2e-other-${uniqueSuffix}-${otherPayoutSuffix}`,
+      betSlipId: otherSlip._id,
+      betItemId: otherItem._id,
+      roundId: otherSlip.drawRoundId,
+      customerId: otherMember._id,
+      agentId: otherAgent._id,
+      payoutAmount: 9870,
+      status: 'pending',
+      metadata: {
+        slipId: otherSlip._id.toString(),
+        betItemId: otherItem._id.toString(),
+        roundCode: otherSlip.roundCode
+      }
+    });
+    await BetItem.updateOne({ _id: otherItem._id }, { $set: { pendingPayoutId: otherPayout._id } });
+
+    const [adminPendingListResponse, agentPendingListResponse, adminNotificationsResponse, agentNotificationsResponse] = await Promise.all([
+      adminClient.get('/admin/pending-payouts'),
+      agentClient.get('/agent/pending-payouts'),
+      adminClient.get('/admin/notifications'),
+      agentClient.get('/agent/notifications')
+    ]);
+    expectStatus(adminPendingListResponse, 200, 'Admin pending payout list');
+    expectStatus(agentPendingListResponse, 200, 'Agent pending payout list');
+    expectStatus(adminNotificationsResponse, 200, 'Admin notification list');
+    expectStatus(agentNotificationsResponse, 200, 'Agent notification list');
+    const adminPendingItems = adminPendingListResponse.data.items || [];
+    const agentPendingItems = agentPendingListResponse.data.items || [];
+    assert(adminPendingItems.some((item) => item.id === pendingPayout._id.toString()), 'Admin API should see the active agent pending payout');
+    assert(adminPendingItems.some((item) => item.id === otherPayout._id.toString()), 'Admin API should see every agent pending payout');
+    assert(agentPendingItems.some((item) => item.id === pendingPayout._id.toString()), 'Agent API should see its own pending payout');
+    assert(!agentPendingItems.some((item) => item.id === otherPayout._id.toString()), 'Agent API must not see another agent pending payout');
+    assert(Number(adminPendingListResponse.data.summary?.pendingCount || 0) >= 2, 'Admin pending payout summary should include all pending payouts');
+    assert(Number(agentPendingListResponse.data.summary?.pendingCount || 0) >= 1, 'Agent pending payout summary should include own pending payouts');
+
+    const adminNotifications = adminNotificationsResponse.data.items || [];
+    const agentNotifications = agentNotificationsResponse.data.items || [];
+    const adminPendingNotification = adminNotifications.find((item) => item.type === 'agent_pending_payout_created' && item.metadata?.pendingPayoutId === pendingPayout._id.toString());
+    const agentPendingNotification = agentNotifications.find((item) => item.type === 'agent_pending_payout_created' && item.metadata?.pendingPayoutId === pendingPayout._id.toString());
+    assert(adminPendingNotification, 'Admin notifications should include pending payout created event');
+    assert(agentPendingNotification, 'Agent notifications should include own pending payout created event');
+    const markAdminNotificationReadResponse = await adminClient.post(`/admin/notifications/${adminPendingNotification.id}/read`);
+    expectStatus(markAdminNotificationReadResponse, 200, 'Admin mark notification read');
+    assert(markAdminNotificationReadResponse.data.notification.status === 'read', 'Admin read action should mark admin notification read');
+    const agentCannotReadAdminNotificationResponse = await agentClient.post(`/agent/notifications/${adminPendingNotification.id}/read`);
+    assert([403, 404].includes(agentCannotReadAdminNotificationResponse.status), 'Agent must not mark admin notification as read');
+    const markAgentNotificationReadResponse = await agentClient.post(`/agent/notifications/${agentPendingNotification.id}/read`);
+    expectStatus(markAgentNotificationReadResponse, 200, 'Agent mark notification read');
+    assert(markAgentNotificationReadResponse.data.notification.status === 'read', 'Agent read action should mark agent notification read');
+    summary.checks.push('pending-payout-notification-api-permissions');
 
     await PendingPayout.updateOne({ _id: pendingPayout._id }, { $set: { payoutAmount: 1 } });
     const pendingResultRerunResponse = await adminClient.post('/lottery/manual', {
@@ -1129,6 +1256,21 @@ const main = async () => {
       customerId: created.memberId
     });
     assert(pendingPaidNotificationCount >= 2, 'Auto payout should create admin and agent paid notification events');
+    const [adminPaidPayoutsResponse, agentPaidPayoutsResponse, adminPaidNotificationsResponse, agentPaidNotificationsResponse] = await Promise.all([
+      adminClient.get('/admin/pending-payouts', { params: { status: 'all' } }),
+      agentClient.get('/agent/pending-payouts', { params: { status: 'all' } }),
+      adminClient.get('/admin/notifications', { params: { status: 'all' } }),
+      agentClient.get('/agent/notifications', { params: { status: 'all' } })
+    ]);
+    expectStatus(adminPaidPayoutsResponse, 200, 'Admin paid pending payout list');
+    expectStatus(agentPaidPayoutsResponse, 200, 'Agent paid pending payout list');
+    expectStatus(adminPaidNotificationsResponse, 200, 'Admin paid notification list');
+    expectStatus(agentPaidNotificationsResponse, 200, 'Agent paid notification list');
+    assert((adminPaidPayoutsResponse.data.items || []).some((item) => item.id === pendingPayout._id.toString() && item.status === 'paid'), 'Admin API should show auto-paid payout status');
+    assert((agentPaidPayoutsResponse.data.items || []).some((item) => item.id === pendingPayout._id.toString() && item.status === 'paid'), 'Agent API should show own auto-paid payout status');
+    assert((adminPaidNotificationsResponse.data.items || []).some((item) => item.type === 'agent_pending_payout_paid' && item.metadata?.pendingPayoutId === pendingPayout._id.toString()), 'Admin API should show paid notification');
+    assert((agentPaidNotificationsResponse.data.items || []).some((item) => item.type === 'agent_pending_payout_paid' && item.metadata?.pendingPayoutId === pendingPayout._id.toString()), 'Agent API should show paid notification');
+    summary.checks.push('pending-payout-api-shows-auto-paid-status');
     summary.checks.push('agent-topup-auto-pays-pending-payout');
 
     const secondPendingTopupResponse = await adminClient.post('/wallet/adjust', {

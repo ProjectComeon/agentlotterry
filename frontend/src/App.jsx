@@ -18,12 +18,14 @@ const CustomerManagement = lazy(routeLoaders.customerManagement);
 const AdminBets = lazy(routeLoaders.adminBets);
 const AdminReports = lazy(routeLoaders.adminReports);
 const AdminLottery = lazy(routeLoaders.adminLottery);
+const AdminPendingPayouts = lazy(routeLoaders.adminPendingPayouts);
 const AgentDashboard = lazy(routeLoaders.agentDashboard);
 const AgentCustomers = lazy(routeLoaders.agentCustomers);
 const AgentMemberDetail = lazy(routeLoaders.agentMemberDetail);
 const AgentBets = lazy(routeLoaders.agentBets);
 const AgentLottery = lazy(routeLoaders.agentLottery);
 const AgentReports = lazy(routeLoaders.agentReports);
+const AgentPendingPayouts = lazy(routeLoaders.agentPendingPayouts);
 const OperatorBetting = lazy(routeLoaders.operatorBetting);
 
 const AppLayout = ({ children }) => {
@@ -100,6 +102,11 @@ function App() {
                 <AppLayout><AdminLottery /></AppLayout>
               </ProtectedRoute>
             } />
+            <Route path="/admin/pending-payouts" element={
+              <ProtectedRoute roles={['admin']}>
+                <AppLayout><AdminPendingPayouts /></AppLayout>
+              </ProtectedRoute>
+            } />
             <Route path="/admin/reports" element={
               <ProtectedRoute roles={['admin']}>
                 <AppLayout><AdminReports /></AppLayout>
@@ -140,6 +147,11 @@ function App() {
             <Route path="/agent/betting" element={
               <ProtectedRoute roles={['agent']}>
                 <AppLayout><OperatorBetting /></AppLayout>
+              </ProtectedRoute>
+            } />
+            <Route path="/agent/pending-payouts" element={
+              <ProtectedRoute roles={['agent']}>
+                <AppLayout><AgentPendingPayouts /></AppLayout>
               </ProtectedRoute>
             } />
             <Route path="/agent/reports" element={
