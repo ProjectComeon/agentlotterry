@@ -1,8 +1,9 @@
 import axios from 'axios';
 import { buildReadCacheKey } from '../utils/apiReadCache';
 import { getCookieValue } from '../utils/cookies';
+import { shouldRedirectToLoginForUnauthorized } from '../utils/authRedirectPolicy';
 
-const API_URL = import.meta.env.VITE_API_URL || '';
+const API_URL = import.meta.env?.VITE_API_URL || '';
 
 const api = axios.create({
   baseURL: `${API_URL}/api`,
@@ -21,7 +22,7 @@ const buildNoCacheConfig = (params = {}) => ({
     Pragma: 'no-cache'
   }
 });
-const READ_CACHE_DEFAULT_TTL_MS = Number(import.meta.env.VITE_API_READ_CACHE_MS || 15000);
+const READ_CACHE_DEFAULT_TTL_MS = Number(import.meta.env?.VITE_API_READ_CACHE_MS || 15000);
 const READ_TTL_SHORT_MS = 5000;
 const READ_TTL_MEDIUM_MS = 15000;
 const READ_TTL_LONG_MS = 60000;
@@ -86,7 +87,15 @@ api.interceptors.response.use(
     if (error.response?.status === 401) {
       clearApiReadCache();
       localStorage.removeItem('user');
-      window.location.href = '/login';
+      if (
+        typeof window !== 'undefined' &&
+        shouldRedirectToLoginForUnauthorized({
+          requestUrl: error.config?.url,
+          currentPathname: window.location.pathname
+        })
+      ) {
+        window.location.href = '/login';
+      }
     }
     return Promise.reject(error);
   }

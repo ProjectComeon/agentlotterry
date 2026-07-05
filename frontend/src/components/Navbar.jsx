@@ -88,8 +88,8 @@ const Navbar = () => {
   const isItemActive = (path) =>
     location.pathname === path || (path !== `/${user?.role}` && location.pathname.startsWith(`${path}/`));
 
-  const handleLogout = () => {
-    logout();
+  const handleLogout = async () => {
+    await logout();
     navigate('/login');
   };
 
