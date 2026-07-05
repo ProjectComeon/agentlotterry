@@ -27,5 +27,8 @@ assert.doesNotMatch(apiSource, /Authorization\s*=|Bearer/, 'frontend API client 
 assert.match(apiSource, /withCredentials:\s*true/, 'frontend API client should send cookie credentials');
 assert.match(apiSource, /X-CSRF-Token/, 'frontend API client should attach CSRF header for unsafe methods');
 assert.match(apiSource, /logoutSession = \(\) => api\.post\('\/auth\/logout'\)/, 'frontend logout should clear the server cookie session');
+assert.doesNotMatch(apiSource, /window\.location\.href\s*=\s*['"]\/login['"]/, '401 handling must not hard-reload the login page');
+assert.match(apiSource, /requestPath === AUTH_ME_PATH/, '401 /auth/me bootstrap probe should not force a login-page reload loop');
+assert.match(apiSource, /window\.location\.assign\(LOGIN_PATH\)/, 'non-bootstrap 401 handling should still redirect protected sessions to login');
 
 console.log('testSecurityGuards: ok');

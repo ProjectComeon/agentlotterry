@@ -29,6 +29,8 @@ const readCache = new Map();
 const CSRF_COOKIE_NAME = 'agentlottery_csrf';
 const CSRF_HEADER_NAME = 'X-CSRF-Token';
 const UNSAFE_METHODS = new Set(['post', 'put', 'patch', 'delete']);
+const AUTH_ME_PATH = '/auth/me';
+const LOGIN_PATH = '/login';
 
 export const clearApiReadCache = () => {
   readCache.clear();
@@ -84,9 +86,15 @@ api.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 401) {
+      const requestPath = String(error.config?.url || '');
+      const isAuthProbe = requestPath === AUTH_ME_PATH;
+      const isLoginRoute = window.location.pathname === LOGIN_PATH;
+
       clearApiReadCache();
       localStorage.removeItem('user');
-      window.location.href = '/login';
+      if (!isAuthProbe && !isLoginRoute) {
+        window.location.assign(LOGIN_PATH);
+      }
     }
     return Promise.reject(error);
   }
