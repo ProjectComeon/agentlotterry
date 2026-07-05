@@ -318,6 +318,13 @@ const main = async () => {
     summary.checks.push('agent-catalog-overview');
     summary.checks.push('agent-heartbeat');
 
+    await User.collection.updateOne({ _id: new mongoose.Types.ObjectId(created.agentId) }, { $unset: { heldStakeBalance: '' } });
+    const legacyAgentWalletResponse = await agentClient.get('/wallet/summary');
+    expectStatus(legacyAgentWalletResponse, 200, 'Legacy agent wallet held stake default');
+    assert(Number(legacyAgentWalletResponse.data.account?.heldStakeBalance || 0) === 0, 'Agent missing heldStakeBalance should read as 0');
+    await User.updateOne({ _id: created.agentId }, { $set: { heldStakeBalance: 0 } });
+    summary.checks.push('agent-held-stake-default-legacy-agent');
+
     const thaiGovernmentLottery = flattenLotteries(agentCatalogResponse.data).find(
       (lottery) => lottery.code === created.round.lotteryCode
     );
@@ -932,6 +939,53 @@ const main = async () => {
     assert(settlementLedgerEntriesAfterResettlement.length === 3, 'Resettlement should not create duplicate settlement ledger entries after rerun');
     summary.checks.push('result-resettlement');
 
+    const createPendingPayoutScenario = async ({ number, memo, clientRequestId, label }) => {
+      const scenarioRound = await ensureRegressionRound();
+      created.extraRoundIds.push(scenarioRound.roundId);
+      created.extraRoundCodes.push(scenarioRound.roundCode);
+
+      const slipResponse = await agentClient.post('/agent/betting/slips', {
+        customerId: created.memberId,
+        lotteryId: visibleLotteries[0].id,
+        roundId: scenarioRound.roundId,
+        rateProfileId: visibleLotteries[0].defaultRateProfileId,
+        betType: '3top',
+        defaultAmount: 10,
+        rawInput: `${number} 10`,
+        reverse: false,
+        includeDoubleSet: false,
+        memo,
+        action: 'submit',
+        clientRequestId
+      });
+      expectStatus(slipResponse, 201, `${label} pending payout slip submit`);
+
+      const resultResponse = await adminClient.post('/lottery/manual', {
+        roundDate: scenarioRound.roundCode,
+        firstPrize: `123${number}`,
+        threeTopList: ['123', number],
+        threeBotList: ['111', '222'],
+        twoBottom: number.slice(-2),
+        runTop: [number[0], number[1], number[2]],
+        runBottom: [number[1], number[2]]
+      });
+      expectStatus(resultResponse, 200, `${label} pending payout settlement`);
+      assert(Number(resultResponse.data.settlement?.pendingPayoutCount || 0) >= 1, `${label} should create pending payout`);
+
+      const item = await BetItem.findOne({ slipId: slipResponse.data.id, number }).lean();
+      assert(item, `${label} pending payout item should exist`);
+      const payout = await PendingPayout.findOne({ betItemId: item._id, status: 'pending' }).lean();
+      assert(payout, `${label} pending payout should exist`);
+      assert(Number(payout.payoutAmount || 0) === 9870, `${label} pending payout amount should equal winning payout`);
+
+      return {
+        round: scenarioRound,
+        slipId: slipResponse.data.id,
+        item,
+        payout
+      };
+    };
+
     const pendingRound = await ensureRegressionRound();
     created.extraRoundIds.push(pendingRound.roundId);
     created.extraRoundCodes.push(pendingRound.roundCode);
@@ -1022,9 +1076,28 @@ const main = async () => {
     assert(pendingCountAfterRerun === 1, 'Settlement rerun should not create duplicate pending payouts for the same item');
     summary.checks.push('pending-payout-rerun-updates-existing-amount');
 
+    const secondPendingScenario = await createPendingPayoutScenario({
+      number: '457',
+      memo: 'second pending payout regression slip',
+      clientRequestId: `regression-pending-second-${uniqueSuffix}`,
+      label: 'Second'
+    });
+
+    const secondPendingCancelResponse = await agentClient.post(`/agent/betting/slips/${secondPendingScenario.slipId}/cancel`);
+    assert(secondPendingCancelResponse.status === 400, 'Cancel after pending settlement should be rejected');
+    summary.checks.push('cancel-after-pending-payout-rejected');
+
+    const secondPendingMemberWallet = await agentClient.get('/wallet/summary', { params: { targetUserId: created.memberId } });
+    const secondPendingAgentWallet = await agentClient.get('/wallet/summary');
+    expectStatus(secondPendingMemberWallet, 200, 'Member wallet after second pending payout setup');
+    expectStatus(secondPendingAgentWallet, 200, 'Agent wallet after second pending payout setup');
+    assert(Number(secondPendingMemberWallet.data.account?.creditBalance || 0) === 9920, 'Second pending setup should debit one additional stake');
+    assert(Number(secondPendingAgentWallet.data.account?.creditBalance || 0) === 80, 'Second pending settlement should release stake to available');
+    assert(Number(secondPendingAgentWallet.data.account?.heldStakeBalance || 0) === 0, 'Second pending settlement should clear held stake');
+
     const pendingTopupResponse = await adminClient.post('/wallet/adjust', {
       targetUserId: created.agentId,
-      amount: 9800,
+      amount: 9790,
       note: 'Top up agent to auto-pay pending payout',
       reasonCode: 'agent_topup_credit'
     });
@@ -1033,19 +1106,21 @@ const main = async () => {
     assert(Number(pendingTopupResponse.data.autoPayout?.paidCount || 0) === 1, 'Agent topup should auto-pay one pending payout');
     assert(Number(pendingTopupResponse.data.autoPayout?.paidAmount || 0) === 9870, 'Auto payout amount should match pending payout');
 
-    const [pendingPayoutAfterTopup, pendingItemAfterTopup, memberWalletAfterAutoPayout, agentWalletAfterAutoPayout] = await Promise.all([
+    const [pendingPayoutAfterTopup, secondPendingAfterFirstTopup, pendingItemAfterTopup, memberWalletAfterAutoPayout, agentWalletAfterAutoPayout] = await Promise.all([
       PendingPayout.findById(pendingPayout._id).lean(),
+      PendingPayout.findById(secondPendingScenario.payout._id).lean(),
       BetItem.findById(rawPendingWinningItem._id).lean(),
       agentClient.get('/wallet/summary', { params: { targetUserId: created.memberId } }),
       agentClient.get('/wallet/summary')
     ]);
     assert(pendingPayoutAfterTopup.status === 'paid', 'Pending payout should be marked paid after auto payout');
+    assert(secondPendingAfterFirstTopup.status === 'pending', 'FIFO partial topup should leave the second pending payout unpaid');
     assert(pendingPayoutAfterTopup.paidAt, 'Paid pending payout should record paidAt');
     assert(pendingItemAfterTopup.payoutStatus === 'paid', 'Bet item should be marked paid after auto payout');
     assert(Number(pendingItemAfterTopup.payoutAppliedAmount || 0) === 9870, 'Auto payout should apply payout amount to bet item');
     expectStatus(memberWalletAfterAutoPayout, 200, 'Member wallet after auto payout');
     expectStatus(agentWalletAfterAutoPayout, 200, 'Agent wallet after auto payout');
-    assert(Number(memberWalletAfterAutoPayout.data.account?.creditBalance || 0) === 19800, 'Auto payout should credit member exactly once');
+    assert(Number(memberWalletAfterAutoPayout.data.account?.creditBalance || 0) === 19790, 'FIFO partial topup should credit only the oldest pending payout');
     assert(Number(agentWalletAfterAutoPayout.data.account?.creditBalance || 0) === 0, 'Auto payout should debit agent available without going negative');
     assert(Number(agentWalletAfterAutoPayout.data.account?.heldStakeBalance || 0) === 0, 'Auto payout should not recreate held stake');
     const pendingPaidNotificationCount = await NotificationEvent.countDocuments({
@@ -1055,6 +1130,33 @@ const main = async () => {
     });
     assert(pendingPaidNotificationCount >= 2, 'Auto payout should create admin and agent paid notification events');
     summary.checks.push('agent-topup-auto-pays-pending-payout');
+
+    const secondPendingTopupResponse = await adminClient.post('/wallet/adjust', {
+      targetUserId: created.agentId,
+      amount: 9870,
+      note: 'Top up agent to continue FIFO pending payout auto-pay',
+      reasonCode: 'agent_topup_credit'
+    });
+    expectStatus(secondPendingTopupResponse, 201, 'Top up agent for second pending payout');
+    created.walletGroupIds.push(secondPendingTopupResponse.data.groupId);
+    assert(Number(secondPendingTopupResponse.data.autoPayout?.paidCount || 0) === 1, 'Second topup should auto-pay the next pending payout');
+    assert(Number(secondPendingTopupResponse.data.autoPayout?.paidAmount || 0) === 9870, 'Second auto payout amount should match pending payout');
+
+    const [secondPendingAfterTopup, secondPendingItemAfterTopup, memberWalletAfterSecondAutoPayout, agentWalletAfterSecondAutoPayout] = await Promise.all([
+      PendingPayout.findById(secondPendingScenario.payout._id).lean(),
+      BetItem.findById(secondPendingScenario.item._id).lean(),
+      agentClient.get('/wallet/summary', { params: { targetUserId: created.memberId } }),
+      agentClient.get('/wallet/summary')
+    ]);
+    assert(secondPendingAfterTopup.status === 'paid', 'Second pending payout should be marked paid after second topup');
+    assert(secondPendingItemAfterTopup.payoutStatus === 'paid', 'Second pending item should be marked paid after second topup');
+    assert(Number(secondPendingItemAfterTopup.payoutAppliedAmount || 0) === 9870, 'Second auto payout should apply payout amount to bet item');
+    expectStatus(memberWalletAfterSecondAutoPayout, 200, 'Member wallet after second auto payout');
+    expectStatus(agentWalletAfterSecondAutoPayout, 200, 'Agent wallet after second auto payout');
+    assert(Number(memberWalletAfterSecondAutoPayout.data.account?.creditBalance || 0) === 29660, 'Second auto payout should credit the next pending payout exactly once');
+    assert(Number(agentWalletAfterSecondAutoPayout.data.account?.creditBalance || 0) === 0, 'Second auto payout should consume available agent credit without going negative');
+    assert(Number(agentWalletAfterSecondAutoPayout.data.account?.heldStakeBalance || 0) === 0, 'Second auto payout should leave held stake at zero');
+    summary.checks.push('pending-payout-fifo-partial-and-second-topup');
 
     const duplicateAutoPayoutTopupResponse = await adminClient.post('/wallet/adjust', {
       targetUserId: created.agentId,
@@ -1067,8 +1169,65 @@ const main = async () => {
     assert(Number(duplicateAutoPayoutTopupResponse.data.autoPayout?.paidCount || 0) === 0, 'Paid pending payout must not be paid again');
     const memberWalletAfterDuplicateAutoPayout = await agentClient.get('/wallet/summary', { params: { targetUserId: created.memberId } });
     expectStatus(memberWalletAfterDuplicateAutoPayout, 200, 'Member wallet after duplicate auto payout attempt');
-    assert(Number(memberWalletAfterDuplicateAutoPayout.data.account?.creditBalance || 0) === 19800, 'Duplicate auto payout attempt must not credit member again');
+    assert(Number(memberWalletAfterDuplicateAutoPayout.data.account?.creditBalance || 0) === 29660, 'Duplicate auto payout attempt must not credit member again');
     summary.checks.push('pending-payout-no-double-auto-pay');
+
+    const thirdPendingScenario = await createPendingPayoutScenario({
+      number: '458',
+      memo: 'third pending payout concurrent topup regression slip',
+      clientRequestId: `regression-pending-third-${uniqueSuffix}`,
+      label: 'Third'
+    });
+
+    const thirdPendingAgentWallet = await agentClient.get('/wallet/summary');
+    expectStatus(thirdPendingAgentWallet, 200, 'Agent wallet after third pending setup');
+    assert(Number(thirdPendingAgentWallet.data.account?.creditBalance || 0) === 11, 'Third pending setup should leave only stake release plus duplicate topup credit available');
+    assert(Number(thirdPendingAgentWallet.data.account?.heldStakeBalance || 0) === 0, 'Third pending setup should clear held stake');
+
+    const concurrentTopupResponses = await Promise.all([
+      adminClient.post('/wallet/adjust', {
+        targetUserId: created.agentId,
+        amount: 9859,
+        note: 'Concurrent topup A for pending payout race regression',
+        reasonCode: 'agent_topup_credit'
+      }),
+      adminClient.post('/wallet/adjust', {
+        targetUserId: created.agentId,
+        amount: 9859,
+        note: 'Concurrent topup B for pending payout race regression',
+        reasonCode: 'agent_topup_credit'
+      })
+    ]);
+    concurrentTopupResponses.forEach((response, index) => {
+      expectStatus(response, 201, `Concurrent pending payout topup ${index + 1}`);
+      created.walletGroupIds.push(response.data.groupId);
+    });
+    const concurrentPaidCount = concurrentTopupResponses.reduce(
+      (sum, response) => sum + Number(response.data.autoPayout?.paidCount || 0),
+      0
+    );
+    assert(concurrentPaidCount === 1, 'Concurrent topups should auto-pay the pending payout once');
+
+    const [thirdPendingAfterConcurrentTopup, thirdPendingItemAfterConcurrentTopup, thirdMemberWalletAfterConcurrentTopup, thirdAgentWalletAfterConcurrentTopup, thirdPayoutLedgerEntries] = await Promise.all([
+      PendingPayout.findById(thirdPendingScenario.payout._id).lean(),
+      BetItem.findById(thirdPendingScenario.item._id).lean(),
+      agentClient.get('/wallet/summary', { params: { targetUserId: created.memberId } }),
+      agentClient.get('/wallet/summary'),
+      CreditLedgerEntry.find({
+        reasonCode: 'member_payout_credit',
+        'metadata.pendingPayoutId': thirdPendingScenario.payout._id.toString()
+      }).lean()
+    ]);
+    assert(thirdPendingAfterConcurrentTopup.status === 'paid', 'Concurrent topup should mark pending payout paid');
+    assert(thirdPendingItemAfterConcurrentTopup.payoutStatus === 'paid', 'Concurrent topup should mark bet item paid');
+    assert(Number(thirdPendingItemAfterConcurrentTopup.payoutAppliedAmount || 0) === 9870, 'Concurrent topup should apply payout once');
+    expectStatus(thirdMemberWalletAfterConcurrentTopup, 200, 'Member wallet after concurrent topup auto payout');
+    expectStatus(thirdAgentWalletAfterConcurrentTopup, 200, 'Agent wallet after concurrent topup auto payout');
+    assert(thirdPayoutLedgerEntries.length === 1, 'Concurrent topup should create one member payout ledger entry');
+    assert(Number(thirdMemberWalletAfterConcurrentTopup.data.account?.creditBalance || 0) === 39520, 'Concurrent topup should credit member once');
+    assert(Number(thirdAgentWalletAfterConcurrentTopup.data.account?.creditBalance || 0) === 9859, 'Concurrent topup should leave only the second topup amount available after one payout');
+    assert(Number(thirdAgentWalletAfterConcurrentTopup.data.account?.heldStakeBalance || 0) === 0, 'Concurrent topup should leave held stake at zero');
+    summary.checks.push('pending-payout-concurrent-topup-no-double-pay');
 
     const submitAfterResultResponse = await agentClient.post('/agent/betting/slips', {
       customerId: created.memberId,
