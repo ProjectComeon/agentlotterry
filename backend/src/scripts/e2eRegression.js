@@ -1,7 +1,9 @@
 require('dotenv').config({ path: require('path').join(__dirname, '..', '..', '.env') });
 
 const assert = require('assert');
+const axios = require('axios');
 const { createCookieSessionClient } = require('./e2eCookieClient');
+const jwt = require('jsonwebtoken');
 const mongoose = require('mongoose');
 const { spawn } = require('child_process');
 const path = require('path');
@@ -32,6 +34,13 @@ const adminPassword = process.env.E2E_ADMIN_PASSWORD || process.env.DEFAULT_ADMI
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const makeClient = () => createCookieSessionClient({ baseURL });
+
+const makeBearerClient = (token) =>
+  axios.create({
+    baseURL,
+    validateStatus: () => true,
+    headers: { Authorization: `Bearer ${token}` }
+  });
 
 const expectStatus = (response, expected, label) => {
   if (response.status !== expected) {
@@ -1148,16 +1157,66 @@ const main = async () => {
     });
     await BetItem.updateOne({ _id: otherItem._id }, { $set: { pendingPayoutId: otherPayout._id } });
 
-    const [adminPendingListResponse, agentPendingListResponse, adminNotificationsResponse, agentNotificationsResponse] = await Promise.all([
+    const otherAgentNotification = await NotificationEvent.create({
+      type: 'agent_pending_payout_created',
+      recipientRole: 'agent',
+      recipientUserId: otherAgent._id,
+      agentId: otherAgent._id,
+      customerId: otherMember._id,
+      title: 'Other agent pending payout',
+      message: 'Other agent pending payout fixture',
+      metadata: {
+        payoutId: otherPayout.payoutId,
+        payoutAmount: otherPayout.payoutAmount,
+        pendingPayoutId: otherPayout._id.toString()
+      }
+    });
+    const anonymousClient = makeClient();
+    const memberToken = jwt.sign(
+      { id: created.memberId, role: 'customer' },
+      process.env.JWT_SECRET,
+      { expiresIn: '24h' }
+    );
+    const memberClient = makeBearerClient(memberToken);
+    const [
+      adminPendingListResponse,
+      agentPendingListResponse,
+      adminNotificationsResponse,
+      agentNotificationsResponse,
+      anonymousAdminPendingResponse,
+      anonymousAdminNotificationsResponse,
+      anonymousAgentPendingResponse,
+      anonymousAgentNotificationsResponse,
+      memberAdminPendingResponse,
+      memberAdminNotificationsResponse,
+      memberAgentPendingResponse,
+      memberAgentNotificationsResponse
+    ] = await Promise.all([
       adminClient.get('/admin/pending-payouts'),
       agentClient.get('/agent/pending-payouts'),
       adminClient.get('/admin/notifications'),
-      agentClient.get('/agent/notifications')
+      agentClient.get('/agent/notifications'),
+      anonymousClient.get('/admin/pending-payouts'),
+      anonymousClient.get('/admin/notifications'),
+      anonymousClient.get('/agent/pending-payouts'),
+      anonymousClient.get('/agent/notifications'),
+      memberClient.get('/admin/pending-payouts'),
+      memberClient.get('/admin/notifications'),
+      memberClient.get('/agent/pending-payouts'),
+      memberClient.get('/agent/notifications')
     ]);
     expectStatus(adminPendingListResponse, 200, 'Admin pending payout list');
     expectStatus(agentPendingListResponse, 200, 'Agent pending payout list');
     expectStatus(adminNotificationsResponse, 200, 'Admin notification list');
     expectStatus(agentNotificationsResponse, 200, 'Agent notification list');
+    assert(anonymousAdminPendingResponse.status === 401, 'Unauthenticated admin pending payout list must be rejected');
+    assert(anonymousAdminNotificationsResponse.status === 401, 'Unauthenticated admin notifications must be rejected');
+    assert(anonymousAgentPendingResponse.status === 401, 'Unauthenticated agent pending payout list must be rejected');
+    assert(anonymousAgentNotificationsResponse.status === 401, 'Unauthenticated agent notifications must be rejected');
+    assert(memberAdminPendingResponse.status === 403, 'Member token must not access admin pending payout list');
+    assert(memberAdminNotificationsResponse.status === 403, 'Member token must not access admin notifications');
+    assert(memberAgentPendingResponse.status === 403, 'Member token must not access agent pending payout list');
+    assert(memberAgentNotificationsResponse.status === 403, 'Member token must not access agent notifications');
     const adminPendingItems = adminPendingListResponse.data.items || [];
     const agentPendingItems = agentPendingListResponse.data.items || [];
     assert(adminPendingItems.some((item) => item.id === pendingPayout._id.toString()), 'Admin API should see the active agent pending payout');
@@ -1169,6 +1228,7 @@ const main = async () => {
 
     const adminNotifications = adminNotificationsResponse.data.items || [];
     const agentNotifications = agentNotificationsResponse.data.items || [];
+    assert(!agentNotifications.some((item) => item.id === otherAgentNotification._id.toString()), 'Agent notifications must not include another agent notification');
     const adminPendingNotification = adminNotifications.find((item) => item.type === 'agent_pending_payout_created' && item.metadata?.pendingPayoutId === pendingPayout._id.toString());
     const agentPendingNotification = agentNotifications.find((item) => item.type === 'agent_pending_payout_created' && item.metadata?.pendingPayoutId === pendingPayout._id.toString());
     assert(adminPendingNotification, 'Admin notifications should include pending payout created event');
@@ -1178,6 +1238,12 @@ const main = async () => {
     assert(markAdminNotificationReadResponse.data.notification.status === 'read', 'Admin read action should mark admin notification read');
     const agentCannotReadAdminNotificationResponse = await agentClient.post(`/agent/notifications/${adminPendingNotification.id}/read`);
     assert([403, 404].includes(agentCannotReadAdminNotificationResponse.status), 'Agent must not mark admin notification as read');
+    const agentCannotReadOtherAgentNotificationResponse = await agentClient.post(`/agent/notifications/${otherAgentNotification._id}/read`);
+    assert([403, 404].includes(agentCannotReadOtherAgentNotificationResponse.status), 'Agent must not mark another agent notification as read');
+    const memberCannotReadAgentNotificationResponse = await memberClient.post(`/agent/notifications/${agentPendingNotification.id}/read`);
+    assert(memberCannotReadAgentNotificationResponse.status === 403, 'Member token must not mark agent notification as read');
+    const anonymousCannotReadNotificationResponse = await anonymousClient.post(`/agent/notifications/${agentPendingNotification.id}/read`);
+    assert([401, 403].includes(anonymousCannotReadNotificationResponse.status), 'Unauthenticated notification read must be rejected');
     const markAgentNotificationReadResponse = await agentClient.post(`/agent/notifications/${agentPendingNotification.id}/read`);
     expectStatus(markAgentNotificationReadResponse, 200, 'Agent mark notification read');
     assert(markAgentNotificationReadResponse.data.notification.status === 'read', 'Agent read action should mark agent notification read');
