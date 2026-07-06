@@ -268,14 +268,21 @@ export const transferWalletCredit = (data) => clearCacheAfterWrite(api.post('/wa
 export const adjustWalletCredit = (data) => clearCacheAfterWrite(api.post('/wallet/adjust', data));
 
 // Member slip flow
+export const getMemberMe = () => api.get('/member/me');
+export const getMemberWallet = () => api.get('/member/wallet');
+export const getMemberRounds = (lotteryId) => api.get('/member/rounds', { params: { lotteryId } });
 export const parseMemberSlip = (data) => api.post('/member/slips/parse', data);
-export const createMemberSlip = (data) => api.post('/member/slips', data);
+export const createMemberDraftSlip = (data) => clearCacheAfterWrite(api.post('/member/slips/draft', data));
+export const submitMemberSlip = (data) => clearCacheAfterWrite(api.post('/member/slips/submit', data));
+export const createMemberSlip = (data) => (data?.action === 'draft' ? createMemberDraftSlip(data) : submitMemberSlip(data));
 export const getMemberSlips = (params) => api.get('/member/slips', { params });
 export const getMemberSlip = (slipId) => api.get(`/member/slips/${slipId}`);
-export const cancelMemberSlip = (slipId) => api.post(`/member/slips/${slipId}/cancel`);
+export const cancelMemberSlip = (slipId) => clearCacheAfterWrite(api.post(`/member/slips/${slipId}/cancel`));
 export const getMemberBetItems = (params) => api.get('/member/bets', { params });
 export const getMemberSummary = (params) => api.get('/member/reports/summary', { params });
-
+export const getMemberPendingPayouts = (params) => api.get('/member/pending-payouts', { params });
+export const getMemberNotifications = (params) => api.get('/member/notifications', { params });
+export const markMemberNotificationRead = (id) => clearCacheAfterWrite(api.post(`/member/notifications/${id}/read`));
 // Catalog
 export const getCatalogOverview = (options = {}) => cachedGet('/catalog/overview', {
   params: {

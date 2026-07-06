@@ -9,7 +9,7 @@ const notificationEventSchema = new mongoose.Schema({
   },
   recipientRole: {
     type: String,
-    enum: ['admin', 'agent'],
+    enum: ['admin', 'agent', 'customer'],
     required: true,
     index: true
   },
@@ -57,5 +57,6 @@ const notificationEventSchema = new mongoose.Schema({
 
 notificationEventSchema.index({ recipientRole: 1, status: 1, createdAt: -1 });
 notificationEventSchema.index({ agentId: 1, type: 1, createdAt: -1 });
+notificationEventSchema.index({ customerId: 1, type: 1, createdAt: -1 });
 
 module.exports = mongoose.model('NotificationEvent', notificationEventSchema);

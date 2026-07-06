@@ -398,12 +398,217 @@ const main = async () => {
     assert(regressionRound.id === created.roundId, 'Regression round should be active for betting');
     summary.checks.push('member-rounds');
 
+    const memberLogin = await loginWithRetry(memberUsername, memberPassword, 'Member');
+    const memberClient = memberLogin.client;
+    assert(memberLogin.user.role === 'customer', 'Member login should return customer role');
+    summary.checks.push('member-login-session');
+
+    const memberMeResponse = await memberClient.get('/member/me');
+    expectStatus(memberMeResponse, 200, 'Member self profile');
+    assert(memberMeResponse.data.member?.id === created.memberId, 'Member /me should only return the logged-in member');
+    assert(memberMeResponse.data.member?.agentId === created.agentId, 'Member /me should expose assigned agent reference');
+    summary.checks.push('member-me');
+
     const agentViewMemberWalletResponse = await agentClient.get('/wallet/summary', {
       params: { targetUserId: created.memberId }
     });
     expectStatus(agentViewMemberWalletResponse, 200, 'Agent wallet summary for member');
     assert(Number(agentViewMemberWalletResponse.data.account?.creditBalance || 0) === 100, 'Member wallet balance should equal 100 after funding');
     summary.checks.push('agent-wallet-member-view');
+
+    const [memberAdminAccessResponse, memberAgentAccessResponse, memberWalletResponse, memberRoundsResponse] = await Promise.all([
+      memberClient.get('/admin/pending-payouts'),
+      memberClient.get('/agent/pending-payouts'),
+      memberClient.get('/member/wallet'),
+      memberClient.get('/member/rounds', { params: { lotteryId: visibleLotteries[0].id } })
+    ]);
+    assert(memberAdminAccessResponse.status === 403, 'Member session must not access admin APIs');
+    assert(memberAgentAccessResponse.status === 403, 'Member session must not access agent APIs');
+    expectStatus(memberWalletResponse, 200, 'Member wallet self view');
+    assert(Number(memberWalletResponse.data.account?.creditBalance || 0) === 100, 'Member wallet self view should only show own balance');
+    expectStatus(memberRoundsResponse, 200, 'Member rounds');
+    assert((memberRoundsResponse.data || []).some((round) => round.id === regressionRound.id), 'Member rounds should include own enabled lottery round');
+    summary.checks.push('member-admin-agent-api-blocked');
+    summary.checks.push('member-wallet-self-view');
+    summary.checks.push('member-rounds-api');
+    const memberOtherCustomerSubmitResponse = await memberClient.post('/member/slips/submit', {
+      customerId: new mongoose.Types.ObjectId().toString()
+    });
+    assert(memberOtherCustomerSubmitResponse.status === 403, 'Member must not submit a slip for another customerId');
+    const memberChooseAgentSubmitResponse = await memberClient.post('/member/slips/submit', {
+      agentId: created.agentId
+    });
+    assert(memberChooseAgentSubmitResponse.status === 403, 'Member must not choose an agent during slip submission');
+    summary.checks.push('member-self-submit-cannot-choose-customer-or-agent');
+    const anonymousMemberApiClient = makeClient();
+    const [
+      anonymousMemberMeResponse,
+      anonymousMemberWalletResponse,
+      anonymousMemberSlipsResponse
+    ] = await Promise.all([
+      anonymousMemberApiClient.get('/member/me'),
+      anonymousMemberApiClient.get('/member/wallet'),
+      anonymousMemberApiClient.get('/member/slips')
+    ]);
+    assert(anonymousMemberMeResponse.status === 401, 'Anonymous user must not access member profile');
+    assert(anonymousMemberWalletResponse.status === 401, 'Anonymous user must not access member wallet');
+    assert(anonymousMemberSlipsResponse.status === 401, 'Anonymous user must not access member slips');
+    summary.checks.push('anonymous-member-api-blocked');
+    const memberDraftResponse = await memberClient.post('/member/slips/draft', {
+      lotteryId: visibleLotteries[0].id,
+      roundId: regressionRound.id,
+      rateProfileId: visibleLotteries[0].defaultRateProfileId,
+      betType: '3top',
+      defaultAmount: 10,
+      rawInput: '210 10',
+      reverse: false,
+      includeDoubleSet: false,
+      memo: 'member self draft regression',
+      clientRequestId: `member-draft-${uniqueSuffix}`
+    });
+    expectStatus(memberDraftResponse, 201, 'Member self draft');
+    assert(memberDraftResponse.data.customerId === created.memberId, 'Member draft should belong to the logged-in member');
+    assert(memberDraftResponse.data.placedBy?.role === 'customer', 'Member draft should be placed by customer role');
+    const [memberWalletAfterSelfDraft, agentWalletAfterSelfDraft] = await Promise.all([
+      memberClient.get('/member/wallet'),
+      agentClient.get('/wallet/summary')
+    ]);
+    expectStatus(memberWalletAfterSelfDraft, 200, 'Member wallet after self draft');
+    expectStatus(agentWalletAfterSelfDraft, 200, 'Agent wallet after member self draft');
+    assert(Number(memberWalletAfterSelfDraft.data.account?.creditBalance || 0) === 100, 'Member self draft must not debit credit');
+    assert(Number(agentWalletAfterSelfDraft.data.account?.heldStakeBalance || 0) === 0, 'Member self draft must not hold agent stake');
+    summary.checks.push('member-self-draft-does-not-debit');
+    const memberActorOverrideDraftResponse = await memberClient.post('/member/slips/draft', {
+      lotteryId: visibleLotteries[0].id,
+      roundId: regressionRound.id,
+      rateProfileId: visibleLotteries[0].defaultRateProfileId,
+      betType: '3top',
+      defaultAmount: 10,
+      rawInput: '215 10',
+      reverse: false,
+      includeDoubleSet: false,
+      memo: 'member self actor override regression',
+      clientRequestId: `member-actor-override-${uniqueSuffix}`,
+      actorUser: {
+        _id: created.agentId,
+        role: 'admin',
+        name: 'Forged Actor'
+      }
+    });
+    expectStatus(memberActorOverrideDraftResponse, 201, 'Member actor override draft');
+    assert(memberActorOverrideDraftResponse.data.customerId === created.memberId, 'Member actor override draft should belong to logged-in member');
+    assert(memberActorOverrideDraftResponse.data.placedBy?.role === 'customer', 'Member actor override must not replace server actor');
+    summary.checks.push('member-self-actor-override-ignored');
+
+    const memberInsufficientSubmitResponse = await memberClient.post('/member/slips/submit', {
+      lotteryId: visibleLotteries[0].id,
+      roundId: regressionRound.id,
+      rateProfileId: visibleLotteries[0].defaultRateProfileId,
+      items: [
+        { betType: '3top', number: '211', amount: 40 },
+        { betType: '3top', number: '213', amount: 40 },
+        { betType: '3top', number: '214', amount: 40 }
+      ],
+      memo: 'member self insufficient rollback',
+      clientRequestId: `member-insufficient-${uniqueSuffix}`
+    });
+    assert(memberInsufficientSubmitResponse.status === 400, 'Member self submit over own credit should fail');
+    assert(/Insufficient credit balance/i.test(String(memberInsufficientSubmitResponse.data?.message || '')), 'Member self insufficient error should be explicit');
+    const memberWalletAfterSelfInsufficient = await memberClient.get('/member/wallet');
+    expectStatus(memberWalletAfterSelfInsufficient, 200, 'Member wallet after self insufficient submit');
+    assert(Number(memberWalletAfterSelfInsufficient.data.account?.creditBalance || 0) === 100, 'Member self insufficient submit must roll back balance');
+    summary.checks.push('member-self-insufficient-credit-rollback');
+
+    const memberSubmitClientRequestId = `member-submit-${uniqueSuffix}`;
+    const memberSubmitPayload = {
+      lotteryId: visibleLotteries[0].id,
+      roundId: regressionRound.id,
+      rateProfileId: visibleLotteries[0].defaultRateProfileId,
+      betType: '3top',
+      defaultAmount: 10,
+      rawInput: '212 10',
+      reverse: false,
+      includeDoubleSet: false,
+      memo: 'member self submit regression',
+      clientRequestId: memberSubmitClientRequestId
+    };
+    const rawMemberSubmitNoCsrfClient = axios.create({
+      baseURL,
+      validateStatus: () => true,
+      headers: { Cookie: memberClient.cookieJar.cookieHeader() }
+    });
+    const memberMissingCsrfSubmitResponse = await rawMemberSubmitNoCsrfClient.post('/member/slips/submit', memberSubmitPayload);
+    assert(memberMissingCsrfSubmitResponse.status === 403, 'Member submit without CSRF must be rejected');
+    summary.checks.push('member-self-submit-csrf-required');
+    const memberSubmitResponse = await memberClient.post('/member/slips/submit', memberSubmitPayload);
+    expectStatus(memberSubmitResponse, 201, 'Member self submit');
+    assert(memberSubmitResponse.data.customerId === created.memberId, 'Member self submit should belong to logged-in member');
+    assert(memberSubmitResponse.data.placedBy?.role === 'customer', 'Member self submit should be placed by customer role');
+    const memberDuplicateSubmitResponse = await memberClient.post('/member/slips/submit', memberSubmitPayload);
+    expectStatus(memberDuplicateSubmitResponse, 201, 'Member self duplicate submit');
+    assert(memberDuplicateSubmitResponse.data.id === memberSubmitResponse.data.id, 'Member self duplicate clientRequestId should return original slip');
+
+    const [memberWalletAfterSelfSubmit, agentWalletAfterSelfSubmit, selfStakeLedgerEntries, selfSlipCount] = await Promise.all([
+      memberClient.get('/member/wallet'),
+      agentClient.get('/wallet/summary'),
+      CreditLedgerEntry.find({
+        userId: created.memberId,
+        entryType: 'bet',
+        direction: 'debit',
+        reasonCode: 'bet_stake',
+        'metadata.slipId': memberSubmitResponse.data.id
+      }).lean(),
+      BetSlip.countDocuments({
+        customerId: created.memberId,
+        clientRequestId: memberSubmitClientRequestId
+      })
+    ]);
+    expectStatus(memberWalletAfterSelfSubmit, 200, 'Member wallet after self submit');
+    expectStatus(agentWalletAfterSelfSubmit, 200, 'Agent wallet after self submit');
+    assert(Number(memberWalletAfterSelfSubmit.data.account?.creditBalance || 0) === 90, 'Member self submit should debit own credit');
+    assert(Number(agentWalletAfterSelfSubmit.data.account?.heldStakeBalance || 0) === 10, 'Member self submit should hold stake for assigned agent');
+    assert(selfStakeLedgerEntries.length === 1, 'Member self duplicate submit must not create duplicate stake ledger');
+    assert(selfSlipCount === 1, 'Member self duplicate submit must not create duplicate slip');
+    summary.checks.push('member-self-submit-debits-and-holds-stake');
+    summary.checks.push('member-self-submit-idempotent');
+
+    const memberSlipListResponse = await memberClient.get('/member/slips');
+    expectStatus(memberSlipListResponse, 200, 'Member slip list');
+    assert((memberSlipListResponse.data || []).some((slip) => slip.id === memberSubmitResponse.data.id), 'Member slip list should include own submitted slip');
+    const memberSlipDetailResponse = await memberClient.get(`/member/slips/${memberSubmitResponse.data.id}`);
+    expectStatus(memberSlipDetailResponse, 200, 'Member slip detail');
+    assert(memberSlipDetailResponse.data.id === memberSubmitResponse.data.id, 'Member slip detail should return own slip');
+    summary.checks.push('member-self-slip-list-detail');
+
+    const rawMemberCancelNoCsrfClient = axios.create({
+      baseURL,
+      validateStatus: () => true,
+      headers: { Cookie: memberClient.cookieJar.cookieHeader() }
+    });
+    const memberMissingCsrfCancelResponse = await rawMemberCancelNoCsrfClient.post(`/member/slips/${memberSubmitResponse.data.id}/cancel`);
+    assert(memberMissingCsrfCancelResponse.status === 403, 'Member cancel without CSRF must be rejected');
+    summary.checks.push('member-self-cancel-csrf-required');
+    const memberCancelResponse = await memberClient.post(`/member/slips/${memberSubmitResponse.data.id}/cancel`);
+    expectStatus(memberCancelResponse, 200, 'Member self cancel');
+    const memberCancelAgainResponse = await memberClient.post(`/member/slips/${memberSubmitResponse.data.id}/cancel`);
+    assert(memberCancelAgainResponse.status === 400, 'Member self cancel should not be repeatable');
+    const [memberWalletAfterSelfCancel, agentWalletAfterSelfCancel, selfRefundLedgerEntries] = await Promise.all([
+      memberClient.get('/member/wallet'),
+      agentClient.get('/wallet/summary'),
+      CreditLedgerEntry.find({
+        userId: created.memberId,
+        entryType: 'bet',
+        direction: 'credit',
+        reasonCode: 'bet_stake_refund',
+        'metadata.slipId': memberSubmitResponse.data.id
+      }).lean()
+    ]);
+    expectStatus(memberWalletAfterSelfCancel, 200, 'Member wallet after self cancel');
+    expectStatus(agentWalletAfterSelfCancel, 200, 'Agent wallet after self cancel');
+    assert(Number(memberWalletAfterSelfCancel.data.account?.creditBalance || 0) === 100, 'Member self cancel should refund stake once');
+    assert(Number(agentWalletAfterSelfCancel.data.account?.heldStakeBalance || 0) === 0, 'Member self cancel should reverse agent held stake');
+    assert(selfRefundLedgerEntries.length === 1, 'Member self cancel should create exactly one refund ledger');
+    summary.checks.push('member-self-cancel-refunds-and-reverses-hold');
 
     const insufficientTransferResponse = await agentClient.post('/wallet/transfer', {
       memberId: created.memberId,
@@ -480,6 +685,10 @@ const main = async () => {
     assert(Number(agentWalletAfterDraft.data.account?.heldStakeBalance || 0) === 0, 'Draft slip should not hold agent stake');
     summary.checks.push('agent-draft-does-not-hold-stake');
     summary.checks.push('member-draft-does-not-debit-credit');
+    const betLedgerCountBeforeInsufficient = await CreditLedgerEntry.countDocuments({
+      userId: created.memberId,
+      entryType: 'bet'
+    });
     const insufficientBetResponse = await agentClient.post('/agent/betting/slips', {
       customerId: created.memberId,
       lotteryId: visibleLotteries[0].id,
@@ -508,7 +717,7 @@ const main = async () => {
     ]);
     expectStatus(memberWalletAfterInsufficient, 200, 'Member wallet after insufficient bet');
     assert(insufficientSlipCount === 0, 'Insufficient-credit submit must not leave a slip behind');
-    assert(betLedgerCountAfterInsufficient === 0, 'Insufficient-credit submit must not leave a bet ledger entry behind');
+    assert(betLedgerCountAfterInsufficient === betLedgerCountBeforeInsufficient, 'Insufficient-credit submit must not add a bet ledger entry');
     assert(Number(memberWalletAfterInsufficient.data.account?.creditBalance || 0) === 100, 'Insufficient-credit submit must not change member balance');
     summary.checks.push('member-bet-insufficient-credit-rollback');
 
@@ -1070,7 +1279,7 @@ const main = async () => {
       agentId: created.agentId,
       customerId: created.memberId
     });
-    assert(pendingCreatedNotificationCount >= 2, 'Pending payout should create admin and agent notification events');
+    assert(pendingCreatedNotificationCount >= 3, 'Pending payout should create admin, agent, and member notification events');
     summary.checks.push('settlement-won-agent-insufficient-creates-pending-payout');
     const otherPayoutSuffix = new mongoose.Types.ObjectId().toString().slice(-8);
     const basePendingSlip = await BetSlip.findById(pendingSlipId).lean();
@@ -1156,6 +1365,16 @@ const main = async () => {
       }
     });
     await BetItem.updateOne({ _id: otherItem._id }, { $set: { pendingPayoutId: otherPayout._id } });
+    const [memberOtherSlipListResponse, memberOtherSlipDetailResponse] = await Promise.all([
+      memberClient.get('/member/slips'),
+      memberClient.get(`/member/slips/${otherSlip._id}`)
+    ]);
+    expectStatus(memberOtherSlipListResponse, 200, 'Member slip list before cross-member guard');
+    assert(!memberOtherSlipListResponse.data.some((slip) => slip.id === otherSlip._id.toString()), 'Member slip list must not include another member slip');
+    assert(memberOtherSlipDetailResponse.status === 404, 'Member must not read another member slip detail');
+    const memberOtherSlipCancelResponse = await memberClient.post(`/member/slips/${otherSlip._id}/cancel`);
+    assert([400, 404].includes(memberOtherSlipCancelResponse.status), 'Member must not cancel another member slip');
+    summary.checks.push('member-cross-slip-access-blocked');
 
     const otherAgentNotification = await NotificationEvent.create({
       type: 'agent_pending_payout_created',
@@ -1171,22 +1390,40 @@ const main = async () => {
         pendingPayoutId: otherPayout._id.toString()
       }
     });
+    const otherMemberNotification = await NotificationEvent.create({
+      type: 'agent_pending_payout_created',
+      recipientRole: 'customer',
+      recipientUserId: otherMember._id,
+      agentId: otherAgent._id,
+      customerId: otherMember._id,
+      title: 'Other member pending payout',
+      message: 'Other member pending payout fixture',
+      metadata: {
+        payoutId: otherPayout.payoutId,
+        payoutAmount: otherPayout.payoutAmount,
+        pendingPayoutId: otherPayout._id.toString()
+      }
+    });
     const anonymousClient = makeClient();
     const memberToken = jwt.sign(
       { id: created.memberId, role: 'customer' },
       process.env.JWT_SECRET,
       { expiresIn: '24h' }
     );
-    const memberClient = makeBearerClient(memberToken);
+    const memberBearerClient = makeBearerClient(memberToken);
     const [
       adminPendingListResponse,
       agentPendingListResponse,
       adminNotificationsResponse,
       agentNotificationsResponse,
+      memberPendingListResponse,
+      memberNotificationsResponse,
       anonymousAdminPendingResponse,
       anonymousAdminNotificationsResponse,
       anonymousAgentPendingResponse,
       anonymousAgentNotificationsResponse,
+      anonymousMemberPendingResponse,
+      anonymousMemberNotificationsResponse,
       memberAdminPendingResponse,
       memberAdminNotificationsResponse,
       memberAgentPendingResponse,
@@ -1196,23 +1433,31 @@ const main = async () => {
       agentClient.get('/agent/pending-payouts'),
       adminClient.get('/admin/notifications'),
       agentClient.get('/agent/notifications'),
+      memberClient.get('/member/pending-payouts'),
+      memberClient.get('/member/notifications'),
       anonymousClient.get('/admin/pending-payouts'),
       anonymousClient.get('/admin/notifications'),
       anonymousClient.get('/agent/pending-payouts'),
       anonymousClient.get('/agent/notifications'),
-      memberClient.get('/admin/pending-payouts'),
-      memberClient.get('/admin/notifications'),
-      memberClient.get('/agent/pending-payouts'),
-      memberClient.get('/agent/notifications')
+      anonymousClient.get('/member/pending-payouts'),
+      anonymousClient.get('/member/notifications'),
+      memberBearerClient.get('/admin/pending-payouts'),
+      memberBearerClient.get('/admin/notifications'),
+      memberBearerClient.get('/agent/pending-payouts'),
+      memberBearerClient.get('/agent/notifications')
     ]);
     expectStatus(adminPendingListResponse, 200, 'Admin pending payout list');
     expectStatus(agentPendingListResponse, 200, 'Agent pending payout list');
     expectStatus(adminNotificationsResponse, 200, 'Admin notification list');
     expectStatus(agentNotificationsResponse, 200, 'Agent notification list');
+    expectStatus(memberPendingListResponse, 200, 'Member pending payout list');
+    expectStatus(memberNotificationsResponse, 200, 'Member notification list');
     assert(anonymousAdminPendingResponse.status === 401, 'Unauthenticated admin pending payout list must be rejected');
     assert(anonymousAdminNotificationsResponse.status === 401, 'Unauthenticated admin notifications must be rejected');
     assert(anonymousAgentPendingResponse.status === 401, 'Unauthenticated agent pending payout list must be rejected');
     assert(anonymousAgentNotificationsResponse.status === 401, 'Unauthenticated agent notifications must be rejected');
+    assert(anonymousMemberPendingResponse.status === 401, 'Unauthenticated member pending payout list must be rejected');
+    assert(anonymousMemberNotificationsResponse.status === 401, 'Unauthenticated member notifications must be rejected');
     assert(memberAdminPendingResponse.status === 403, 'Member token must not access admin pending payout list');
     assert(memberAdminNotificationsResponse.status === 403, 'Member token must not access admin notifications');
     assert(memberAgentPendingResponse.status === 403, 'Member token must not access agent pending payout list');
@@ -1225,14 +1470,22 @@ const main = async () => {
     assert(!agentPendingItems.some((item) => item.id === otherPayout._id.toString()), 'Agent API must not see another agent pending payout');
     assert(Number(adminPendingListResponse.data.summary?.pendingCount || 0) >= 2, 'Admin pending payout summary should include all pending payouts');
     assert(Number(agentPendingListResponse.data.summary?.pendingCount || 0) >= 1, 'Agent pending payout summary should include own pending payouts');
+    const memberPendingItems = memberPendingListResponse.data.items || [];
+    assert(memberPendingItems.some((item) => item.id === pendingPayout._id.toString()), 'Member API should see own pending payout');
+    assert(!memberPendingItems.some((item) => item.id === otherPayout._id.toString()), 'Member API must not see another member pending payout');
+    assert(Number(memberPendingListResponse.data.summary?.pendingCount || 0) >= 1, 'Member pending payout summary should include own pending payouts');
 
     const adminNotifications = adminNotificationsResponse.data.items || [];
     const agentNotifications = agentNotificationsResponse.data.items || [];
+    const memberNotifications = memberNotificationsResponse.data.items || [];
     assert(!agentNotifications.some((item) => item.id === otherAgentNotification._id.toString()), 'Agent notifications must not include another agent notification');
     const adminPendingNotification = adminNotifications.find((item) => item.type === 'agent_pending_payout_created' && item.metadata?.pendingPayoutId === pendingPayout._id.toString());
     const agentPendingNotification = agentNotifications.find((item) => item.type === 'agent_pending_payout_created' && item.metadata?.pendingPayoutId === pendingPayout._id.toString());
     assert(adminPendingNotification, 'Admin notifications should include pending payout created event');
     assert(agentPendingNotification, 'Agent notifications should include own pending payout created event');
+    const memberPendingNotification = memberNotifications.find((item) => item.type === 'agent_pending_payout_created' && item.metadata?.pendingPayoutId === pendingPayout._id.toString());
+    assert(!memberNotifications.some((item) => item.id === otherMemberNotification._id.toString()), 'Member notifications must not include another member notification');
+    assert(memberPendingNotification, 'Member notifications should include own pending payout created event');
     const markAdminNotificationReadResponse = await adminClient.post(`/admin/notifications/${adminPendingNotification.id}/read`);
     expectStatus(markAdminNotificationReadResponse, 200, 'Admin mark notification read');
     assert(markAdminNotificationReadResponse.data.notification.status === 'read', 'Admin read action should mark admin notification read');
@@ -1242,6 +1495,18 @@ const main = async () => {
     assert([403, 404].includes(agentCannotReadOtherAgentNotificationResponse.status), 'Agent must not mark another agent notification as read');
     const memberCannotReadAgentNotificationResponse = await memberClient.post(`/agent/notifications/${agentPendingNotification.id}/read`);
     assert(memberCannotReadAgentNotificationResponse.status === 403, 'Member token must not mark agent notification as read');
+    const memberCannotReadOtherMemberNotificationResponse = await memberClient.post(`/member/notifications/${otherMemberNotification._id}/read`);
+    assert([403, 404].includes(memberCannotReadOtherMemberNotificationResponse.status), 'Member must not mark another member notification as read');
+    const rawMemberNoCsrfClient = axios.create({
+      baseURL,
+      validateStatus: () => true,
+      headers: { Cookie: memberClient.cookieJar.cookieHeader() }
+    });
+    const memberMissingCsrfReadResponse = await rawMemberNoCsrfClient.post(`/member/notifications/${memberPendingNotification.id}/read`);
+    assert(memberMissingCsrfReadResponse.status === 403, 'Member notification read without CSRF must be rejected');
+    const markMemberNotificationReadResponse = await memberClient.post(`/member/notifications/${memberPendingNotification.id}/read`);
+    expectStatus(markMemberNotificationReadResponse, 200, 'Member mark notification read');
+    assert(markMemberNotificationReadResponse.data.notification.status === 'read', 'Member read action should mark own notification read');
     const anonymousCannotReadNotificationResponse = await anonymousClient.post(`/agent/notifications/${agentPendingNotification.id}/read`);
     assert([401, 403].includes(anonymousCannotReadNotificationResponse.status), 'Unauthenticated notification read must be rejected');
     const markAgentNotificationReadResponse = await agentClient.post(`/agent/notifications/${agentPendingNotification.id}/read`);
@@ -1321,21 +1586,28 @@ const main = async () => {
       agentId: created.agentId,
       customerId: created.memberId
     });
-    assert(pendingPaidNotificationCount >= 2, 'Auto payout should create admin and agent paid notification events');
-    const [adminPaidPayoutsResponse, agentPaidPayoutsResponse, adminPaidNotificationsResponse, agentPaidNotificationsResponse] = await Promise.all([
+    assert(pendingPaidNotificationCount >= 3, 'Auto payout should create admin, agent, and member paid notification events');
+    const [adminPaidPayoutsResponse, agentPaidPayoutsResponse, memberPaidPayoutsResponse, adminPaidNotificationsResponse, agentPaidNotificationsResponse, memberPaidNotificationsResponse] = await Promise.all([
       adminClient.get('/admin/pending-payouts', { params: { status: 'all' } }),
       agentClient.get('/agent/pending-payouts', { params: { status: 'all' } }),
+      memberClient.get('/member/pending-payouts', { params: { status: 'all' } }),
       adminClient.get('/admin/notifications', { params: { status: 'all' } }),
-      agentClient.get('/agent/notifications', { params: { status: 'all' } })
+      agentClient.get('/agent/notifications', { params: { status: 'all' } }),
+      memberClient.get('/member/notifications', { params: { status: 'all' } })
     ]);
     expectStatus(adminPaidPayoutsResponse, 200, 'Admin paid pending payout list');
     expectStatus(agentPaidPayoutsResponse, 200, 'Agent paid pending payout list');
+    expectStatus(memberPaidPayoutsResponse, 200, 'Member paid pending payout list');
     expectStatus(adminPaidNotificationsResponse, 200, 'Admin paid notification list');
     expectStatus(agentPaidNotificationsResponse, 200, 'Agent paid notification list');
+    expectStatus(memberPaidNotificationsResponse, 200, 'Member paid notification list');
     assert((adminPaidPayoutsResponse.data.items || []).some((item) => item.id === pendingPayout._id.toString() && item.status === 'paid'), 'Admin API should show auto-paid payout status');
     assert((agentPaidPayoutsResponse.data.items || []).some((item) => item.id === pendingPayout._id.toString() && item.status === 'paid'), 'Agent API should show own auto-paid payout status');
+    assert((memberPaidPayoutsResponse.data.items || []).some((item) => item.id === pendingPayout._id.toString() && item.status === 'paid'), 'Member API should show own auto-paid payout status');
+    assert(!(memberPaidPayoutsResponse.data.items || []).some((item) => item.id === otherPayout._id.toString()), 'Member paid payout list must not include another member payout');
     assert((adminPaidNotificationsResponse.data.items || []).some((item) => item.type === 'agent_pending_payout_paid' && item.metadata?.pendingPayoutId === pendingPayout._id.toString()), 'Admin API should show paid notification');
     assert((agentPaidNotificationsResponse.data.items || []).some((item) => item.type === 'agent_pending_payout_paid' && item.metadata?.pendingPayoutId === pendingPayout._id.toString()), 'Agent API should show paid notification');
+    assert((memberPaidNotificationsResponse.data.items || []).some((item) => item.type === 'agent_pending_payout_paid' && item.metadata?.pendingPayoutId === pendingPayout._id.toString()), 'Member API should show paid notification');
     summary.checks.push('pending-payout-api-shows-auto-paid-status');
     summary.checks.push('agent-topup-auto-pays-pending-payout');
 

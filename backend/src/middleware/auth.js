@@ -23,10 +23,6 @@ const auth = async (req, res, next) => {
       return res.status(403).json({ message: getAccountAccessMessage(user) });
     }
 
-    if (user.role === 'customer') {
-      return res.status(403).json({ message: 'บัญชีนี้ไม่มีสิทธิ์ใช้งาน' });
-    }
-
     User.updateOne(
       { _id: user._id },
       { $set: { lastActiveAt: new Date() } }

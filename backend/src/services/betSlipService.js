@@ -297,7 +297,11 @@ const resolveBettingActor = async ({ actorUser, customerId }) => {
     throw new Error('This member does not belong to the current agent');
   }
 
-  if (!['admin', 'agent'].includes(actor.role)) {
+  if (actor.role === 'customer' && actor._id.toString() !== customer._id.toString()) {
+    throw new Error('Members can only create slips for their own account');
+  }
+
+  if (!['admin', 'agent', 'customer'].includes(actor.role)) {
     throw new Error('This role cannot create slips');
   }
 

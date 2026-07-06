@@ -113,11 +113,18 @@ const serializeNotification = (event) => ({
 
 const buildPendingScope = ({ role, userId }) => {
   if (role === 'admin') return {};
+  if (role === 'customer') return { customerId: userId };
   return { agentId: userId };
 };
 
 const buildNotificationScope = ({ role, userId }) => {
   if (role === 'admin') return { recipientRole: 'admin' };
+  if (role === 'customer') {
+    return {
+      recipientRole: 'customer',
+      recipientUserId: userId
+    };
+  }
   return {
     recipientRole: 'agent',
     recipientUserId: userId
