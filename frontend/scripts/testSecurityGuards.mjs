@@ -75,9 +75,12 @@ assert.doesNotMatch(navbarSource, /\u0e08\u0e48\u0e32\u0e22\u0e41\u0e17\u0e19|pa
 assert.match(memberDashboardSource, /getMemberRounds/, 'member dashboard should load member-scoped open rounds');
 assert.match(memberDashboardSource, /member-round-card/, 'member dashboard should render selectable round cards');
 assert.match(memberDashboardSource, /\/member\/buy\?[\s\S]*roundId/, 'member dashboard round cards should link into buy flow with selected roundId');
+assert.match(memberDashboardSource, /catch \(error\) \{[\s\S]*?const message =[\s\S]*?setLoadError\(message\)[\s\S]*?toast\.error\(message\)/, 'member dashboard load failures should render the persistent load error banner');
 assert.match(memberBuySource, /submitMemberSlip/, 'member buy UI should submit through the member self-buying API');
 assert.match(memberBuySource, /createMemberDraftSlip/, 'member buy UI should preview through member draft API instead of legacy parse');
 assert.doesNotMatch(memberBuySource, /parseMemberSlip|customerId|agentId|actorUser|placedBy/, 'member buy UI must not call legacy parse or send customer/agent/actor overrides');
+assert.match(memberBuySource, /loadInitial[\s\S]*?catch \(error\) \{[\s\S]*?const message =[\s\S]*?setLoadError\(message\)[\s\S]*?toast\.error\(message\)/, 'member buy initial load failures should render the persistent load error banner');
+assert.match(memberBuySource, /loadRounds[\s\S]*?catch \(error\) \{[\s\S]*?const message =[\s\S]*?setLoadError\(message\)[\s\S]*?toast\.error\(message\)/, 'member buy round load failures should render the persistent load error banner');
 assert.match(memberBuySource, /useSearchParams/, 'member buy UI should preselect a round from dashboard query params');
 assert.match(memberBuySource, /requestedRoundId/, 'member buy UI should track the requested roundId from the dashboard');
 assert.match(memberBuySource, /member-self-only-notice/, 'member buy UI should clearly avoid customer/member selection');
