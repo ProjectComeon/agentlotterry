@@ -84,7 +84,9 @@ const MemberDashboard = () => {
       ).sort((left, right) => getRoundSortTime(left) - getRoundSortTime(right)));
     } catch (error) {
       console.error(error);
-      toast.error('โหลดข้อมูลสมาชิกไม่สำเร็จ');
+      const message = 'โหลดข้อมูลสมาชิกไม่สำเร็จ';
+      setLoadError(message);
+      toast.error(message);
     } finally {
       setLoading(false);
       setRefreshing(false);

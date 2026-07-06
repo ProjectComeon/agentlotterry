@@ -116,7 +116,9 @@ const MemberBuy = () => {
       }
     } catch (error) {
       console.error(error);
-      toast.error('โหลดข้อมูลซื้อหวยไม่สำเร็จ');
+      const message = 'โหลดข้อมูลซื้อหวยไม่สำเร็จ';
+      setLoadError(message);
+      toast.error(message);
     } finally {
       setLoading(false);
     }
@@ -141,13 +143,16 @@ const MemberBuy = () => {
         if (!active) return;
         const nextRounds = response.data || [];
         setRounds(nextRounds);
+        setLoadError('');
         const requestedRound = requestedRoundId ? nextRounds.find((round) => round.id === requestedRoundId) : null;
         const firstRound = requestedRound || nextRounds.find((round) => round.status === 'open') || nextRounds.find((round) => !unsafeRoundStatuses.has(round.status)) || nextRounds[0] || null;
         setSelectedRoundKey(firstRound?.id || '');
       } catch (error) {
         if (active) {
           console.error(error);
-          toast.error('โหลดรอบหวยไม่สำเร็จ');
+          const message = 'โหลดรอบหวยไม่สำเร็จ';
+          setLoadError(message);
+          toast.error(message);
           setRounds([]);
           setSelectedRoundKey('');
         }
@@ -293,7 +298,15 @@ const MemberBuy = () => {
         </div>
       </section>
 
-      {loadError ? <section className="member-note member-error-note"><FiAlertCircle /> {loadError}</section> : null}
+      {loadError ? (
+        <section className="member-note member-error-note">
+          <FiAlertCircle />
+          <span>{loadError}</span>
+          <button type="button" className="btn btn-secondary btn-sm" onClick={loadInitial} disabled={loading}>
+            <FiRefreshCw /> ลองใหม่
+          </button>
+        </section>
+      ) : null}
 
       <section className="member-buy-context-grid">
         <article className="ops-overview-card">
