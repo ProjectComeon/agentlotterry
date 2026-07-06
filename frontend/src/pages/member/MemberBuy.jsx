@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
-import { FiAlertCircle, FiCheckCircle, FiClock, FiLayers, FiRefreshCw, FiRotateCcw, FiSave, FiSend, FiShuffle } from 'react-icons/fi';
+import { FiAlertCircle, FiCheckCircle, FiClock, FiCreditCard, FiLayers, FiRefreshCw, FiRotateCcw, FiSave, FiSend, FiShuffle } from 'react-icons/fi';
 import PageSkeleton from '../../components/PageSkeleton';
 import { useCatalog } from '../../context/CatalogContext';
 import { createMemberDraftSlip, getMemberRounds, getMemberWallet, submitMemberSlip } from '../../services/api';
@@ -10,6 +10,7 @@ import {
   createClientRequestId,
   flattenLotteries,
   formatBaht,
+  formatWhen,
   getBetDisplay,
   getRoundDisplay,
   getRoundStatusDisplay,
@@ -18,9 +19,25 @@ import {
 
 const quickAmounts = ['10', '20', '50', '100'];
 const unsafeRoundStatuses = new Set(['closed', 'resulted']);
+const getRoundTimeValue = (round = {}, keys = []) => keys.map((key) => round?.[key]).find(Boolean) || '';
+const getRoundOpenTime = (round = {}) => getRoundTimeValue(round, ['openAt', 'displayOpenAt', 'startAt', 'roundDate']);
+const getRoundCloseTime = (round = {}) => getRoundTimeValue(round, ['closeAt', 'displayCloseAt', 'endAt']);
+
+const findLotteryByRequestedRound = async (lotteries = [], requestedRoundId = '') => {
+  if (!requestedRoundId) return null;
+
+  const results = await Promise.all(lotteries.map((lottery) => getMemberRounds(lottery.id)
+    .then((response) => ({ lottery, rounds: response.data || [] }))
+    .catch(() => ({ lottery, rounds: [] }))));
+
+  return results.find(({ rounds }) => rounds.some((round) => round.id === requestedRoundId)) || null;
+};
 
 const MemberBuy = () => {
   const { ensureCatalogLoaded } = useCatalog();
+  const [searchParams] = useSearchParams();
+  const requestedLotteryId = searchParams.get('lotteryId') || '';
+  const requestedRoundId = searchParams.get('roundId') || '';
   const [lotteries, setLotteries] = useState([]);
   const [rounds, setRounds] = useState([]);
   const [wallet, setWallet] = useState(null);
@@ -34,6 +51,8 @@ const MemberBuy = () => {
   const [reverse, setReverse] = useState(false);
   const [includeDoubleSet, setIncludeDoubleSet] = useState(false);
   const [draftSlip, setDraftSlip] = useState(null);
+  const [submittedSlip, setSubmittedSlip] = useState(null);
+  const [submitError, setSubmitError] = useState('');
   const [loading, setLoading] = useState(true);
   const [loadingRounds, setLoadingRounds] = useState(false);
   const [drafting, setDrafting] = useState(false);
@@ -57,9 +76,12 @@ const MemberBuy = () => {
   const supportedBetTypes = selectedLottery?.supportedBetTypes || [];
   const canSubmitRound = selectedRound?.status === 'open';
   const canCompose = Boolean(selectedLotteryKey && selectedRoundKey && selectedRate?.id && rawInput.trim() && Number(defaultAmount) > 0);
+  const submittedSlipId = submittedSlip?.id || submittedSlip?._id || '';
 
   const resetDraftState = useCallback(() => {
     setDraftSlip(null);
+    setSubmittedSlip(null);
+    setSubmitError('');
     draftRequestRef.current = '';
     submitRequestRef.current = '';
   }, []);
@@ -74,7 +96,16 @@ const MemberBuy = () => {
       const nextLotteries = flattenLotteries(catalog?.leagues || []).filter((lottery) => lottery.activeRound || lottery.status === 'open');
       setLotteries(nextLotteries);
       setWallet(walletResponse.data || null);
-      const firstLottery = nextLotteries.find((lottery) => lottery.status === 'open') || nextLotteries[0] || null;
+
+      const requestedLottery = requestedLotteryId ? nextLotteries.find((lottery) => lottery.id === requestedLotteryId) : null;
+      const roundMatch = requestedLottery ? null : await findLotteryByRequestedRound(nextLotteries, requestedRoundId);
+      const firstLottery = requestedLottery || roundMatch?.lottery || nextLotteries.find((lottery) => lottery.status === 'open') || nextLotteries[0] || null;
+
+      if (roundMatch?.rounds?.length) {
+        setRounds(roundMatch.rounds);
+        setSelectedRoundKey(requestedRoundId);
+      }
+
       if (firstLottery) {
         setSelectedLotteryKey(firstLottery.id);
         setSelectedRateKey(firstLottery.defaultRateProfileId || firstLottery.rateProfiles?.[0]?.id || '');
@@ -87,7 +118,7 @@ const MemberBuy = () => {
     } finally {
       setLoading(false);
     }
-  }, [ensureCatalogLoaded]);
+  }, [ensureCatalogLoaded, requestedLotteryId, requestedRoundId]);
 
   useEffect(() => {
     loadInitial();
@@ -97,7 +128,7 @@ const MemberBuy = () => {
     if (!selectedLotteryKey) {
       setRounds([]);
       setSelectedRoundKey('');
-      return;
+      return undefined;
     }
 
     let active = true;
@@ -108,7 +139,8 @@ const MemberBuy = () => {
         if (!active) return;
         const nextRounds = response.data || [];
         setRounds(nextRounds);
-        const firstRound = nextRounds.find((round) => round.status === 'open') || nextRounds.find((round) => !unsafeRoundStatuses.has(round.status)) || nextRounds[0] || null;
+        const requestedRound = requestedRoundId ? nextRounds.find((round) => round.id === requestedRoundId) : null;
+        const firstRound = requestedRound || nextRounds.find((round) => round.status === 'open') || nextRounds.find((round) => !unsafeRoundStatuses.has(round.status)) || nextRounds[0] || null;
         setSelectedRoundKey(firstRound?.id || '');
       } catch (error) {
         if (active) {
@@ -126,7 +158,7 @@ const MemberBuy = () => {
     return () => {
       active = false;
     };
-  }, [selectedLotteryKey]);
+  }, [selectedLotteryKey, requestedRoundId]);
 
   useEffect(() => {
     if (!selectedLottery) return;
@@ -176,17 +208,20 @@ const MemberBuy = () => {
     }
 
     setDrafting(true);
+    setSubmitError('');
     try {
       const response = await createMemberDraftSlip({
         ...buildPayload(),
         clientRequestId: ensureDraftRequest()
       });
       setDraftSlip(response.data);
-      toast.success('บันทึกแบบร่างเพื่อดูตัวอย่างแล้ว');
+      toast.success('สร้างแบบร่างเพื่อดูตัวอย่างแล้ว');
       await refreshWallet();
     } catch (error) {
       console.error(error);
-      toast.error(error.response?.data?.message || 'สร้างแบบร่างไม่สำเร็จ');
+      const message = error.response?.data?.message || 'สร้างแบบร่างไม่สำเร็จ';
+      setSubmitError(message);
+      toast.error(message);
     } finally {
       setDrafting(false);
     }
@@ -205,22 +240,22 @@ const MemberBuy = () => {
 
     submitLockRef.current = true;
     setSubmitting(true);
+    setSubmitError('');
     try {
       const response = await submitMemberSlip({
         ...buildPayload(),
         clientRequestId: ensureSubmitRequest()
       });
-      toast.success(`ซื้อสำเร็จ: ${response.data.slipNumber || '-'}`);
-      setRawInput('');
-      setMemo('');
-      setDefaultAmount('10');
-      setReverse(false);
-      setIncludeDoubleSet(false);
+      const nextSlip = response.data || {};
+      toast.success(`ซื้อสำเร็จ: ${nextSlip.slipNumber || '-'}`);
       resetDraftState();
+      setSubmittedSlip(nextSlip);
       await refreshWallet();
     } catch (error) {
       console.error(error);
-      toast.error(error.response?.data?.message || 'ยืนยันซื้อไม่สำเร็จ');
+      const message = error.response?.data?.message || 'ยืนยันซื้อไม่สำเร็จ';
+      setSubmitError(message);
+      toast.error(message);
     } finally {
       setSubmitting(false);
       submitLockRef.current = false;
@@ -246,14 +281,35 @@ const MemberBuy = () => {
       <section className="ops-hero member-hero">
         <div className="ops-hero-copy">
           <span className="ui-eyebrow">MEMBER BUY</span>
-          <h1 className="page-title">ซื้อหวยเอง</h1>
-          <p className="page-subtitle">สร้างแบบร่างเพื่อตรวจเลขและยอดรวมก่อนยืนยันซื้อ เครดิตจะถูกหักเมื่อ submit สำเร็จเท่านั้น</p>
+          <h1 className="page-title">ซื้อเอง</h1>
+          <p className="page-subtitle">เลือกหวยและรอบที่เปิดขาย กรอกเลขเหมือนหน้าซื้อแทน ตรวจโพยก่อนยืนยัน แล้วระบบจะหักเครดิตจากบัญชีของคุณทันทีเมื่อสำเร็จ</p>
         </div>
         <div className="ops-hero-side">
-          <span>เครดิตคงเหลือ</span>
+          <span>ยอดเครดิตของฉัน</span>
           <strong>{formatBaht(account.creditBalance)}</strong>
-          <small>ระบบใช้ Agent เจ้าของบัญชีจาก server เท่านั้น</small>
+          <small>ใช้บัญชีสมาชิกที่ login อยู่เท่านั้น</small>
         </div>
+      </section>
+
+      <section className="member-buy-context-grid">
+        <article className="ops-overview-card">
+          <div className="ops-icon-badge"><FiCreditCard /></div>
+          <strong>{formatBaht(account.creditBalance)}</strong>
+          <span>เครดิตพร้อมซื้อ</span>
+          <small>แบบร่างไม่หักเครดิต</small>
+        </article>
+        <article className="member-note member-self-only-notice">
+          <FiAlertCircle />
+          <span>หน้านี้ซื้อได้เฉพาะบัญชีของฉัน ไม่มีช่องเลือกสมาชิกอื่น และระบบเลือกสายงานจาก session ฝั่ง server</span>
+        </article>
+        <article className="card member-buy-selected-round">
+          <div>
+            <span>รายการที่เลือก</span>
+            <strong>{selectedLottery ? `${selectedLottery.leagueName || ''} ${selectedLottery.name || ''}`.trim() : '-'}</strong>
+            <small>{selectedRound ? `${getRoundDisplay(selectedRound)} · ${getRoundStatusDisplay(selectedRound.status)}` : '-'}</small>
+          </div>
+          <span className={`badge ${statusBadgeClass(selectedRound?.status)}`}>{getRoundStatusDisplay(selectedRound?.status)}</span>
+        </article>
       </section>
 
       <section className="member-buy-grid">
@@ -261,7 +317,7 @@ const MemberBuy = () => {
           <div className="member-panel-head">
             <div>
               <div className="ui-eyebrow">COMPOSER</div>
-              <h3>เลือกงวดและกรอกเลข</h3>
+              <h3>เลือกรอบและกรอกเลข</h3>
             </div>
             <button type="button" className="btn btn-secondary btn-sm" onClick={clearComposer}><FiRotateCcw /> ล้าง</button>
           </div>
@@ -318,14 +374,14 @@ const MemberBuy = () => {
             <textarea rows="12" value={rawInput} onChange={(event) => setRawInput(event.target.value)} placeholder={'ตัวอย่าง\n123 10\n456=20\n789'} />
           </label>
 
-          <div className="member-note"><FiAlertCircle /> กดสร้างแบบร่างก่อนเพื่อดูรายการและยอดรวม ระบบจะไม่หักเครดิตจากแบบร่าง</div>
+          <div className="member-note"><FiAlertCircle /> ตรวจโพยก่อนยืนยัน ระบบจะไม่หักเครดิตจากแบบร่าง และจะยืนยันซื้อด้วย clientRequestId เดิมเพื่อกันกดซ้ำ</div>
         </div>
 
         <aside className="card member-panel member-preview-panel">
           <div className="member-panel-head">
             <div>
               <div className="ui-eyebrow">DRAFT PREVIEW</div>
-              <h3>ตรวจยอดก่อนยืนยัน</h3>
+              <h3>ตรวจโพยก่อนยืนยัน</h3>
             </div>
             <span className={`badge ${statusBadgeClass(selectedRound?.status)}`}>{getRoundStatusDisplay(selectedRound?.status)}</span>
           </div>
@@ -334,6 +390,11 @@ const MemberBuy = () => {
             <div><span>จำนวนรายการ</span><strong>{draftSlip?.itemCount || 0}</strong></div>
             <div><span>ยอดรวม</span><strong>{formatBaht(draftSlip?.totalAmount || 0)}</strong></div>
             <div><span>จ่ายสูงสุด</span><strong>{formatBaht(draftSlip?.potentialPayout || 0)}</strong></div>
+          </div>
+
+          <div className="member-selected-round-meta">
+            <span><FiClock /> เปิดรับ: {formatWhen(getRoundOpenTime(selectedRound))}</span>
+            <span>ปิดรับ: {formatWhen(getRoundCloseTime(selectedRound))}</span>
           </div>
 
           {draftItems.length ? (
@@ -353,12 +414,24 @@ const MemberBuy = () => {
             <div className="empty-state"><div className="empty-state-icon"><FiLayers /></div><div className="empty-state-text">ยังไม่มีแบบร่าง</div></div>
           )}
 
+          {submitError ? <div className="member-note member-error-note"><FiAlertCircle /> {submitError}</div> : null}
+          {submittedSlip ? (
+            <div className="member-submit-success">
+              <FiCheckCircle />
+              <div>
+                <strong>ยืนยันการซื้อสำเร็จ</strong>
+                <span>{submittedSlip.slipNumber || '-'}</span>
+              </div>
+              {submittedSlipId ? <Link className="btn btn-secondary btn-sm" to={`/member/slips/${submittedSlipId}`}>ดูโพย</Link> : null}
+            </div>
+          ) : null}
+
           <div className="member-action-stack">
             <button type="button" className="btn btn-secondary" onClick={handlePreviewDraft} disabled={drafting || submitting || !canCompose}>
-              {drafting ? <FiRefreshCw /> : <FiSave />} สร้างแบบร่าง / Preview
+              {drafting ? <FiRefreshCw /> : <FiSave />} ตรวจโพยก่อนยืนยัน
             </button>
             <button type="button" className="btn btn-primary" onClick={handleSubmit} disabled={drafting || submitting || !draftSlip || !canSubmitRound}>
-              {submitting ? <FiRefreshCw /> : <FiSend />} ยืนยันซื้อ
+              {submitting ? <FiRefreshCw /> : <FiSend />} ยืนยันการซื้อ
             </button>
             {draftSlip ? <div className="member-note compact"><FiCheckCircle /> ตรวจแล้วค่อยยืนยันซื้อ หากกดซ้ำระบบจะใช้ clientRequestId เดิมเพื่อกันหักซ้ำ</div> : null}
             {!canSubmitRound ? <div className="member-note compact"><FiClock /> งวดนี้ยังไม่เปิดรับซื้อ</div> : null}

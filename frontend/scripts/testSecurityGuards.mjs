@@ -43,6 +43,8 @@ const apiSource = fs.readFileSync(path.join(repoRoot, 'src/services/api.js'), 'u
 const appSource = fs.readFileSync(path.join(repoRoot, 'src/App.jsx'), 'utf8');
 const navbarSource = fs.readFileSync(path.join(repoRoot, 'src/components/Navbar.jsx'), 'utf8');
 const pendingPayoutPageSource = fs.readFileSync(path.join(repoRoot, 'src/pages/shared/PendingPayoutsPage.jsx'), 'utf8');
+const memberDashboardSourcePath = path.join(repoRoot, 'src/pages/member/MemberDashboard.jsx');
+const memberDashboardSource = fs.existsSync(memberDashboardSourcePath) ? fs.readFileSync(memberDashboardSourcePath, 'utf8') : '';
 const memberBuySourcePath = path.join(repoRoot, 'src/pages/member/MemberBuy.jsx');
 const memberBuySource = fs.existsSync(memberBuySourcePath) ? fs.readFileSync(memberBuySourcePath, 'utf8') : '';
 assert.doesNotMatch(authContextSource, /localStorage\.(getItem|setItem|removeItem)\('token'\)/, 'auth flow must not persist bearer tokens in localStorage');
@@ -70,10 +72,17 @@ assert.match(navbarSource, /const handleLogout = async \(\) => \{[\s\S]*await lo
 assert.match(pendingPayoutPageSource, /markAdminNotificationRead[\s\S]*markAgentNotificationRead/, 'pending payout UI should only expose notification read actions');
 assert.doesNotMatch(pendingPayoutPageSource, /\u0e08\u0e48\u0e32\u0e22\u0e41\u0e17\u0e19|manual\s+payout|pay\s+for\s+agent|adjustWalletCredit|transferWalletCredit|\/wallet\/adjust|\/wallet\/transfer/i, 'pending payout UI must not expose payout override or wallet mutation actions');
 assert.doesNotMatch(navbarSource, /\u0e08\u0e48\u0e32\u0e22\u0e41\u0e17\u0e19|pay\s+for\s+agent/i, 'navigation must not expose admin pay-for-agent actions');
+assert.match(memberDashboardSource, /getMemberRounds/, 'member dashboard should load member-scoped open rounds');
+assert.match(memberDashboardSource, /member-round-card/, 'member dashboard should render selectable round cards');
+assert.match(memberDashboardSource, /\/member\/buy\?[\s\S]*roundId/, 'member dashboard round cards should link into buy flow with selected roundId');
 assert.match(memberBuySource, /submitMemberSlip/, 'member buy UI should submit through the member self-buying API');
 assert.match(memberBuySource, /createMemberDraftSlip/, 'member buy UI should preview through member draft API instead of legacy parse');
-assert.doesNotMatch(memberBuySource, /parseMemberSlip|customerId|agentId|actorUser/, 'member buy UI must not call legacy parse or send customer/agent/actor overrides');
+assert.doesNotMatch(memberBuySource, /parseMemberSlip|customerId|agentId|actorUser|placedBy/, 'member buy UI must not call legacy parse or send customer/agent/actor overrides');
+assert.match(memberBuySource, /useSearchParams/, 'member buy UI should preselect a round from dashboard query params');
+assert.match(memberBuySource, /requestedRoundId/, 'member buy UI should track the requested roundId from the dashboard');
+assert.match(memberBuySource, /member-self-only-notice/, 'member buy UI should clearly avoid customer/member selection');
 assert.match(memberBuySource, /clientRequestId/, 'member buy UI should send a clientRequestId for idempotent submit');
 assert.match(memberBuySource, /submitLockRef/, 'member buy UI should guard duplicate submit clicks');
+assert.doesNotMatch(memberBuySource, /\/member\/slips\/parse|api\.post\('\/member\/slips'\)/, 'member buy UI must not call legacy member slip endpoints');
 
 console.log('testSecurityGuards: ok');
