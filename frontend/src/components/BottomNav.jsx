@@ -3,6 +3,8 @@ import { useAuth } from '../context/AuthContext';
 import { preloadAppRouteForPath } from '../utils/appPreload';
 import {
   FiAward,
+  FiBell,
+  FiCreditCard,
   FiDollarSign,
   FiFileText,
   FiHome,
@@ -17,6 +19,13 @@ const navItems = {
     { path: '/agent/betting', label: 'ซื้อแทน', icon: <FiDollarSign /> },
     { path: '/agent/bets', label: 'โพย', icon: <FiList /> },
     { path: '/agent/reports', label: 'รายงาน', icon: <FiFileText /> }
+  ],
+  customer: [
+    { path: '/member', label: 'หน้าหลัก', icon: <FiHome /> },
+    { path: '/member/buy', label: 'ซื้อหวย', icon: <FiDollarSign /> },
+    { path: '/member/slips', label: 'โพย', icon: <FiList /> },
+    { path: '/member/wallet', label: 'เครดิต', icon: <FiCreditCard /> },
+    { path: '/member/pending-payouts', label: 'รางวัล', icon: <FiBell /> }
   ]
 };
 
@@ -32,8 +41,10 @@ const BottomNav = () => {
     ]
     : items;
 
-  const isActivePath = (path) =>
-    location.pathname === path || (path !== `/${user?.role}` && location.pathname.startsWith(`${path}/`));
+  const isActivePath = (path) => {
+    const roleRoot = user?.role === 'customer' ? '/member' : `/${user?.role}`;
+    return location.pathname === path || (path !== roleRoot && location.pathname.startsWith(`${path}/`));
+  };
 
   const preloadItem = (path) => {
     preloadAppRouteForPath(path, user?.role);

@@ -14,7 +14,14 @@ export const routeLoaders = Object.freeze({
   agentLottery: () => import('../pages/agent/AgentLottery'),
   agentReports: () => import('../pages/agent/AgentReports'),
   agentPendingPayouts: () => import('../pages/agent/AgentPendingPayouts'),
-  operatorBetting: () => import('../pages/shared/OperatorBetting')
+  operatorBetting: () => import('../pages/shared/OperatorBetting'),
+  memberDashboard: () => import('../pages/member/MemberDashboard'),
+  memberBuy: () => import('../pages/member/MemberBuy'),
+  memberSlips: () => import('../pages/member/MemberSlips'),
+  memberSlipDetail: () => import('../pages/member/MemberSlipDetail'),
+  memberWallet: () => import('../pages/member/MemberWallet'),
+  memberPendingPayouts: () => import('../pages/member/MemberPendingPayouts'),
+  memberNotifications: () => import('../pages/member/MemberNotifications')
 });
 
 const routeKeyByPath = Object.freeze({
@@ -33,7 +40,13 @@ const routeKeyByPath = Object.freeze({
   '/agent/reports': 'agentReports',
   '/agent/lottery': 'agentLottery',
   '/agent/pending-payouts': 'agentPendingPayouts',
-  '/agent/betting': 'operatorBetting'
+  '/agent/betting': 'operatorBetting',
+  '/member': 'memberDashboard',
+  '/member/buy': 'memberBuy',
+  '/member/slips': 'memberSlips',
+  '/member/wallet': 'memberWallet',
+  '/member/pending-payouts': 'memberPendingPayouts',
+  '/member/notifications': 'memberNotifications'
 });
 
 const routeChunkPromises = new Map();
@@ -47,6 +60,7 @@ const resolveRouteKey = (path, role) => {
   const normalizedPath = cleanPath(path);
   if (routeKeyByPath[normalizedPath]) return routeKeyByPath[normalizedPath];
   if (role === 'agent' && normalizedPath.startsWith('/agent/customers/')) return 'agentMemberDetail';
+  if (role === 'customer' && normalizedPath.startsWith('/member/slips/')) return 'memberSlipDetail';
   return null;
 };
 
