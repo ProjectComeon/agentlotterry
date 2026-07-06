@@ -27,10 +27,17 @@ const AgentLottery = lazy(routeLoaders.agentLottery);
 const AgentReports = lazy(routeLoaders.agentReports);
 const AgentPendingPayouts = lazy(routeLoaders.agentPendingPayouts);
 const OperatorBetting = lazy(routeLoaders.operatorBetting);
+const MemberDashboard = lazy(routeLoaders.memberDashboard);
+const MemberBuy = lazy(routeLoaders.memberBuy);
+const MemberSlips = lazy(routeLoaders.memberSlips);
+const MemberSlipDetail = lazy(routeLoaders.memberSlipDetail);
+const MemberWallet = lazy(routeLoaders.memberWallet);
+const MemberPendingPayouts = lazy(routeLoaders.memberPendingPayouts);
+const MemberNotifications = lazy(routeLoaders.memberNotifications);
 
 const AppLayout = ({ children }) => {
   const { user } = useAuth();
-  const showBottomNav = user?.role === 'agent';
+  const showBottomNav = ['agent', 'customer'].includes(user?.role);
 
   return (
     <div className="app-layout">
@@ -160,7 +167,44 @@ function App() {
               </ProtectedRoute>
             } />
 
-            <Route path="/customer/*" element={<Navigate to="/login" replace />} />
+            {/* Member Routes */}
+            <Route path="/member" element={
+              <ProtectedRoute roles={['customer']}>
+                <AppLayout><MemberDashboard /></AppLayout>
+              </ProtectedRoute>
+            } />
+            <Route path="/member/buy" element={
+              <ProtectedRoute roles={['customer']}>
+                <AppLayout><MemberBuy /></AppLayout>
+              </ProtectedRoute>
+            } />
+            <Route path="/member/slips" element={
+              <ProtectedRoute roles={['customer']}>
+                <AppLayout><MemberSlips /></AppLayout>
+              </ProtectedRoute>
+            } />
+            <Route path="/member/slips/:id" element={
+              <ProtectedRoute roles={['customer']}>
+                <AppLayout><MemberSlipDetail /></AppLayout>
+              </ProtectedRoute>
+            } />
+            <Route path="/member/wallet" element={
+              <ProtectedRoute roles={['customer']}>
+                <AppLayout><MemberWallet /></AppLayout>
+              </ProtectedRoute>
+            } />
+            <Route path="/member/pending-payouts" element={
+              <ProtectedRoute roles={['customer']}>
+                <AppLayout><MemberPendingPayouts /></AppLayout>
+              </ProtectedRoute>
+            } />
+            <Route path="/member/notifications" element={
+              <ProtectedRoute roles={['customer']}>
+                <AppLayout><MemberNotifications /></AppLayout>
+              </ProtectedRoute>
+            } />
+
+            <Route path="/customer/*" element={<Navigate to="/member" replace />} />
 
             {/* Catch all */}
             <Route path="*" element={<Navigate to="/" />} />

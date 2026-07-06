@@ -2,10 +2,11 @@ import { useEffect, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { preloadAppRouteForPath } from '../utils/appPreload';
-import { getAdminPendingPayouts, getAgentPendingPayouts } from '../services/api';
+import { getAdminPendingPayouts, getAgentPendingPayouts, getMemberPendingPayouts } from '../services/api';
 import {
   FiAward,
   FiBell,
+  FiCreditCard,
   FiDollarSign,
   FiFileText,
   FiHome,
@@ -35,12 +36,31 @@ const menuItems = {
     { path: '/agent/bets', label: 'โพย', icon: <FiList /> },
     { path: '/agent/pending-payouts', label: 'ค้างจ่าย', icon: <FiBell /> },
     { path: '/agent/reports', label: 'รายงาน', icon: <FiFileText /> }
+  ],
+  customer: [
+    { path: '/member', label: 'แดชบอร์ด', icon: <FiHome /> },
+    { path: '/member/buy', label: 'ซื้อหวย', icon: <FiDollarSign /> },
+    { path: '/member/slips', label: 'โพยของฉัน', icon: <FiList /> },
+    { path: '/member/wallet', label: 'เครดิต', icon: <FiCreditCard /> },
+    { path: '/member/pending-payouts', label: 'รางวัล', icon: <FiBell /> },
+    { path: '/member/notifications', label: 'แจ้งเตือน', icon: <FiFileText /> }
   ]
 };
 
 const roleLabels = {
   admin: 'ผู้ดูแลระบบ',
-  agent: 'เอเย่นต์'
+  agent: 'เอเย่นต์',
+  customer: 'สมาชิก'
+};
+
+const getVisibleItems = (role) => {
+  const items = menuItems[role] || [];
+  if (role !== 'agent') return items;
+  return [
+    ...items.slice(0, 4),
+    { path: '/agent/lottery', label: 'ผลรางวัล', icon: <FiAward /> },
+    ...items.slice(4)
+  ];
 };
 
 const Navbar = () => {
@@ -50,26 +70,23 @@ const Navbar = () => {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [pendingBadgeCount, setPendingBadgeCount] = useState(0);
 
-  const items = menuItems[user?.role] || [];
-  const visibleItems = user?.role === 'agent'
-    ? [
-      ...items.slice(0, 4),
-      { path: '/agent/lottery', label: 'ผลรางวัล', icon: <FiAward /> },
-      ...items.slice(4)
-    ]
-    : items;
+  const visibleItems = getVisibleItems(user?.role);
   const roleLabel = user?.displayRole || roleLabels[user?.role] || '-';
 
   useEffect(() => {
     let active = true;
     const loadPendingBadge = async () => {
-      if (!user?.role || !['admin', 'agent'].includes(user.role)) {
+      if (!user?.role || !['admin', 'agent', 'customer'].includes(user.role)) {
         setPendingBadgeCount(0);
         return;
       }
 
       try {
-        const fetchPending = user.role === 'admin' ? getAdminPendingPayouts : getAgentPendingPayouts;
+        const fetchPending = user.role === 'admin'
+          ? getAdminPendingPayouts
+          : user.role === 'agent'
+            ? getAgentPendingPayouts
+            : getMemberPendingPayouts;
         const response = await fetchPending({ status: 'pending', limit: 1 }, { force: true });
         if (active) {
           setPendingBadgeCount(Number(response.data.summary?.pendingCount || 0));
@@ -86,7 +103,7 @@ const Navbar = () => {
   }, [user?.role]);
 
   const isItemActive = (path) =>
-    location.pathname === path || (path !== `/${user?.role}` && location.pathname.startsWith(`${path}/`));
+    location.pathname === path || (path !== `/${user?.role === 'customer' ? 'member' : user?.role}` && location.pathname.startsWith(`${path}/`));
 
   const handleLogout = async () => {
     await logout();
@@ -111,7 +128,7 @@ const Navbar = () => {
             {mobileOpen ? <FiX /> : <FiMenu />}
           </button>
 
-          <Link to={`/${user?.role}`} className="navbar-brand">
+          <Link to={user?.role === 'customer' ? '/member' : `/${user?.role}`} className="navbar-brand">
             <div className="navbar-logo">L</div>
             <span className="navbar-brand-text">หวยเอเย่นต์</span>
           </Link>
