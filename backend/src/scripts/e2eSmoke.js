@@ -1,9 +1,7 @@
 require('dotenv').config({ path: require('path').join(__dirname, '..', '..', '.env') });
 
 const assert = require('assert');
-const axios = require('axios');
 const { createCookieSessionClient } = require('./e2eCookieClient');
-const jwt = require('jsonwebtoken');
 const mongoose = require('mongoose');
 const { spawn } = require('child_process');
 const path = require('path');
@@ -28,13 +26,6 @@ const adminPassword = process.env.E2E_ADMIN_PASSWORD || process.env.DEFAULT_ADMI
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const makeClient = () => createCookieSessionClient({ baseURL });
-
-const makeBearerClient = (token) =>
-  axios.create({
-    baseURL,
-    validateStatus: () => true,
-    headers: { Authorization: `Bearer ${token}` }
-  });
 
 const expectStatus = (response, expected, label) => {
   if (response.status !== expected) {
@@ -309,24 +300,23 @@ const main = async () => {
     assert((memberDetailResponse.data.lotteryConfigs || []).some((lottery) => lottery.lotteryCode === selectedLottery.code && lottery.isEnabled), 'Enabled lottery not found in member detail');
     summary.checks.push('agent-member-detail');
 
-    const memberLoginResponse = await makeClient().post('/auth/login', {
-      username: memberUsername,
-      password: memberPassword
-    });
-    assert(memberLoginResponse.status === 403, 'Member login should be forbidden');
-    summary.checks.push('member-login-forbidden');
+    const memberLogin = await loginWithRetry(memberUsername, memberPassword, 'Member');
+    const memberClient = memberLogin.client;
+    assert(memberLogin.user.role === 'customer', 'Member login should return customer role');
+    summary.checks.push('member-login-session');
 
-    const disabledMemberToken = jwt.sign(
-      { id: memberId, role: 'customer' },
-      process.env.JWT_SECRET,
-      { expiresIn: '24h' }
-    );
-    const disabledMemberClient = makeBearerClient(disabledMemberToken);
+    const memberMeResponse = await memberClient.get('/member/me');
+    expectStatus(memberMeResponse, 200, 'Member self profile');
+    assert(memberMeResponse.data.member?.id === memberId, 'Member /me should only return the logged-in member');
+    summary.checks.push('member-me');
 
-    const blockedMemberMeResponse = await disabledMemberClient.get('/auth/me');
-    assert(blockedMemberMeResponse.status === 403, 'Existing member token should be blocked');
-    summary.checks.push('member-token-blocked');
-
+    const [memberAdminBlockedResponse, memberAgentBlockedResponse] = await Promise.all([
+      memberClient.get('/admin/pending-payouts'),
+      memberClient.get('/agent/pending-payouts')
+    ]);
+    assert(memberAdminBlockedResponse.status === 403, 'Member session must not access admin APIs');
+    assert(memberAgentBlockedResponse.status === 403, 'Member session must not access agent APIs');
+    summary.checks.push('member-admin-agent-api-blocked');
     const transferCreditResponse = await agentClient.post('/wallet/transfer', {
       memberId,
       amount: 50,
@@ -723,7 +713,7 @@ const main = async () => {
     assert(agentBlockedParseResponse.status === 400, 'Blocked-number parse should fail for operator flow');
     summary.checks.push('agent-blocked-number-for-member');
 
-    const memberForbiddenParseResponse = await disabledMemberClient.post('/member/slips/parse', {
+    const memberForbiddenParseResponse = await memberClient.post('/member/slips/parse', {
       lotteryId: visibleLotteries[0].id,
       roundId: selectedRound.id,
       rateProfileId: selectedRateProfileId,
@@ -737,7 +727,7 @@ const main = async () => {
     assert(memberForbiddenParseResponse.status === 403, 'Member parse should be forbidden');
     summary.checks.push('member-parse-forbidden');
 
-    const memberForbiddenCreateResponse = await disabledMemberClient.post('/member/slips', {
+    const memberForbiddenCreateResponse = await memberClient.post('/member/slips', {
       lotteryId: visibleLotteries[0].id,
       roundId: selectedRound.id,
       rateProfileId: selectedRateProfileId,

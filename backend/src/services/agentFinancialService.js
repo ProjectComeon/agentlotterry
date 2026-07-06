@@ -102,12 +102,27 @@ const insertNotificationEvents = async ({ type, agentId, customerId, payout, ses
         payoutAmount,
         pendingPayoutId: toIdString(payout?._id)
       }
+    },
+    {
+      type,
+      recipientRole: 'customer',
+      recipientUserId: customerId,
+      agentId,
+      customerId,
+      title: type === 'agent_pending_payout_paid' ? 'Payout paid' : 'Payout is waiting',
+      message: type === 'agent_pending_payout_paid'
+        ? `System paid your payout ${payoutAmount} automatically`
+        : `Your payout of ${payoutAmount} is waiting for agent credit`,
+      metadata: {
+        payoutId: payout?.payoutId || '',
+        payoutAmount,
+        pendingPayoutId: toIdString(payout?._id)
+      }
     }
   ];
 
   await NotificationEvent.insertMany(payloads, { session });
 };
-
 const holdAgentStake = async ({ agentId, customerId, slip, amount, actor, session }) => {
   const stakeAmount = toMoney(amount);
   if (stakeAmount <= 0) return null;
