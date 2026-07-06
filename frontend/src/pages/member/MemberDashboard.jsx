@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
-import { FiBell, FiChevronRight, FiClock, FiCreditCard, FiFileText, FiRefreshCw, FiSend, FiTrendingUp } from 'react-icons/fi';
+import { FiAlertCircle, FiBell, FiChevronRight, FiClock, FiCreditCard, FiFileText, FiRefreshCw, FiSend, FiTrendingUp } from 'react-icons/fi';
 import PageSkeleton from '../../components/PageSkeleton';
 import {
   getMemberMe,
@@ -45,9 +45,11 @@ const MemberDashboard = () => {
   const [notificationSummary, setNotificationSummary] = useState({ unreadCount: 0 });
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [loadError, setLoadError] = useState('');
 
   const load = useCallback(async () => {
     setRefreshing(true);
+    setLoadError('');
     try {
       const catalog = await ensureCatalogLoaded?.({ force: true });
       const lotteries = flattenLotteries(catalog?.leagues || []).filter((lottery) => lottery.id);
@@ -145,6 +147,8 @@ const MemberDashboard = () => {
         <Link to="/member/slips" className="btn btn-secondary"><FiFileText /> ดูโพยทั้งหมด</Link>
         <button type="button" className="btn btn-secondary" onClick={load} disabled={refreshing}><FiRefreshCw /> Refresh</button>
       </section>
+
+      {loadError ? <section className="member-note member-error-note"><FiAlertCircle /> {loadError}</section> : null}
 
       <section className="card member-panel member-rounds-panel">
         <div className="member-panel-head">

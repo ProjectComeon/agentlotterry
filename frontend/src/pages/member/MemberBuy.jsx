@@ -53,6 +53,7 @@ const MemberBuy = () => {
   const [draftSlip, setDraftSlip] = useState(null);
   const [submittedSlip, setSubmittedSlip] = useState(null);
   const [submitError, setSubmitError] = useState('');
+  const [loadError, setLoadError] = useState('');
   const [loading, setLoading] = useState(true);
   const [loadingRounds, setLoadingRounds] = useState(false);
   const [drafting, setDrafting] = useState(false);
@@ -88,6 +89,7 @@ const MemberBuy = () => {
 
   const loadInitial = useCallback(async () => {
     setLoading(true);
+    setLoadError('');
     try {
       const [catalog, walletResponse] = await Promise.all([
         ensureCatalogLoaded?.({ force: true }),
@@ -290,6 +292,8 @@ const MemberBuy = () => {
           <small>ใช้บัญชีสมาชิกที่ login อยู่เท่านั้น</small>
         </div>
       </section>
+
+      {loadError ? <section className="member-note member-error-note"><FiAlertCircle /> {loadError}</section> : null}
 
       <section className="member-buy-context-grid">
         <article className="ops-overview-card">
