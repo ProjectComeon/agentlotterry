@@ -12,7 +12,7 @@ Official references:
 
 ## Current App Shape
 
-- Backend: Node/Express, default `PORT=5000`, API under `/api`.
+- Backend: Node/Express, default `PORT=5000`, API under `/api`; optional `BACKEND_HOST` controls the bind host.
 - Frontend dev server: Vite on `3000`, proxies `/api` to `http://localhost:5000`.
 - Docker preview: Caddy listens on `HTTP_PORT` default `8080` and proxies `/api/*` to the backend container.
 - Frontend API client: `VITE_API_URL` defaults to empty, so browser requests use same-origin `/api`.
@@ -26,6 +26,7 @@ Use these supported variables instead:
 
 - `PUBLIC_ORIGIN`: Docker Compose public browser origin; passed to backend as `FRONTEND_URL`.
 - `FRONTEND_URL`: backend CORS origin. Set to the exact public HTTPS frontend URL when the browser calls the backend across origins.
+- `BACKEND_HOST`: optional backend bind host. Set `127.0.0.1` for local dev-server preview when only Vite should reach the API; leave empty for Docker/Caddy unless the private interface is known.
 - `VITE_API_URL`: frontend API origin without `/api`. Keep empty for same-origin `/api` through Vite or Caddy.
 - `TRUST_PROXY=true`: required when running production-like preview behind Cloudflare.
 - `NODE_ENV=production`: recommended for public preview so auth cookies are marked `Secure`.
@@ -110,6 +111,7 @@ Use this when you do not want Docker. It still exposes only the frontend dev ser
 cd backend
 $env:NODE_ENV='production'
 $env:PORT='5000'
+$env:BACKEND_HOST='127.0.0.1'
 $env:FRONTEND_URL='http://localhost:3000'
 $env:TRUST_PROXY='true'
 $env:MONGODB_URI='mongodb://127.0.0.1:27017/agent-lottery'
@@ -287,5 +289,6 @@ Also remove the public hostname/DNS record from the Cloudflare dashboard if it w
 - CSRF failure: make sure the app is using the frontend API client, the `agentlottery_csrf` cookie exists, and unsafe requests include `X-CSRF-Token`.
 - Quick Tunnel URL changed: update `PUBLIC_ORIGIN`/`FRONTEND_URL` and restart the backend if exact origin matters.
 - Backend does not see HTTPS/proxy correctly: set `TRUST_PROXY=true` and expose through Cloudflare HTTPS only.
+- Backend is listening on all interfaces during local preview: set `BACKEND_HOST=127.0.0.1` and restart backend, then tunnel only the frontend/Caddy web entrypoint.
 - `trycloudflare.com` does not start: Cloudflare notes Quick Tunnels may not work when a `config.yaml` exists in the user `.cloudflared` directory; temporarily rename that local file.
 - Backend cannot connect to MongoDB from Docker: use Atlas allowlisting for the dev machine's current public IP or a host-only local URI such as `mongodb://host.docker.internal:27017/agent-lottery`.

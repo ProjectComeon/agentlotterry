@@ -11,6 +11,7 @@ const {
   autoSeedCatalog,
   autoRetentionCleanup,
   autoSyncResults,
+  backendHost,
   cronSyncToken,
   defaultAdminPassword,
   defaultAdminUsername,
@@ -204,9 +205,15 @@ bootstrapApp()
       console.log('Retention auto-cleanup disabled; set AUTO_RETENTION_CLEANUP=true after validating npm run retention:cleanup:dry');
     }
 
-    app.listen(PORT, () => {
-      console.log(`Server running on port ${PORT}`);
-    });
+    const listenCallback = () => {
+      console.log(backendHost ? `Server running on ${backendHost}:${PORT}` : `Server running on port ${PORT}`);
+    };
+
+    if (backendHost) {
+      app.listen(PORT, backendHost, listenCallback);
+    } else {
+      app.listen(PORT, listenCallback);
+    }
   })
   .catch(() => {
     process.exit(1);
