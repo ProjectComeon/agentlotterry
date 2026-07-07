@@ -3776,6 +3776,85 @@ input, select, textarea {
   margin: 18px 0;
 }
 
+.member-round-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.member-round-search {
+  position: relative;
+  flex: 1 1 320px;
+  min-width: 220px;
+}
+
+.member-round-search svg {
+  position: absolute;
+  left: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--text-muted);
+  pointer-events: none;
+}
+
+.member-round-search-input {
+  width: 100%;
+  min-height: 44px;
+  padding: 11px 14px 11px 42px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-input);
+  color: var(--text-primary);
+  font-size: 0.9rem;
+}
+
+.member-round-search-input:focus {
+  border-color: var(--border-accent);
+  box-shadow: 0 0 0 4px var(--primary-subtle);
+}
+
+.member-round-filter-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-surface);
+}
+
+.member-round-filter-button {
+  min-height: 36px;
+  padding: 7px 12px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 0.82rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.member-round-filter-button.is-active,
+.member-round-filter-button:hover {
+  background: var(--primary-subtle);
+  color: var(--primary-dark);
+}
+
+.member-round-result-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+  color: var(--text-secondary);
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
 .member-round-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
@@ -4247,5 +4326,26 @@ input, select, textarea {
 
   .member-preview-row > div:last-child {
     text-align: left;
+  }
+}
+@media (max-width: 760px) {
+  .member-round-toolbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .member-round-search {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .member-round-filter-group {
+    width: 100%;
+    overflow-x: auto;
+    justify-content: flex-start;
+  }
+
+  .member-round-filter-button {
+    flex: 0 0 auto;
   }
 }

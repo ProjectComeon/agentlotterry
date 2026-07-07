@@ -75,6 +75,12 @@ assert.doesNotMatch(navbarSource, /\u0e08\u0e48\u0e32\u0e22\u0e41\u0e17\u0e19|pa
 assert.match(memberDashboardSource, /getMemberRounds/, 'member dashboard should load member-scoped open rounds');
 assert.match(memberDashboardSource, /member-round-card/, 'member dashboard should render selectable round cards');
 assert.match(memberDashboardSource, /\/member\/buy\?[\s\S]*roundId/, 'member dashboard round cards should link into buy flow with selected roundId');
+assert.match(memberDashboardSource, /searchQuery/, 'member dashboard should keep a search query for filtering round cards');
+assert.match(memberDashboardSource, /member-round-search-input/, 'member dashboard should render a round search input');
+assert.match(memberDashboardSource, /roundFilter/, 'member dashboard should keep a simple round filter state');
+assert.match(memberDashboardSource, /ใกล้ปิดรับ/, 'member dashboard should expose a near-closing filter');
+assert.match(memberDashboardSource, /filteredRounds/, 'member dashboard should filter rounds before applying the display limit');
+assert.match(memberDashboardSource, /แสดง 24 รายการแรก/, 'member dashboard should make the 24 result limit visible');
 assert.match(memberDashboardSource, /catch \(error\) \{[\s\S]*?const message =[\s\S]*?setLoadError\(message\)[\s\S]*?toast\.error\(message\)/, 'member dashboard load failures should render the persistent load error banner');
 assert.match(memberBuySource, /submitMemberSlip/, 'member buy UI should submit through the member self-buying API');
 assert.match(memberBuySource, /createMemberDraftSlip/, 'member buy UI should preview through member draft API instead of legacy parse');

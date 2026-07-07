@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
-import { FiAlertCircle, FiBell, FiChevronRight, FiClock, FiCreditCard, FiFileText, FiRefreshCw, FiSend, FiTrendingUp } from 'react-icons/fi';
+import { FiAlertCircle, FiBell, FiChevronRight, FiClock, FiCreditCard, FiFileText, FiRefreshCw, FiSearch, FiSend, FiTrendingUp } from 'react-icons/fi';
 import PageSkeleton from '../../components/PageSkeleton';
 import {
   getMemberMe,
@@ -33,6 +33,39 @@ const getRoundSortTime = (round = {}) => {
 };
 const buildBuyLink = (round = {}) => `/member/buy?lotteryId=${encodeURIComponent(round.lotteryId || '')}&roundId=${encodeURIComponent(round.id || '')}`;
 
+const ROUND_DISPLAY_LIMIT = 24;
+const NEAR_CLOSING_WINDOW_MS = 6 * 60 * 60 * 1000;
+const roundFilterOptions = [
+  { value: 'all', label: 'ทั้งหมด' },
+  { value: 'open', label: 'เปิดขายอยู่' },
+  { value: 'closing-soon', label: 'ใกล้ปิดรับ' }
+];
+
+const normalizeSearchText = (value) => String(value || '').trim().toLowerCase();
+const getRoundSearchText = (round = {}) => [
+  round.lotteryName,
+  round.leagueName,
+  round.lotteryCode,
+  round.code,
+  round.label,
+  round.title,
+  round.name,
+  round.roundCode,
+  round.displayDate,
+  getRoundDisplay(round)
+].map(normalizeSearchText).filter(Boolean).join(' ');
+const getRoundCloseTimestamp = (round = {}) => {
+  const closeValue = getRoundCloseTime(round);
+  if (!closeValue) return Number.POSITIVE_INFINITY;
+  const parsed = new Date(closeValue).getTime();
+  return Number.isNaN(parsed) ? Number.POSITIVE_INFINITY : parsed;
+};
+const isNearClosingRound = (round = {}) => {
+  const closeTime = getRoundCloseTimestamp(round);
+  const now = Date.now();
+  return closeTime >= now && closeTime <= now + NEAR_CLOSING_WINDOW_MS;
+};
+
 const MemberDashboard = () => {
   const { ensureCatalogLoaded } = useCatalog();
   const [member, setMember] = useState(null);
@@ -46,6 +79,8 @@ const MemberDashboard = () => {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [loadError, setLoadError] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [roundFilter, setRoundFilter] = useState('all');
 
   const load = useCallback(async () => {
     setRefreshing(true);
@@ -97,7 +132,19 @@ const MemberDashboard = () => {
     load();
   }, [load]);
 
-  const featuredRounds = useMemo(() => rounds.slice(0, 24), [rounds]);
+  const filteredRounds = useMemo(() => {
+    const query = normalizeSearchText(searchQuery);
+    return rounds.filter((round) => {
+      const matchesSearch = !query || getRoundSearchText(round).includes(query);
+      const matchesFilter = roundFilter === 'all'
+        || (roundFilter === 'open' && round.status === 'open')
+        || (roundFilter === 'closing-soon' && isNearClosingRound(round));
+      return matchesSearch && matchesFilter;
+    });
+  }, [roundFilter, rounds, searchQuery]);
+
+  const visibleRounds = useMemo(() => filteredRounds.slice(0, ROUND_DISPLAY_LIMIT), [filteredRounds]);
+  const isRoundListLimited = filteredRounds.length > visibleRounds.length;
 
   if (loading) return <PageSkeleton statCount={4} rows={6} sidebar={false} />;
 
@@ -127,7 +174,7 @@ const MemberDashboard = () => {
         </article>
         <article className="ops-overview-card">
           <div className="ops-icon-badge"><FiClock /></div>
-          <strong>{featuredRounds.length}</strong>
+          <strong>{rounds.length}</strong>
           <span>รอบที่เปิดขาย</span>
           <small>แสดงตามสิทธิ์บัญชีสมาชิก</small>
         </article>
@@ -160,9 +207,39 @@ const MemberDashboard = () => {
           </div>
           <span className="badge badge-success">เลือกซื้อได้</span>
         </div>
-        {featuredRounds.length ? (
+
+        <div className="member-round-toolbar">
+          <label className="member-round-search">
+            <FiSearch />
+            <input
+              className="member-round-search-input"
+              value={searchQuery}
+              onChange={(event) => setSearchQuery(event.target.value)}
+              placeholder="ค้นหาชื่อหวย ชื่อรอบ หรือ code"
+            />
+          </label>
+          <div className="member-round-filter-group" aria-label="กรองรอบหวย">
+            {roundFilterOptions.map((option) => (
+              <button
+                key={option.value}
+                type="button"
+                className={`member-round-filter-button ${roundFilter === option.value ? 'is-active' : ''}`}
+                onClick={() => setRoundFilter(option.value)}
+                aria-pressed={roundFilter === option.value}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="member-round-result-meta">
+          <span>พบ {filteredRounds.length} จาก {rounds.length} รอบ</span>
+          {isRoundListLimited ? <span>แสดง 24 รายการแรกจากผลลัพธ์ที่ตรงเงื่อนไข</span> : null}
+        </div>
+        {visibleRounds.length ? (
           <div className="member-round-grid">
-            {featuredRounds.map((round) => (
+            {visibleRounds.map((round) => (
               <Link key={`${round.lotteryId}-${round.id}`} to={buildBuyLink(round)} className="member-round-card">
                 <div className="member-round-card-head">
                   <div>
@@ -190,7 +267,7 @@ const MemberDashboard = () => {
           </div>
         ) : (
           <div className="empty-state">
-            <div className="empty-state-text">ยังไม่มีรอบที่เปิดขายสำหรับบัญชีนี้</div>
+            <div className="empty-state-text">{searchQuery || roundFilter !== 'all' ? 'ไม่พบรอบหวยที่ตรงกับคำค้นหาหรือตัวกรองนี้' : 'ยังไม่มีรอบที่เปิดขายสำหรับบัญชีนี้'}</div>
           </div>
         )}
       </section>
