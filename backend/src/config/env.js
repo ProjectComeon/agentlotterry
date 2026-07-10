@@ -53,6 +53,23 @@ const autoRetentionCleanup = parseBoolean(process.env.AUTO_RETENTION_CLEANUP, fa
 const retentionCleanupIntervalMs = Number(process.env.RETENTION_CLEANUP_INTERVAL_MS || 86400000);
 const retentionCleanupStartupDelayMs = Number(process.env.RETENTION_CLEANUP_STARTUP_DELAY_MS || 120000);
 const retentionKeepPreviousMonths = Number(process.env.RETENTION_KEEP_PREVIOUS_MONTHS || 1);
+const lotteryProvider = toText(process.env.LOTTERY_PROVIDER, 'mock').toLowerCase();
+const lotteryApiBaseUrl = toText(process.env.LOTTERY_API_BASE_URL);
+const lotteryApiKey = toText(process.env.LOTTERY_API_KEY);
+const lotteryApiTimeoutMs = Number(process.env.LOTTERY_API_TIMEOUT_MS || 5000);
+const lotteryProviderMockScenario = toText(process.env.LOTTERY_PROVIDER_MOCK_SCENARIO, 'valid').toLowerCase();
+
+const isLocalOrPrivateHost = (hostname) => {
+  const normalized = toText(hostname).toLowerCase();
+  return normalized === 'localhost' ||
+    normalized === '::1' ||
+    normalized === '[::1]' ||
+    normalized.startsWith('127.') ||
+    normalized.startsWith('10.') ||
+    normalized.startsWith('192.168.') ||
+    /^172\.(1[6-9]|2\d|3[01])\./.test(normalized) ||
+    normalized.startsWith('169.254.');
+};
 
 const validateEnv = () => {
   const issues = [];
@@ -121,6 +138,31 @@ const validateEnv = () => {
     issues.push('RETENTION_KEEP_PREVIOUS_MONTHS must be a number >= 1');
   }
 
+  if (!['mock'].includes(lotteryProvider)) {
+    issues.push(`LOTTERY_PROVIDER "${lotteryProvider}" is not supported`);
+  }
+
+  if (!Number.isFinite(lotteryApiTimeoutMs) || lotteryApiTimeoutMs < 1000 || lotteryApiTimeoutMs > 30000) {
+    issues.push('LOTTERY_API_TIMEOUT_MS must be a number between 1000 and 30000');
+  }
+
+  if (lotteryApiBaseUrl) {
+    try {
+      const url = new URL(lotteryApiBaseUrl);
+      if (url.username || url.password) {
+        issues.push('LOTTERY_API_BASE_URL must not include credentials');
+      }
+      if (isProduction && url.protocol !== 'https:') {
+        issues.push('LOTTERY_API_BASE_URL must use HTTPS in production');
+      }
+      if (isProduction && isLocalOrPrivateHost(url.hostname)) {
+        issues.push('LOTTERY_API_BASE_URL must not point to local or private hosts in production');
+      }
+    } catch {
+      issues.push('LOTTERY_API_BASE_URL must be a valid absolute URL when set');
+    }
+  }
+
   if (issues.length) {
     const error = new Error(`Environment validation failed: ${issues.join('; ')}`);
     error.validationIssues = issues;
@@ -148,7 +190,12 @@ const getEnvSummary = () => ({
   autoRetentionCleanup,
   retentionCleanupIntervalMs,
   retentionCleanupStartupDelayMs,
-  retentionKeepPreviousMonths
+  retentionKeepPreviousMonths,
+  lotteryProvider,
+  lotteryApiBaseUrlConfigured: Boolean(lotteryApiBaseUrl),
+  lotteryApiKeyConfigured: Boolean(lotteryApiKey),
+  lotteryApiTimeoutMs,
+  lotteryProviderMockScenario
 });
 
 module.exports = {
@@ -174,6 +221,11 @@ module.exports = {
   retentionCleanupIntervalMs,
   retentionCleanupStartupDelayMs,
   retentionKeepPreviousMonths,
+  lotteryProvider,
+  lotteryApiBaseUrl,
+  lotteryApiKey,
+  lotteryApiTimeoutMs,
+  lotteryProviderMockScenario,
   validateEnv,
   getEnvSummary
 };

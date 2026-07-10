@@ -25,6 +25,13 @@ const {
   listPendingPayouts,
   markNotificationRead
 } = require('../services/pendingPayoutNotificationService');
+const {
+  getProviderStatus,
+  listLotteries: listProviderLotteries,
+  listRounds: listProviderRounds,
+  getResults: listProviderResults,
+  toSafeProviderError
+} = require('../services/lotteryProvider');
 const { registerBettingRoutes } = require('./helpers/registerBettingRoutes');
 const { parsePaginationQuery } = require('../utils/pagination');
 const { BET_TYPES, DEFAULT_GLOBAL_RATES } = require('../constants/betting');
@@ -247,6 +254,61 @@ router.post('/notifications/:id/read', async (req, res) => {
   } catch (error) {
     console.error('Admin notification read error:', error);
     res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// GET /api/admin/lottery-provider/status
+router.get('/lottery-provider/status', async (req, res) => {
+  try {
+    res.json({ provider: await getProviderStatus() });
+  } catch (error) {
+    const safeError = toSafeProviderError(error);
+    console.error('Lottery provider status error:', safeError.body.code);
+    res.status(safeError.status).json(safeError.body);
+  }
+});
+
+// GET /api/admin/lottery-provider/preview/lotteries
+router.get('/lottery-provider/preview/lotteries', async (req, res) => {
+  try {
+    res.json({ lotteries: await listProviderLotteries() });
+  } catch (error) {
+    const safeError = toSafeProviderError(error);
+    console.error('Lottery provider lotteries preview error:', safeError.body.code);
+    res.status(safeError.status).json(safeError.body);
+  }
+});
+
+// GET /api/admin/lottery-provider/preview/rounds
+router.get('/lottery-provider/preview/rounds', async (req, res) => {
+  try {
+    res.json({
+      rounds: await listProviderRounds({
+        lotteryExternalId: req.query.lotteryExternalId,
+        status: req.query.status
+      })
+    });
+  } catch (error) {
+    const safeError = toSafeProviderError(error);
+    console.error('Lottery provider rounds preview error:', safeError.body.code);
+    res.status(safeError.status).json(safeError.body);
+  }
+});
+
+// GET /api/admin/lottery-provider/preview/results
+router.get('/lottery-provider/preview/results', async (req, res) => {
+  try {
+    res.json({
+      results: await listProviderResults({
+        lotteryExternalId: req.query.lotteryExternalId,
+        roundExternalId: req.query.roundExternalId,
+        status: req.query.status
+      })
+    });
+  } catch (error) {
+    const safeError = toSafeProviderError(error);
+    console.error('Lottery provider results preview error:', safeError.body.code);
+    res.status(safeError.status).json(safeError.body);
   }
 });
 

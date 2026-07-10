@@ -99,6 +99,7 @@ jobs:
         run: |
           npm run test:auth-search-guards
           npm run test:cookie-auth-guards
+          npm run test:lottery-provider
           npm run test:backup-restore-guards
           npm run test:retention-policy
 
