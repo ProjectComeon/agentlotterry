@@ -112,8 +112,31 @@ try {
     /CRON_SYNC_TOKEN is required in production when AUTO_SYNC_RESULTS=false/
   );
   process.env.CRON_SYNC_TOKEN = 'cron-token-long-enough-value';
+  process.env.BACKEND_HOST = '127.0.0.1';
   delete require.cache[require.resolve('../config/env')];
-  assert.doesNotThrow(() => require('../config/env').validateEnv());
+  const validEnv = require('../config/env');
+  assert.strictEqual(validEnv.backendHost, '127.0.0.1', 'BACKEND_HOST should be exported for server bind');
+  assert.doesNotThrow(() => validEnv.validateEnv());
+
+  for (const host of ['::1', 'backend.internal']) {
+    process.env.BACKEND_HOST = host;
+    delete require.cache[require.resolve('../config/env')];
+    assert.doesNotThrow(() => require('../config/env').validateEnv());
+  }
+
+  process.env.BACKEND_HOST = 'http://127.0.0.1';
+  delete require.cache[require.resolve('../config/env')];
+  assert.throws(
+    () => require('../config/env').validateEnv(),
+    /BACKEND_HOST must be a bind host only/
+  );
+
+  process.env.BACKEND_HOST = ' 127.0.0.1';
+  delete require.cache[require.resolve('../config/env')];
+  assert.throws(
+    () => require('../config/env').validateEnv(),
+    /BACKEND_HOST must be a bind host only/
+  );
 } finally {
   process.env = originalEnv;
   delete require.cache[require.resolve('../config/env')];

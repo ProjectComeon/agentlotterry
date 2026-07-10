@@ -4,7 +4,7 @@ This runbook is for a real production deployment of Agent Lottery. It is not a p
 
 ## Supported App Shape
 
-- Backend: Node/Express API under `/api`, default `PORT=5000`.
+- Backend: Node/Express API under `/api`, default `PORT=5000`; optional `BACKEND_HOST` can restrict the bind host when the private interface is known.
 - Frontend: Vite React static build.
 - Recommended public shape: one HTTPS web origin that serves the frontend and reverse-proxies `/api` to the backend.
 - Database: MongoDB reachable from the backend only. Do not expose MongoDB to the public internet.
@@ -22,6 +22,8 @@ Minimum required backend values:
 ```env
 NODE_ENV=production
 PORT=5000
+# Optional. Use only when the deployment topology has a known private bind host.
+BACKEND_HOST=
 TRUST_PROXY=true
 FRONTEND_URL=https://app.example.com
 MONGODB_URI=mongodb+srv://<username>:<password>@<cluster-host>/agent-lottery
@@ -64,6 +66,7 @@ Rules:
 - Forward `X-Forwarded-Proto` and `X-Forwarded-Host`.
 - Keep `TRUST_PROXY=true` behind HTTPS proxies.
 - Do not expose the backend port directly to the public internet when a reverse proxy is available.
+- Bind the backend to a private interface or localhost when your host/proxy topology supports it; leave `BACKEND_HOST` empty for platforms that inject their own listener interface.
 - Do not expose MongoDB, backup storage, admin-only internal ports, or local dev servers.
 
 ## Build And Start

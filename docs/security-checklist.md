@@ -6,7 +6,7 @@ This checklist covers baseline production exposure and application security cont
 
 - [ ] Public traffic enters only through HTTPS.
 - [ ] Reverse proxy or load balancer is the only public web entrypoint.
-- [ ] Backend port is private when using a reverse proxy.
+- [ ] Backend port is private when using a reverse proxy, and `BACKEND_HOST` is set to a private bind host when the runtime supports it.
 - [ ] MongoDB is not public.
 - [ ] Backup storage is not public.
 - [ ] Admin-only internal ports are not public.
