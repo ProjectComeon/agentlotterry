@@ -32,6 +32,7 @@ const normalizeLogFormat = (value, fallback) => {
 
 const nodeEnv = toText(process.env.NODE_ENV, 'development').toLowerCase();
 const isProduction = nodeEnv === 'production';
+const rawBackendHost = String(process.env.BACKEND_HOST ?? '');
 const backendHost = toText(process.env.BACKEND_HOST);
 const frontendUrl = toText(process.env.FRONTEND_URL);
 const autoSeedAdmin = parseBoolean(process.env.AUTO_SEED_ADMIN, !isProduction);
@@ -88,7 +89,7 @@ const validateEnv = () => {
     issues.push(`LOG_FORMAT "${logFormat}" is not supported by morgan`);
   }
 
-  if (backendHost && (/[\s/\\]/.test(backendHost) || backendHost.includes('://'))) {
+  if (backendHost && (/\s|[/\\]/.test(rawBackendHost) || backendHost.includes('://'))) {
     issues.push('BACKEND_HOST must be a bind host only, for example 127.0.0.1, 0.0.0.0, ::1, or a private hostname');
   }
 
