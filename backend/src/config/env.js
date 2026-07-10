@@ -53,7 +53,9 @@ const autoRetentionCleanup = parseBoolean(process.env.AUTO_RETENTION_CLEANUP, fa
 const retentionCleanupIntervalMs = Number(process.env.RETENTION_CLEANUP_INTERVAL_MS || 86400000);
 const retentionCleanupStartupDelayMs = Number(process.env.RETENTION_CLEANUP_STARTUP_DELAY_MS || 120000);
 const retentionKeepPreviousMonths = Number(process.env.RETENTION_KEEP_PREVIOUS_MONTHS || 1);
-const lotteryProvider = toText(process.env.LOTTERY_PROVIDER, 'mock').toLowerCase();
+const rawLotteryProvider = process.env.LOTTERY_PROVIDER;
+const lotteryProviderConfigured = Boolean(toText(rawLotteryProvider));
+const lotteryProvider = lotteryProviderConfigured ? toText(rawLotteryProvider).toLowerCase() : (isProduction ? '' : 'mock');
 const lotteryApiBaseUrl = toText(process.env.LOTTERY_API_BASE_URL);
 const lotteryApiKey = toText(process.env.LOTTERY_API_KEY);
 const lotteryApiTimeoutMs = Number(process.env.LOTTERY_API_TIMEOUT_MS || 5000);
@@ -138,7 +140,11 @@ const validateEnv = () => {
     issues.push('RETENTION_KEEP_PREVIOUS_MONTHS must be a number >= 1');
   }
 
-  if (!['mock'].includes(lotteryProvider)) {
+  if (isProduction && !lotteryProviderConfigured) {
+    issues.push('LOTTERY_PROVIDER is required in production; set LOTTERY_PROVIDER=mock explicitly only for preview/validation');
+  }
+
+  if (lotteryProvider && !['mock'].includes(lotteryProvider)) {
     issues.push(`LOTTERY_PROVIDER "${lotteryProvider}" is not supported`);
   }
 
@@ -192,6 +198,7 @@ const getEnvSummary = () => ({
   retentionCleanupStartupDelayMs,
   retentionKeepPreviousMonths,
   lotteryProvider,
+  lotteryProviderConfigured,
   lotteryApiBaseUrlConfigured: Boolean(lotteryApiBaseUrl),
   lotteryApiKeyConfigured: Boolean(lotteryApiKey),
   lotteryApiTimeoutMs,
@@ -222,6 +229,7 @@ module.exports = {
   retentionCleanupStartupDelayMs,
   retentionKeepPreviousMonths,
   lotteryProvider,
+  lotteryProviderConfigured,
   lotteryApiBaseUrl,
   lotteryApiKey,
   lotteryApiTimeoutMs,

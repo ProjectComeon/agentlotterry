@@ -99,6 +99,7 @@ try {
   process.env.FRONTEND_URL = 'https://example.com';
   process.env.AUTO_SEED_ADMIN = 'false';
   process.env.AUTO_SYNC_RESULTS = 'false';
+  process.env.LOTTERY_PROVIDER = 'mock';
   process.env.LOG_FORMAT = 'combined';
   process.env.RESULT_SYNC_INTERVAL_MS = '300000';
   process.env.RESULT_SYNC_STARTUP_DELAY_MS = '60000';

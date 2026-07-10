@@ -43,6 +43,71 @@ const shouldIncludeTotals = (value) => !['0', 'false'].includes(String(value || 
 router.use(auth, authorize('admin'));
 
 const AGENT_STATUS_OPTIONS = ['active', 'inactive', 'suspended'];
+const PROVIDER_QUERY_MAX_LENGTH = 120;
+const PROVIDER_QUERY_VALUE_PATTERN = /^[A-Za-z0-9._-]+$/;
+const PROVIDER_ROUND_STATUSES = new Set(['upcoming', 'open', 'closed', 'resulted']);
+const PROVIDER_RESULT_STATUSES = new Set(['pending', 'published']);
+
+const createProviderQueryError = (message) => {
+  const error = new Error(message);
+  error.status = 400;
+  error.code = 'LOTTERY_PROVIDER_QUERY_INVALID';
+  return error;
+};
+
+const normalizeProviderQueryText = (value, field) => {
+  if (value === undefined || value === null || value === '') return '';
+  if (Array.isArray(value) || typeof value === 'object') {
+    throw createProviderQueryError(`${field} must be a single text value`);
+  }
+
+  const text = String(value).trim();
+  if (!text) return '';
+  if (text.length > PROVIDER_QUERY_MAX_LENGTH) {
+    throw createProviderQueryError(`${field} exceeds ${PROVIDER_QUERY_MAX_LENGTH} characters`);
+  }
+  if (/^https?:\/\//i.test(text) || text.includes('://') || /[/?#\\\s]/.test(text)) {
+    throw createProviderQueryError(`${field} must not be a URL or path`);
+  }
+  if (!PROVIDER_QUERY_VALUE_PATTERN.test(text)) {
+    throw createProviderQueryError(`${field} contains unsupported characters`);
+  }
+
+  return text;
+};
+
+const normalizeProviderStatusQuery = (value, allowedStatuses, field = 'status') => {
+  const status = normalizeProviderQueryText(value, field).toLowerCase();
+  if (status && !allowedStatuses.has(status)) {
+    throw createProviderQueryError(`${field} is invalid`);
+  }
+  return status;
+};
+
+const parseProviderPreviewQuery = (query = {}, { includeRoundExternalId = false, allowedStatuses } = {}) => {
+  const parsed = {
+    lotteryExternalId: normalizeProviderQueryText(query.lotteryExternalId, 'lotteryExternalId'),
+    status: normalizeProviderStatusQuery(query.status, allowedStatuses)
+  };
+
+  if (includeRoundExternalId) {
+    parsed.roundExternalId = normalizeProviderQueryText(query.roundExternalId, 'roundExternalId');
+  }
+
+  return parsed;
+};
+
+const sendProviderPreviewError = (res, error, label) => {
+  if (error?.status === 400 && error?.code === 'LOTTERY_PROVIDER_QUERY_INVALID') {
+    console.error(`${label} preview query error:`, error.code);
+    res.status(400).json({ message: error.message, code: error.code });
+    return;
+  }
+
+  const safeError = toSafeProviderError(error);
+  console.error(`${label} preview error:`, safeError.body.code);
+  res.status(safeError.status).json(safeError.body);
+};
 
 const normalizePercent = (value, label, { fallback, allowUndefined = false } = {}) => {
   if (value === undefined || value === null || value === '') {
@@ -283,15 +348,12 @@ router.get('/lottery-provider/preview/lotteries', async (req, res) => {
 router.get('/lottery-provider/preview/rounds', async (req, res) => {
   try {
     res.json({
-      rounds: await listProviderRounds({
-        lotteryExternalId: req.query.lotteryExternalId,
-        status: req.query.status
-      })
+      rounds: await listProviderRounds(parseProviderPreviewQuery(req.query, {
+        allowedStatuses: PROVIDER_ROUND_STATUSES
+      }))
     });
   } catch (error) {
-    const safeError = toSafeProviderError(error);
-    console.error('Lottery provider rounds preview error:', safeError.body.code);
-    res.status(safeError.status).json(safeError.body);
+    sendProviderPreviewError(res, error, 'Lottery provider rounds');
   }
 });
 
@@ -299,16 +361,13 @@ router.get('/lottery-provider/preview/rounds', async (req, res) => {
 router.get('/lottery-provider/preview/results', async (req, res) => {
   try {
     res.json({
-      results: await listProviderResults({
-        lotteryExternalId: req.query.lotteryExternalId,
-        roundExternalId: req.query.roundExternalId,
-        status: req.query.status
-      })
+      results: await listProviderResults(parseProviderPreviewQuery(req.query, {
+        includeRoundExternalId: true,
+        allowedStatuses: PROVIDER_RESULT_STATUSES
+      }))
     });
   } catch (error) {
-    const safeError = toSafeProviderError(error);
-    console.error('Lottery provider results preview error:', safeError.body.code);
-    res.status(safeError.status).json(safeError.body);
+    sendProviderPreviewError(res, error, 'Lottery provider results');
   }
 });
 
@@ -618,5 +677,9 @@ router.get('/bets', async (req, res) => {
     res.status(500).json({ message: 'Server error' });
   }
 });
+
+router.__test = {
+  parseProviderPreviewQuery
+};
 
 module.exports = router;

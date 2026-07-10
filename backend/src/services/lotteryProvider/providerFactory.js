@@ -5,7 +5,13 @@ const { MockLotteryProvider } = require('./mockLotteryProvider');
 const SUPPORTED_PROVIDERS = new Set(['mock']);
 
 const assertSupportedProvider = (providerName) => {
-  const normalized = String(providerName || 'mock').trim().toLowerCase();
+  const normalized = String(providerName ?? '').trim().toLowerCase();
+  if (!normalized) {
+    throw new LotteryProviderError('Lottery provider is not configured', {
+      code: 'LOTTERY_PROVIDER_UNKNOWN',
+      status: 500
+    });
+  }
   if (!SUPPORTED_PROVIDERS.has(normalized)) {
     throw new LotteryProviderError(`Unknown lottery provider "${normalized}"`, {
       code: 'LOTTERY_PROVIDER_UNKNOWN',

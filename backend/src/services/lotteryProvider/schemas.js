@@ -8,7 +8,21 @@ const ROUND_STATUSES = new Set(['upcoming', 'open', 'closed', 'resulted']);
 const RESULT_STATUSES = new Set(['pending', 'published']);
 const PROVIDER_STATUSES = new Set(['ok', 'degraded', 'unavailable']);
 const ISO_WITH_ZONE_PATTERN = /(?:Z|[+-]\d{2}:\d{2})$/;
-const RESULT_NUMBER_PATTERN = /^\d{1,6}$/;
+const RESULT_NUMBER_DIGITS = {
+  firstPrize: 6,
+  threeTop: 3,
+  twoTop: 2,
+  twoBottom: 2,
+  threeFront: 3,
+  threeBottom: 3,
+  threeTopHits: 3,
+  twoTopHits: 2,
+  twoBottomHits: 2,
+  threeFrontHits: 3,
+  threeBottomHits: 3,
+  runTop: 1,
+  runBottom: 1
+};
 
 const fail = (message, code = 'LOTTERY_PROVIDER_SCHEMA_INVALID') => {
   throw new LotteryProviderError(message, { code, status: 502 });
@@ -40,8 +54,15 @@ const normalizeText = (value, field, { required = true, maxLength = MAX_TEXT_LEN
   return text;
 };
 
-const normalizeTimezone = (value, field = 'timezone') =>
-  normalizeText(value, field, { required: true, maxLength: 80 });
+const normalizeTimezone = (value, field = 'timezone') => {
+  const timezone = normalizeText(value, field, { required: true, maxLength: 80 });
+  try {
+    new Intl.DateTimeFormat('en-US', { timeZone: timezone }).format(new Date(0));
+  } catch {
+    fail(`${field} is not a supported timezone`);
+  }
+  return timezone;
+};
 
 const normalizeStatus = (value, allowed, field) => {
   const status = normalizeText(value, field).toLowerCase();
@@ -96,25 +117,30 @@ const normalizeTextList = (value, field, { maxLength = 40 } = {}) => {
   return items.map((item, index) => normalizeText(item, `${field}[${index}]`, { maxLength }));
 };
 
-const normalizeStringList = (value, field) => {
-  if (value === undefined || value === null) return [];
-  const items = ensureArray(value, field);
-  return items.map((item, index) => {
-    const number = normalizeText(item, `${field}[${index}]`, { maxLength: 6 });
-    if (!RESULT_NUMBER_PATTERN.test(number)) {
-      fail(`${field}[${index}] has invalid result number format`);
-    }
-    return number;
-  });
+const getResultDigits = (field) => {
+  const key = field.split('.').pop().replace(/\[\d+\]$/, '');
+  return RESULT_NUMBER_DIGITS[key];
+};
+
+const normalizeResultNumber = (value, field, digits) => {
+  const number = normalizeText(value, field, { maxLength: digits });
+  if (!new RegExp(`^\\d{${digits}}$`).test(number)) {
+    fail(`${field} must be exactly ${digits} digit${digits === 1 ? '' : 's'}`);
+  }
+  return number;
 };
 
 const normalizeOptionalResultNumber = (value, field) => {
   if (value === undefined || value === null || value === '') return '';
-  const number = normalizeText(value, field, { maxLength: 6 });
-  if (!RESULT_NUMBER_PATTERN.test(number)) {
-    fail(`${field} has invalid result number format`);
-  }
-  return number;
+  const digits = getResultDigits(field);
+  return normalizeResultNumber(value, field, digits);
+};
+
+const normalizeResultNumberList = (value, field) => {
+  if (value === undefined || value === null) return [];
+  const digits = getResultDigits(field);
+  const items = ensureArray(value, field);
+  return items.map((item, index) => normalizeResultNumber(item, `${field}[${index}]`, digits));
 };
 
 const normalizeResultNumbers = (value = {}) => {
@@ -123,20 +149,20 @@ const normalizeResultNumbers = (value = {}) => {
   }
 
   return {
-    headline: normalizeText(value.headline, 'numbers.headline', { required: false }),
+    headline: normalizeText(value.headline, 'numbers.headline', { required: false, maxLength: 160 }),
     firstPrize: normalizeOptionalResultNumber(value.firstPrize, 'numbers.firstPrize'),
     threeTop: normalizeOptionalResultNumber(value.threeTop, 'numbers.threeTop'),
     twoTop: normalizeOptionalResultNumber(value.twoTop, 'numbers.twoTop'),
     twoBottom: normalizeOptionalResultNumber(value.twoBottom, 'numbers.twoBottom'),
     threeFront: normalizeOptionalResultNumber(value.threeFront, 'numbers.threeFront'),
     threeBottom: normalizeOptionalResultNumber(value.threeBottom, 'numbers.threeBottom'),
-    threeTopHits: normalizeStringList(value.threeTopHits, 'numbers.threeTopHits'),
-    twoTopHits: normalizeStringList(value.twoTopHits, 'numbers.twoTopHits'),
-    twoBottomHits: normalizeStringList(value.twoBottomHits, 'numbers.twoBottomHits'),
-    threeFrontHits: normalizeStringList(value.threeFrontHits, 'numbers.threeFrontHits'),
-    threeBottomHits: normalizeStringList(value.threeBottomHits, 'numbers.threeBottomHits'),
-    runTop: normalizeStringList(value.runTop, 'numbers.runTop'),
-    runBottom: normalizeStringList(value.runBottom, 'numbers.runBottom')
+    threeTopHits: normalizeResultNumberList(value.threeTopHits, 'numbers.threeTopHits'),
+    twoTopHits: normalizeResultNumberList(value.twoTopHits, 'numbers.twoTopHits'),
+    twoBottomHits: normalizeResultNumberList(value.twoBottomHits, 'numbers.twoBottomHits'),
+    threeFrontHits: normalizeResultNumberList(value.threeFrontHits, 'numbers.threeFrontHits'),
+    threeBottomHits: normalizeResultNumberList(value.threeBottomHits, 'numbers.threeBottomHits'),
+    runTop: normalizeResultNumberList(value.runTop, 'numbers.runTop'),
+    runBottom: normalizeResultNumberList(value.runBottom, 'numbers.runBottom')
   };
 };
 
@@ -219,6 +245,7 @@ module.exports = {
   validateResults,
   __test: {
     normalizeDate,
-    normalizeResultNumbers
+    normalizeResultNumbers,
+    normalizeTimezone
   }
 };
