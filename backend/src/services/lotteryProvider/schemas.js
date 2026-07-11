@@ -41,6 +41,14 @@ const normalizeText = (value, field, { required = true, maxLength = MAX_TEXT_LEN
     return '';
   }
 
+  const valueType = typeof value;
+  if (valueType !== 'string' && valueType !== 'number') {
+    fail(`${field} must be a text or numeric value`);
+  }
+  if (valueType === 'number' && !Number.isFinite(value)) {
+    fail(`${field} must be a text or numeric value`);
+  }
+
   const text = String(value).trim();
   if (!text) {
     if (required) fail(`${field} is required`);
@@ -210,7 +218,7 @@ const validateRounds = (payload) => {
       externalId: normalizeText(item?.externalId, `rounds[${index}].externalId`),
       lotteryExternalId: normalizeText(item?.lotteryExternalId, `rounds[${index}].lotteryExternalId`),
       code: normalizeText(item?.code, `rounds[${index}].code`),
-      displayName: normalizeText(item?.displayName || item?.name, `rounds[${index}].displayName`),
+      displayName: normalizeText(item?.displayName === undefined || item?.displayName === null || item?.displayName === '' ? item?.name : item?.displayName, `rounds[${index}].displayName`),
       openAt,
       closeAt,
       resultAt,

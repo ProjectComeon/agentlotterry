@@ -54,7 +54,7 @@ The adapter rejects:
 
 ## Network, SSRF, and secrets
 
-`LOTTERY_PROVIDER=mock` is the only implemented provider in this phase. CI uses the mock provider and must not call an external API.
+Production deployments should leave `LOTTERY_PROVIDER=` empty until an operator intentionally selects a reviewed provider; production preflight fails when it is unset. For preview, validation, and CI only, override with `LOTTERY_PROVIDER=mock`. The mock provider does not sync, import, settle, or submit real bets.
 
 Future real providers must follow these rules:
 

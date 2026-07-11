@@ -194,6 +194,32 @@ const assertExactResultNumberValidation = () => {
   );
 };
 
+const assertStructuredTextValueRejection = () => {
+  const fixtures = mockTest.baseFixtures();
+  const textError = /must be a text or numeric value/;
+
+  const [numericLottery] = validateLotteries([{ ...fixtures.lotteries[0], externalId: 123 }]);
+  assert.strictEqual(numericLottery.externalId, '123', 'numeric lottery externalId should normalize to string');
+
+  for (const [label, fn] of [
+    ['lottery externalId object', () => validateLotteries([{ ...fixtures.lotteries[0], externalId: {} }])],
+    ['lottery name array', () => validateLotteries([{ ...fixtures.lotteries[0], name: ['abc'] }])],
+    ['lottery timezone object', () => validateLotteries([{ ...fixtures.lotteries[0], timezone: { id: 'Asia/Bangkok' } }])],
+    ['lottery supportedBetTypes object item', () => validateLotteries([{ ...fixtures.lotteries[0], supportedBetTypes: ['2top', { type: '3top' }] }])],
+    ['round lotteryExternalId array', () => validateRounds([{ ...fixtures.rounds[0], lotteryExternalId: ['mock-thai-government'] }])],
+    ['round code object', () => validateRounds([{ ...fixtures.rounds[0], code: { value: '2026-07-11' } }])],
+    ['round displayName boolean', () => validateRounds([{ ...fixtures.rounds[0], displayName: true }])],
+    ['result externalId object', () => validateResults([{ ...fixtures.results[0], externalId: { id: 'result' } }])],
+    ['result roundExternalId array', () => validateResults([{ ...fixtures.results[0], roundExternalId: ['mock-round-closed'] }])],
+    ['result firstPrize object', () => validateResults([{ ...fixtures.results[0], numbers: { ...fixtures.results[0].numbers, firstPrize: { value: '123456' } } }])],
+    ['result twoTopHits object item', () => validateResults([{ ...fixtures.results[0], numbers: { ...fixtures.results[0].numbers, twoTopHits: ['05', { value: '56' }] } }])],
+    ['text boolean', () => validateLotteries([{ ...fixtures.lotteries[0], label: false }])],
+    ['text function', () => validateLotteries([{ ...fixtures.lotteries[0], label: () => 'abc' }])],
+    ['text symbol', () => validateLotteries([{ ...fixtures.lotteries[0], label: Symbol('abc') }])]
+  ]) {
+    assert.throws(fn, textError, `${label} should reject structured/non-text provider values`);
+  }
+};
 const assertProviderPreviewQueryValidation = () => {
   const adminRoutes = require('../routes/adminRoutes');
   const { parseProviderPreviewQuery } = adminRoutes.__test;
@@ -232,6 +258,7 @@ const assertProviderPreviewQueryValidation = () => {
   assertEnvironmentProviderPolicy();
   assertTimezoneValidation();
   assertExactResultNumberValidation();
+  assertStructuredTextValueRejection();
   assertProviderPreviewQueryValidation();
 
   const provider = new MockLotteryProvider();
