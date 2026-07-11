@@ -1,0 +1,20 @@
+{
+  "_metadata": {
+    "providerCode": "reviewed-provider",
+    "source": "Sanitized placeholder. Timezone, status, and ID mappings are unconfirmed.",
+    "capturedAt": "2026-07-11",
+    "contractStatus": "unconfirmed",
+    "containsSecrets": false,
+    "containsCustomerData": false
+  },
+  "items": [
+    {
+      "providerRoundIdentifier": "round-sample-001",
+      "providerLotteryIdentifier": "lottery-sample-001",
+      "openTime": "2026-07-11T00:00:00Z",
+      "closeTime": "2026-07-11T12:00:00Z",
+      "resultTime": "2026-07-11T13:00:00Z",
+      "statusText": "open"
+    }
+  ]
+}

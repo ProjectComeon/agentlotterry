@@ -1,0 +1,13 @@
+{
+  "_metadata": {
+    "providerCode": "reviewed-provider",
+    "source": "Sanitized placeholder unauthorized error response.",
+    "capturedAt": "2026-07-11",
+    "containsSecrets": false,
+    "containsCustomerData": false
+  },
+  "error": {
+    "code": "UNAUTHORIZED",
+    "message": "unauthorized"
+  }
+}

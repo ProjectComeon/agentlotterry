@@ -1,0 +1,15 @@
+{
+  "_metadata": {
+    "providerCode": "reviewed-provider",
+    "source": "Sanitized placeholder missing-required-field fixture.",
+    "capturedAt": "2026-07-11",
+    "contractStatus": "unconfirmed",
+    "containsSecrets": false,
+    "containsCustomerData": false
+  },
+  "items": [
+    {
+      "displayText": "Missing provider identifier"
+    }
+  ]
+}

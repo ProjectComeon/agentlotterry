@@ -1,0 +1,18 @@
+{
+  "_metadata": {
+    "providerCode": "reviewed-provider",
+    "source": "Sanitized placeholder pending result fixture. Result status mapping is unconfirmed.",
+    "capturedAt": "2026-07-11",
+    "contractStatus": "unconfirmed",
+    "containsSecrets": false,
+    "containsCustomerData": false
+  },
+  "items": [
+    {
+      "providerResultIdentifier": "result-pending-001",
+      "providerRoundIdentifier": "round-sample-001",
+      "statusText": "pending",
+      "numbers": {}
+    }
+  ]
+}

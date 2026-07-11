@@ -1,0 +1,16 @@
+{
+  "_metadata": {
+    "providerCode": "reviewed-provider",
+    "source": "Sanitized placeholder unknown-status fixture.",
+    "capturedAt": "2026-07-11",
+    "contractStatus": "unconfirmed",
+    "containsSecrets": false,
+    "containsCustomerData": false
+  },
+  "items": [
+    {
+      "providerRoundIdentifier": "round-unknown-status-001",
+      "statusText": "mystery"
+    }
+  ]
+}

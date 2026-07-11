@@ -1,0 +1,15 @@
+{
+  "_metadata": {
+    "providerCode": "reviewed-provider",
+    "source": "Sanitized contract-review placeholder because official provider documentation and payload samples have not been supplied yet.",
+    "capturedAt": "2026-07-11",
+    "contractStatus": "unconfirmed",
+    "containsSecrets": false,
+    "containsCustomerData": false,
+    "networkUse": "none"
+  },
+  "provider": "reviewed-provider",
+  "status": "ok",
+  "checkedAt": "2026-07-11T00:00:00Z",
+  "message": "placeholder success fixture; not mapped until provider docs are confirmed"
+}

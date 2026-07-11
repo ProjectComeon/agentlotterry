@@ -1,0 +1,19 @@
+{
+  "_metadata": {
+    "providerCode": "reviewed-provider",
+    "source": "Sanitized placeholder invalid result digit length fixture.",
+    "capturedAt": "2026-07-11",
+    "contractStatus": "unconfirmed",
+    "containsSecrets": false,
+    "containsCustomerData": false
+  },
+  "items": [
+    {
+      "providerResultIdentifier": "result-invalid-digits-001",
+      "numbers": {
+        "sampleTwoDigit": "5",
+        "sampleThreeDigit": "1234"
+      }
+    }
+  ]
+}

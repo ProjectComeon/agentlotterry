@@ -59,6 +59,7 @@ const lotteryProvider = lotteryProviderConfigured ? toText(rawLotteryProvider).t
 const lotteryApiBaseUrl = toText(process.env.LOTTERY_API_BASE_URL);
 const lotteryApiKey = toText(process.env.LOTTERY_API_KEY);
 const lotteryApiTimeoutMs = Number(process.env.LOTTERY_API_TIMEOUT_MS || 5000);
+const lotteryRealNetworkEnabled = parseBoolean(process.env.LOTTERY_REAL_NETWORK_ENABLED, false);
 const lotteryProviderMockScenario = toText(process.env.LOTTERY_PROVIDER_MOCK_SCENARIO, 'valid').toLowerCase();
 
 const isLocalOrPrivateHost = (hostname) => {
@@ -144,8 +145,12 @@ const validateEnv = () => {
     issues.push('LOTTERY_PROVIDER is required in production; set LOTTERY_PROVIDER=mock explicitly only for preview/validation');
   }
 
-  if (lotteryProvider && !['mock'].includes(lotteryProvider)) {
+  if (lotteryProvider && !['mock', 'reviewed-provider'].includes(lotteryProvider)) {
     issues.push(`LOTTERY_PROVIDER "${lotteryProvider}" is not supported`);
+  }
+
+  if (lotteryProvider === 'reviewed-provider' && lotteryRealNetworkEnabled) {
+    issues.push('LOTTERY_REAL_NETWORK_ENABLED cannot be true for reviewed-provider until provider docs, endpoints, and authentication are confirmed');
   }
 
   if (!Number.isFinite(lotteryApiTimeoutMs) || lotteryApiTimeoutMs < 1000 || lotteryApiTimeoutMs > 30000) {
@@ -202,6 +207,7 @@ const getEnvSummary = () => ({
   lotteryApiBaseUrlConfigured: Boolean(lotteryApiBaseUrl),
   lotteryApiKeyConfigured: Boolean(lotteryApiKey),
   lotteryApiTimeoutMs,
+  lotteryRealNetworkEnabled,
   lotteryProviderMockScenario
 });
 
@@ -233,6 +239,7 @@ module.exports = {
   lotteryApiBaseUrl,
   lotteryApiKey,
   lotteryApiTimeoutMs,
+  lotteryRealNetworkEnabled,
   lotteryProviderMockScenario,
   validateEnv,
   getEnvSummary

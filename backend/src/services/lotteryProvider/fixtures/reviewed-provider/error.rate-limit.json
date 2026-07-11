@@ -1,0 +1,14 @@
+{
+  "_metadata": {
+    "providerCode": "reviewed-provider",
+    "source": "Sanitized placeholder rate-limit error response.",
+    "capturedAt": "2026-07-11",
+    "containsSecrets": false,
+    "containsCustomerData": false
+  },
+  "error": {
+    "code": "RATE_LIMITED",
+    "message": "too many requests",
+    "retryAfterSeconds": 60
+  }
+}
