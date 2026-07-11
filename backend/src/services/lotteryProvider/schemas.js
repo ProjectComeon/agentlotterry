@@ -41,11 +41,33 @@ const normalizeText = (value, field, { required = true, maxLength = MAX_TEXT_LEN
     return '';
   }
 
-  const valueType = typeof value;
-  if (valueType !== 'string' && valueType !== 'number') {
+  if (typeof value !== 'string') {
+    fail(`${field} must be a text value`);
+  }
+
+  const text = value.trim();
+  if (!text) {
+    if (required) fail(`${field} is required`);
+    return '';
+  }
+
+  if (text.length > maxLength) {
+    fail(`${field} exceeds ${maxLength} characters`);
+  }
+
+  return text;
+};
+
+const normalizeExternalId = (value, field, { required = true, maxLength = MAX_TEXT_LENGTH } = {}) => {
+  if (value === undefined || value === null) {
+    if (required) fail(`${field} is required`);
+    return '';
+  }
+
+  if (typeof value !== 'string' && typeof value !== 'number') {
     fail(`${field} must be a text or numeric value`);
   }
-  if (valueType === 'number' && !Number.isFinite(value)) {
+  if (typeof value === 'number' && !Number.isFinite(value)) {
     fail(`${field} must be a text or numeric value`);
   }
 
@@ -131,6 +153,9 @@ const getResultDigits = (field) => {
 };
 
 const normalizeResultNumber = (value, field, digits) => {
+  if (typeof value !== 'string') {
+    fail(`${field} must be a digit string`);
+  }
   const number = normalizeText(value, field, { maxLength: digits });
   if (!new RegExp(`^\\d{${digits}}$`).test(number)) {
     fail(`${field} must be exactly ${digits} digit${digits === 1 ? '' : 's'}`);
@@ -187,7 +212,7 @@ const validateProviderStatus = (payload) => {
 const validateLotteries = (payload) => {
   ensurePayloadSize(payload, 'lotteries');
   const lotteries = ensureArray(payload, 'lotteries').map((item, index) => ({
-    externalId: normalizeText(item?.externalId, `lotteries[${index}].externalId`),
+    externalId: normalizeExternalId(item?.externalId, `lotteries[${index}].externalId`),
     code: normalizeText(item?.code, `lotteries[${index}].code`).toLowerCase(),
     name: normalizeText(item?.name, `lotteries[${index}].name`),
     label: normalizeText(item?.label, `lotteries[${index}].label`, { required: false }),
@@ -215,8 +240,8 @@ const validateRounds = (payload) => {
     }
 
     return {
-      externalId: normalizeText(item?.externalId, `rounds[${index}].externalId`),
-      lotteryExternalId: normalizeText(item?.lotteryExternalId, `rounds[${index}].lotteryExternalId`),
+      externalId: normalizeExternalId(item?.externalId, `rounds[${index}].externalId`),
+      lotteryExternalId: normalizeExternalId(item?.lotteryExternalId, `rounds[${index}].lotteryExternalId`),
       code: normalizeText(item?.code, `rounds[${index}].code`),
       displayName: normalizeText(item?.displayName === undefined || item?.displayName === null || item?.displayName === '' ? item?.name : item?.displayName, `rounds[${index}].displayName`),
       openAt,
@@ -233,9 +258,9 @@ const validateRounds = (payload) => {
 const validateResults = (payload) => {
   ensurePayloadSize(payload, 'results');
   const results = ensureArray(payload, 'results').map((item, index) => ({
-    externalId: normalizeText(item?.externalId, `results[${index}].externalId`),
-    lotteryExternalId: normalizeText(item?.lotteryExternalId, `results[${index}].lotteryExternalId`),
-    roundExternalId: normalizeText(item?.roundExternalId, `results[${index}].roundExternalId`),
+    externalId: normalizeExternalId(item?.externalId, `results[${index}].externalId`),
+    lotteryExternalId: normalizeExternalId(item?.lotteryExternalId, `results[${index}].lotteryExternalId`),
+    roundExternalId: normalizeExternalId(item?.roundExternalId, `results[${index}].roundExternalId`),
     status: normalizeStatus(item?.status, RESULT_STATUSES, `results[${index}].status`),
     resultAt: normalizeOptionalDate(item?.resultAt, `results[${index}].resultAt`),
     timezone: normalizeTimezone(item?.timezone, `results[${index}].timezone`),
