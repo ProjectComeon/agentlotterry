@@ -1,4 +1,4 @@
-# Reviewed provider contract review
+﻿# Reviewed provider contract review
 
 Provider code: `reviewed-provider`
 
@@ -36,7 +36,15 @@ No POST/PUT/PATCH/DELETE provider calls are allowed in this PR.
 
 ## Required request parameters
 
-Unconfirmed. Query parameters must be allowlisted after the provider docs are reviewed. The client must not accept arbitrary URL/path/query values from users.
+Unconfirmed. Query parameters must be allowlisted after the provider docs are reviewed. Query allowlists are empty until provider docs confirm request parameters. The client must not accept arbitrary URL/path/query values from users.
+
+Current fail-closed request policy:
+
+- `buildRoundsRequest()` rejects canonical filters until provider query names are confirmed.
+- `buildRoundDetailRequest()` rejects round IDs until provider detail request mapping is confirmed.
+- `buildResultsRequest()` rejects canonical filters until provider query names are confirmed.
+- Non-empty query values are rejected unless a test-only contract explicitly allowlists that key.
+- Query values must be scalar, short, and not URL/path-like.
 
 ## Pagination
 
@@ -123,6 +131,7 @@ Current client maps controlled transport errors without exposing secrets:
 - `LOTTERY_PROVIDER_NOT_CONFIGURED`
 - `LOTTERY_PROVIDER_UNAUTHORIZED`
 - `LOTTERY_PROVIDER_RATE_LIMITED`
+- `LOTTERY_PROVIDER_REDIRECT_BLOCKED`
 - `LOTTERY_PROVIDER_TIMEOUT`
 - `LOTTERY_PROVIDER_UNAVAILABLE`
 - `LOTTERY_PROVIDER_RESPONSE_TOO_LARGE`
@@ -142,6 +151,9 @@ No live retry policy is enabled. Future retries must be limited to idempotent GE
 - Request secrets must never be logged or returned.
 - Admin preview endpoints must remain admin-only, GET-only, and DB-read/write neutral.
 - CI must use fixtures/fake transport only and must not call provider DNS/network.
+- Redirect responses are blocked and are not followed; Location headers and redirect URLs must not be exposed.
+- Endpoint paths must be relative/same-origin contract paths; absolute URLs, protocol-relative URLs, credentials, fragments, and backslashes are rejected.
+- Response size is checked both through transport limits and serialized payload size validation.
 
 ## Remaining review items
 

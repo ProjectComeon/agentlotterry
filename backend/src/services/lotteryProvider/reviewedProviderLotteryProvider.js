@@ -1,4 +1,4 @@
-const { ReviewedProviderClient } = require('./reviewedProviderClient');
+﻿const { ReviewedProviderClient } = require('./reviewedProviderClient');
 const {
   getMappingReview,
   mapProviderStatus,
@@ -7,6 +7,13 @@ const {
   mapRound,
   mapResults
 } = require('./reviewedProviderMapper');
+const {
+  buildStatusRequest,
+  buildLotteriesRequest,
+  buildRoundsRequest,
+  buildRoundDetailRequest,
+  buildResultsRequest
+} = require('./reviewedProviderRequestMapper');
 const { PROVIDER_CODE } = require('./reviewedProviderContract');
 
 class ReviewedProviderLotteryProvider {
@@ -16,27 +23,32 @@ class ReviewedProviderLotteryProvider {
   }
 
   async getProviderStatus() {
-    const payload = await this.client.get('status');
+    const request = buildStatusRequest();
+    const payload = await this.client.get(request.endpointKey, { query: request.query });
     return mapProviderStatus(payload);
   }
 
   async listLotteries() {
-    const payload = await this.client.get('lotteries');
+    const request = buildLotteriesRequest();
+    const payload = await this.client.get(request.endpointKey, { query: request.query });
     return mapLotteries(payload);
   }
 
   async listRounds(params = {}) {
-    const payload = await this.client.get('rounds', { query: params });
+    const request = buildRoundsRequest(params);
+    const payload = await this.client.get(request.endpointKey, { query: request.query });
     return mapRounds(payload);
   }
 
   async getRound(externalRoundId) {
-    const payload = await this.client.get('roundDetail', { query: { externalRoundId } });
+    const request = buildRoundDetailRequest(externalRoundId);
+    const payload = await this.client.get(request.endpointKey, { query: request.query });
     return mapRound(payload);
   }
 
   async getResults(params = {}) {
-    const payload = await this.client.get('results', { query: params });
+    const request = buildResultsRequest(params);
+    const payload = await this.client.get(request.endpointKey, { query: request.query });
     return mapResults(payload);
   }
 
