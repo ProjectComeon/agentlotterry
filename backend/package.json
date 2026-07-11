@@ -36,6 +36,7 @@
     "legacy:cleanup:purge": "node src/scripts/cleanupLegacyData.js --mode=purge",
     "test:backup-restore-guards": "node src/scripts/testBackupRestoreGuards.js",
     "test:cookie-auth-guards": "node src/scripts/testCookieAuthGuards.js",
+    "test:lottery-provider": "node src/scripts/testLotteryProviderAdapter.js",
     "lint": "eslint server.js src/**/*.js"
   },
   "dependencies": {

@@ -207,6 +207,10 @@ const main = async () => {
     const adminLogin = await loginWithRetry(adminUsername, adminPassword, 'Admin');
     adminClient = adminLogin.client;
     summary.checks.push('admin-login');
+    const adminProviderStatusResponse = await adminClient.get('/admin/lottery-provider/status');
+    expectStatus(adminProviderStatusResponse, 200, 'Admin lottery provider status preview');
+    assert(adminProviderStatusResponse.data.provider?.provider === 'mock', 'Admin provider preview should use mock provider');
+    summary.checks.push('admin-provider-preview');
     const agentUsername = `e2e_agent_${uniqueSuffix}`;
     const agentPassword = `Bb${uniqueSuffix}!`;
     const memberUsername = `e2e_member_${uniqueSuffix}`;
@@ -227,6 +231,9 @@ const main = async () => {
     const agentLogin = await loginWithRetry(agentUsername, agentPassword, 'Agent');
     agentClient = agentLogin.client;
     summary.checks.push('agent-login');
+    const agentProviderBlockedResponse = await agentClient.get('/admin/lottery-provider/status');
+    assert(agentProviderBlockedResponse.status === 403, 'Agent session must not access admin lottery provider preview');
+    summary.checks.push('agent-provider-preview-blocked');
     const agentHeartbeatResponse = await agentClient.post('/presence/heartbeat');
     expectStatus(agentHeartbeatResponse, 200, 'Agent heartbeat');
     summary.checks.push('agent-heartbeat');
@@ -310,12 +317,14 @@ const main = async () => {
     assert(memberMeResponse.data.member?.id === memberId, 'Member /me should only return the logged-in member');
     summary.checks.push('member-me');
 
-    const [memberAdminBlockedResponse, memberAgentBlockedResponse] = await Promise.all([
+    const [memberAdminBlockedResponse, memberAgentBlockedResponse, memberProviderBlockedResponse] = await Promise.all([
       memberClient.get('/admin/pending-payouts'),
-      memberClient.get('/agent/pending-payouts')
+      memberClient.get('/agent/pending-payouts'),
+      memberClient.get('/admin/lottery-provider/status')
     ]);
     assert(memberAdminBlockedResponse.status === 403, 'Member session must not access admin APIs');
     assert(memberAgentBlockedResponse.status === 403, 'Member session must not access agent APIs');
+    assert(memberProviderBlockedResponse.status === 403, 'Member session must not access admin lottery provider preview');
     summary.checks.push('member-admin-agent-api-blocked');
     const transferCreditResponse = await agentClient.post('/wallet/transfer', {
       memberId,
