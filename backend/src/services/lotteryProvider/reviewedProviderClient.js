@@ -28,9 +28,17 @@ const hasDotSegment = (path) => path
   .split('/')
   .some((segment) => {
     if (segment === '.' || segment === '..') return true;
+    let decoded = segment;
     try {
-      const decoded = decodeURIComponent(segment);
-      return decoded === '.' || decoded === '..';
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        const next = decodeURIComponent(decoded);
+        if (next === decoded) break;
+        decoded = next;
+      }
+      return decoded === '.'
+        || decoded === '..'
+        || decoded.includes('/')
+        || decoded.includes('\\');
     } catch {
       return true;
     }
@@ -40,10 +48,13 @@ const isUnsafeQueryValue = (value) => {
   if (typeof value !== 'string' && typeof value !== 'number') return true;
   if (typeof value === 'number' && !Number.isFinite(value)) return true;
 
-  const text = String(value).trim();
+  if (typeof value === 'string' && hasControlCharacter(value)) return true;
+
+  const rawText = String(value);
+  const text = rawText.trim();
+  if (typeof value === 'string' && text !== rawText) return true;
   if (!text || text.length > MAX_QUERY_VALUE_LENGTH) return true;
-  return hasControlCharacter(text)
-    || isUrlLike(text)
+  return isUrlLike(text)
     || text.includes('/')
     || text.includes('\\')
     || text.includes('?')
@@ -107,12 +118,13 @@ class ReviewedProviderClient {
 
     const path = endpointPath.trim();
     if (
-      !path.startsWith('/')
+      hasControlCharacter(endpointPath)
+      || path !== endpointPath
+      || !path.startsWith('/')
       || isUrlLike(path)
       || path.includes('\\')
       || path.includes('?')
       || path.includes('#')
-      || hasControlCharacter(path)
       || hasDotSegment(path)
     ) {
       throw providerError(`${this.getProviderCode()} endpoint is not a safe same-origin path`, 'LOTTERY_PROVIDER_NOT_CONFIGURED', 500);
