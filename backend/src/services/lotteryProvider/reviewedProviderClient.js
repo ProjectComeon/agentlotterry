@@ -1,4 +1,4 @@
-﻿const axios = require('axios');
+const axios = require('axios');
 const { LotteryProviderError } = require('./providerError');
 const {
   ALLOWED_QUERY_KEYS,
@@ -9,6 +9,10 @@ const {
 const DEFAULT_MAX_RESPONSE_BYTES = 256 * 1024;
 const MAX_QUERY_VALUE_LENGTH = 160;
 const SAFE_METHOD = 'GET';
+const hasControlCharacter = (value) => [...value].some((char) => {
+  const code = char.charCodeAt(0);
+  return code <= 31 || code === 127;
+});
 
 const DEFAULT_CONTRACT = Object.freeze({
   providerCode: PROVIDER_CODE,
@@ -19,6 +23,32 @@ const DEFAULT_CONTRACT = Object.freeze({
 const providerError = (message, code, status = 502) => new LotteryProviderError(message, { code, status });
 
 const isUrlLike = (value) => /^[a-z][a-z\d+.-]*:/i.test(value) || value.startsWith('//');
+
+const hasDotSegment = (path) => path
+  .split('/')
+  .some((segment) => {
+    if (segment === '.' || segment === '..') return true;
+    try {
+      const decoded = decodeURIComponent(segment);
+      return decoded === '.' || decoded === '..';
+    } catch {
+      return true;
+    }
+  });
+
+const isUnsafeQueryValue = (value) => {
+  if (typeof value !== 'string' && typeof value !== 'number') return true;
+  if (typeof value === 'number' && !Number.isFinite(value)) return true;
+
+  const text = String(value).trim();
+  if (!text || text.length > MAX_QUERY_VALUE_LENGTH) return true;
+  return hasControlCharacter(text)
+    || isUrlLike(text)
+    || text.includes('/')
+    || text.includes('\\')
+    || text.includes('?')
+    || text.includes('#');
+};
 
 class ReviewedProviderClient {
   constructor({
@@ -70,25 +100,39 @@ class ReviewedProviderClient {
     return base;
   }
 
-  buildUrl(endpointKey) {
-    const endpointPath = this.contract.endpoints?.[endpointKey];
+  assertSafeEndpointPath(endpointKey, endpointPath) {
     if (typeof endpointPath !== 'string' || !endpointPath.trim()) {
-      throw providerError(`${this.getProviderCode()} endpoint "${endpointKey}" is not confirmed`, 'LOTTERY_PROVIDER_NOT_CONFIGURED', 500);
+      throw providerError(`${this.getProviderCode()} endpoint is not confirmed`, 'LOTTERY_PROVIDER_NOT_CONFIGURED', 500);
     }
 
     const path = endpointPath.trim();
     if (
-      isUrlLike(path)
+      !path.startsWith('/')
+      || isUrlLike(path)
       || path.includes('\\')
+      || path.includes('?')
       || path.includes('#')
+      || hasControlCharacter(path)
+      || hasDotSegment(path)
     ) {
-      throw providerError(`${this.getProviderCode()} endpoint "${endpointKey}" is not a safe same-origin path`, 'LOTTERY_PROVIDER_NOT_CONFIGURED', 500);
+      throw providerError(`${this.getProviderCode()} endpoint is not a safe same-origin path`, 'LOTTERY_PROVIDER_NOT_CONFIGURED', 500);
     }
 
+    return path;
+  }
+
+  buildUrl(endpointKey) {
+    const path = this.assertSafeEndpointPath(endpointKey, this.contract.endpoints?.[endpointKey]);
     const base = this.getBaseUrl();
     const target = new URL(path, base);
-    if (target.origin !== base.origin || target.username || target.password || target.hash) {
-      throw providerError(`${this.getProviderCode()} endpoint "${endpointKey}" is not a safe same-origin path`, 'LOTTERY_PROVIDER_NOT_CONFIGURED', 500);
+    if (
+      target.origin !== base.origin
+      || target.search !== ''
+      || target.hash !== ''
+      || target.username
+      || target.password
+    ) {
+      throw providerError(`${this.getProviderCode()} endpoint is not a safe same-origin path`, 'LOTTERY_PROVIDER_NOT_CONFIGURED', 500);
     }
 
     return target.toString();
@@ -106,14 +150,10 @@ class ReviewedProviderClient {
         throw providerError(`${this.getProviderCode()} query mapping is not confirmed`, 'LOTTERY_PROVIDER_REQUEST_MAPPING_UNCONFIRMED', 500);
       }
       if (value === undefined || value === null || value === '') continue;
-      if (typeof value === 'object' || typeof value === 'function' || typeof value === 'symbol') {
+      if (isUnsafeQueryValue(value)) {
         throw providerError(`${this.getProviderCode()} query mapping is not confirmed`, 'LOTTERY_PROVIDER_REQUEST_MAPPING_UNCONFIRMED', 500);
       }
-      const text = String(value).trim();
-      if (!text || text.length > MAX_QUERY_VALUE_LENGTH || isUrlLike(text) || text.startsWith('/') || text.includes('\\')) {
-        throw providerError(`${this.getProviderCode()} query mapping is not confirmed`, 'LOTTERY_PROVIDER_REQUEST_MAPPING_UNCONFIRMED', 500);
-      }
-      sanitized[key] = text;
+      sanitized[key] = String(value).trim();
     }
     return sanitized;
   }
@@ -211,6 +251,8 @@ module.exports = {
     DEFAULT_CONTRACT,
     DEFAULT_MAX_RESPONSE_BYTES,
     MAX_QUERY_VALUE_LENGTH,
-    SAFE_METHOD
+    SAFE_METHOD,
+    hasDotSegment,
+    isUnsafeQueryValue
   }
 };

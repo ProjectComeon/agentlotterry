@@ -1,4 +1,4 @@
-﻿# Reviewed provider contract review
+# Reviewed provider contract review
 
 Provider code: `reviewed-provider`
 
@@ -44,7 +44,9 @@ Current fail-closed request policy:
 - `buildRoundDetailRequest()` rejects round IDs until provider detail request mapping is confirmed.
 - `buildResultsRequest()` rejects canonical filters until provider query names are confirmed.
 - Non-empty query values are rejected unless a test-only contract explicitly allowlists that key.
-- Query values must be scalar, short, and not URL/path-like.
+- Query values must be scalar, short, opaque, and not URL/path-like.
+- Query values with slashes, backslashes, URL schemes, protocol-relative prefixes, `?`, `#`, control characters, objects, arrays, functions, symbols, booleans, non-finite numbers, or excessive length are rejected.
+- Finite numeric query values are normalized to strings only inside test-only contracts.
 
 ## Pagination
 
@@ -152,7 +154,7 @@ No live retry policy is enabled. Future retries must be limited to idempotent GE
 - Admin preview endpoints must remain admin-only, GET-only, and DB-read/write neutral.
 - CI must use fixtures/fake transport only and must not call provider DNS/network.
 - Redirect responses are blocked and are not followed; Location headers and redirect URLs must not be exposed.
-- Endpoint paths must be relative/same-origin contract paths; absolute URLs, protocol-relative URLs, credentials, fragments, and backslashes are rejected.
+- Endpoint paths must be root-relative same-origin contract paths such as `/status`; bare relative paths, dot segments, percent-encoded dot segments, embedded query strings, fragments, absolute URLs, protocol-relative URLs, credentials, control characters, and backslashes are rejected.
 - Response size is checked both through transport limits and serialized payload size validation.
 
 ## Remaining review items

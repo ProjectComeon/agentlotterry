@@ -1,4 +1,4 @@
-﻿const assert = require('assert');
+const assert = require('assert');
 const fs = require('fs');
 const path = require('path');
 
@@ -336,41 +336,83 @@ const assertResponseSizeLimit = async () => {
   assert.strictEqual(oversized.calls.length, 1, 'oversized payload simulation should use fake transport once');
 };
 
-const assertEndpointPathGuard = () => {
-  const allowed = new ReviewedProviderClient({
+const assertEndpointPathGuard = async () => {
+  const allowedStatus = new ReviewedProviderClient({
     baseUrl: 'https://provider.example.invalid/api/',
     networkEnabled: true,
     contract: testContract({ endpoints: { status: '/status' } })
   });
-  assert.strictEqual(allowed.buildUrl('status'), 'https://provider.example.invalid/status');
+  assert.strictEqual(allowedStatus.buildUrl('status'), 'https://provider.example.invalid/status');
 
-  const badPaths = [
+  const allowedNested = new ReviewedProviderClient({
+    baseUrl: 'https://provider.example.invalid/api/',
+    networkEnabled: true,
+    contract: testContract({ endpoints: { status: '/api/v1/status' } })
+  });
+  assert.strictEqual(allowedNested.buildUrl('status'), 'https://provider.example.invalid/api/v1/status');
+
+  const invalidEndpointPaths = [
+    'status',
+    './status',
+    '../status',
+    '/api/../admin',
+    '/%2e%2e/admin',
+    '/status?sampleId=bypass',
+    '/status?mode=test',
+    '/status#fragment',
     'https://evil.example/status',
     '//evil.example/status',
     'https://user:pass@provider.example.invalid/status',
-    '/status#fragment',
     '/bad\\path',
+    "/status\r\nnext",
+    '/status\u0000next',
     ''
   ];
 
-  for (const pathValue of badPaths) {
-    const client = new ReviewedProviderClient({
-      baseUrl: 'https://provider.example.invalid/api/',
-      networkEnabled: true,
-      contract: testContract({ endpoints: { status: pathValue } })
+  for (const pathValue of invalidEndpointPaths) {
+    const { client, calls } = makeClient({
+      contract: testContract({ endpoints: { status: pathValue } }),
+      handler: () => ({ status: 200, data: { ok: true } })
     });
-    assert.throws(
-      () => client.buildUrl('status'),
-      (error) => error instanceof LotteryProviderError && error.code === 'LOTTERY_PROVIDER_NOT_CONFIGURED',
-      `endpoint path should reject ${pathValue || '<empty>'}`
+    const error = await assertProviderError(
+      () => client.get('status', { query: { sampleId: 'abc-123' } }),
+      'LOTTERY_PROVIDER_NOT_CONFIGURED',
+      'invalid endpoint path'
     );
+    assert.strictEqual(calls.length, 0, 'invalid endpoint must fail before transport');
+    if (pathValue) {
+      assert(!error.message.includes(pathValue), 'endpoint error must not include raw endpoint path');
+    }
   }
-};
 
+  const bypass = makeClient({
+    contract: testContract({ endpoints: { status: '/status?sampleId=bypass' }, allowedQueryKeys: { status: ['sampleId'] } }),
+    handler: () => ({ status: 200, data: { ok: true } })
+  });
+  const bypassError = await assertProviderError(
+    () => bypass.client.get('status', { query: { sampleId: 'abc-123' } }),
+    'LOTTERY_PROVIDER_NOT_CONFIGURED',
+    'endpoint embedded query bypass'
+  );
+  assert.strictEqual(bypass.calls.length, 0, 'endpoint embedded query must not call transport');
+  assert(!bypassError.message.includes('sampleId=bypass'), 'endpoint embedded query must not appear in error');
+};
 const assertQueryAllowlist = async () => {
-  const allowed = makeClient({ handler: () => ({ status: 200, data: { ok: true } }) });
-  assert.deepStrictEqual(await allowed.client.get('status', { query: { sampleId: 'safe-id' } }), { ok: true });
-  assert.deepStrictEqual(allowed.calls[0].params, { sampleId: 'safe-id' });
+  const validQueries = [
+    [{ sampleId: 'abc-123' }, { sampleId: 'abc-123' }],
+    [{ sampleId: '001' }, { sampleId: '001' }],
+    [{ sampleId: 'round_2026-01' }, { sampleId: 'round_2026-01' }],
+    [{ sampleId: 123 }, { sampleId: '123' }],
+    [{ sampleId: undefined }, {}],
+    [{ sampleId: null }, {}],
+    [{ sampleId: '' }, {}]
+  ];
+
+  for (const [query, expected] of validQueries) {
+    const allowed = makeClient({ handler: () => ({ status: 200, data: { ok: true } }) });
+    assert.deepStrictEqual(await allowed.client.get('status', { query }), { ok: true });
+    assert.deepStrictEqual(allowed.calls[0].params, expected);
+  }
 
   const productionLike = makeClient({
     contract: testContract({ allowedQueryKeys: { status: [] } }),
@@ -387,23 +429,43 @@ const assertQueryAllowlist = async () => {
     { unknown: 'value' },
     { sampleId: ['abc'] },
     { sampleId: { id: 'abc' } },
+    { sampleId: () => 'abc' },
+    { sampleId: Symbol('abc') },
+    { sampleId: true },
+    { sampleId: false },
+    { sampleId: Number.NaN },
+    { sampleId: Number.POSITIVE_INFINITY },
     { sampleId: 'https://evil.example/id' },
+    { sampleId: '//evil.example/id' },
     { sampleId: '/internal/path' },
+    { sampleId: 'abc/def' },
+    { sampleId: '../private' },
+    { sampleId: './private' },
     { sampleId: 'bad\\path' },
+    { sampleId: '?mode=test' },
+    { sampleId: '#fragment' },
+    { sampleId: 'line\rbreak' },
+    { sampleId: 'line\nbreak' },
+    { sampleId: 'null\u0000byte' },
+    { sampleId: 'control\u001Fchar' },
     { sampleId: 'x'.repeat(clientTest.MAX_QUERY_VALUE_LENGTH + 1) }
   ];
 
   for (const query of invalidQueries) {
     const { client, calls } = makeClient({ handler: () => ({ status: 200, data: { ok: true } }) });
-    await assertProviderError(
+    const error = await assertProviderError(
       () => client.get('status', { query }),
       'LOTTERY_PROVIDER_REQUEST_MAPPING_UNCONFIRMED',
       'invalid query allowlist value'
     );
     assert.strictEqual(calls.length, 0, 'invalid query should fail before transport');
+    for (const value of Object.values(query)) {
+      if (typeof value === 'string') {
+        assert(!error.message.includes(value), 'query error must not include raw query value');
+      }
+    }
   }
 };
-
 const assertRequestMappingFailsClosed = async () => {
   let calls = 0;
   const client = {
@@ -563,7 +625,7 @@ const assertBoundaryGuards = () => {
   await assertRedirectAndStatusMapping();
   await assertTransportErrorsAreControlled();
   await assertResponseSizeLimit();
-  assertEndpointPathGuard();
+  await assertEndpointPathGuard();
   await assertQueryAllowlist();
   await assertRequestMappingFailsClosed();
   await assertProviderFactoryPolicy();
