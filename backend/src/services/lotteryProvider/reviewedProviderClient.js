@@ -112,13 +112,17 @@ class ReviewedProviderClient {
   }
 
   assertSafeEndpointPath(endpointKey, endpointPath) {
-    if (typeof endpointPath !== 'string' || !endpointPath.trim()) {
+    if (typeof endpointPath !== 'string' || endpointPath === '') {
       throw providerError(`${this.getProviderCode()} endpoint is not confirmed`, 'LOTTERY_PROVIDER_NOT_CONFIGURED', 500);
+    }
+
+    if (hasControlCharacter(endpointPath)) {
+      throw providerError(`${this.getProviderCode()} endpoint is not a safe same-origin path`, 'LOTTERY_PROVIDER_NOT_CONFIGURED', 500);
     }
 
     const path = endpointPath.trim();
     if (
-      hasControlCharacter(endpointPath)
+      !path
       || path !== endpointPath
       || !path.startsWith('/')
       || isUrlLike(path)
