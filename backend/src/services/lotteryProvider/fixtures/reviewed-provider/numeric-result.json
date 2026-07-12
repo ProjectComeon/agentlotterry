@@ -1,0 +1,19 @@
+{
+  "_metadata": {
+    "providerCode": "reviewed-provider",
+    "source": "Sanitized placeholder numeric result fixture. This must remain rejected until provider docs prove numbers are safe strings before mapping.",
+    "capturedAt": "2026-07-11",
+    "contractStatus": "unconfirmed",
+    "containsSecrets": false,
+    "containsCustomerData": false
+  },
+  "items": [
+    {
+      "providerResultIdentifier": "result-numeric-001",
+      "numbers": {
+        "sampleTwoDigit": 5,
+        "sampleThreeDigit": 7
+      }
+    }
+  ]
+}

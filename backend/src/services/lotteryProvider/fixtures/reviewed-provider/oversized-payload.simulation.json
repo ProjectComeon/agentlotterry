@@ -1,0 +1,12 @@
+{
+  "_metadata": {
+    "providerCode": "reviewed-provider",
+    "source": "Sanitized placeholder oversized payload simulation. Tests generate the large payload in memory rather than committing a large fixture.",
+    "capturedAt": "2026-07-11",
+    "contractStatus": "unconfirmed",
+    "containsSecrets": false,
+    "containsCustomerData": false,
+    "simulationOnly": true
+  },
+  "items": []
+}

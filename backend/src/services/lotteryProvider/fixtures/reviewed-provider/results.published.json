@@ -1,0 +1,22 @@
+{
+  "_metadata": {
+    "providerCode": "reviewed-provider",
+    "source": "Sanitized placeholder published result fixture. Prize field mapping is unconfirmed.",
+    "capturedAt": "2026-07-11",
+    "contractStatus": "unconfirmed",
+    "containsSecrets": false,
+    "containsCustomerData": false
+  },
+  "items": [
+    {
+      "providerResultIdentifier": "result-published-001",
+      "providerRoundIdentifier": "round-sample-001",
+      "statusText": "published",
+      "numbers": {
+        "sampleTwoDigit": "05",
+        "sampleThreeDigit": "007",
+        "sampleSixDigit": "123456"
+      }
+    }
+  ]
+}

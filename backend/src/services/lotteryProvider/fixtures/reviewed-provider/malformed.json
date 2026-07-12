@@ -1,0 +1,16 @@
+{
+  "_metadata": {
+    "providerCode": "reviewed-provider",
+    "source": "Sanitized malformed fixture for contract tests.",
+    "capturedAt": "2026-07-11",
+    "containsSecrets": false,
+    "containsCustomerData": false
+  },
+  "unexpected": {
+    "nested": [
+      {
+        "field": true
+      }
+    ]
+  }
+}

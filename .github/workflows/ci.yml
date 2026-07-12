@@ -27,6 +27,7 @@ jobs:
       AUTO_SEED_CATALOG: "true"
       AUTO_SYNC_RESULTS: "false"
       AUTO_RETENTION_CLEANUP: "false"
+      LOTTERY_REAL_NETWORK_ENABLED: "false"
       BACKUP_DIR: ./backups
 
     steps:
@@ -100,6 +101,7 @@ jobs:
           npm run test:auth-search-guards
           npm run test:cookie-auth-guards
           npm run test:lottery-provider
+          npm run test:lottery-provider-contract
           npm run test:backup-restore-guards
           npm run test:retention-policy
 

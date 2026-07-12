@@ -1,0 +1,18 @@
+{
+  "_metadata": {
+    "providerCode": "reviewed-provider",
+    "source": "Sanitized placeholder duplicate IDs fixture.",
+    "capturedAt": "2026-07-11",
+    "contractStatus": "unconfirmed",
+    "containsSecrets": false,
+    "containsCustomerData": false
+  },
+  "items": [
+    {
+      "providerLotteryIdentifier": "duplicate-sample"
+    },
+    {
+      "providerLotteryIdentifier": "duplicate-sample"
+    }
+  ]
+}

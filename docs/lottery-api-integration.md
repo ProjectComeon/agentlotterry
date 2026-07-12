@@ -98,3 +98,11 @@ Phase 3: admin approval before writing provider-derived data.
 Phase 4: idempotent result import with clear source tracking.
 
 Phase 5: settlement integration after a separate review, migration plan, and financial regression coverage.
+
+## Reviewed provider contract shell
+
+`reviewed-provider` is a disabled-by-default contract review shell for future real provider work. It exists to review documentation, authentication configuration, endpoint shape, and field mapping without importing data, writing DB records, submitting bets, or touching settlement.
+
+Because no official provider documentation or sanitized real payload has been supplied yet, the mapper intentionally rejects placeholder fixtures with `LOTTERY_PROVIDER_MAPPING_INVALID`. `LOTTERY_REAL_NETWORK_ENABLED=false` is the default in every environment. CI uses sanitized fixtures and fake transport only.
+
+Do not mark this provider ready or use the placeholder code for production mapping until provider docs, endpoint paths, authentication, timezone policy, statuses, and result fields are confirmed in `docs/lottery-providers/reviewed-provider.md`.

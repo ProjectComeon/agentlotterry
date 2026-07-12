@@ -1,0 +1,18 @@
+{
+  "_metadata": {
+    "providerCode": "reviewed-provider",
+    "source": "Sanitized placeholder. Field names are intentionally not mapped to canonical DTOs until provider documentation confirms them.",
+    "capturedAt": "2026-07-11",
+    "contractStatus": "unconfirmed",
+    "containsSecrets": false,
+    "containsCustomerData": false
+  },
+  "items": [
+    {
+      "providerLotteryIdentifier": "lottery-sample-001",
+      "displayText": "Sample Lottery",
+      "timezoneText": "UTC",
+      "statusText": "enabled"
+    }
+  ]
+}
